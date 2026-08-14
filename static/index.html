@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taller Automotriz</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="contenedor">
+        <div class="cabecera">
+            <h1>Autotronic Solutions IA</h1>
+            <p>Keila IA te ayudará con la organización de gastos e ingresos.</p>
+        </div>
+        
+        <div class="grupo-formulario">
+            <textarea id="texto_reporte" placeholder="Ej: Se gastó 5$ en gasolina para placa GBC-456, pagó Carlos. O: Juan Pérez, placa ABC-123, cambio de aceite, cobró Carlos 30$"></textarea>
+        </div>
+        
+        <button class="btn-enviar" onclick="enviarReporte()">
+            Enviar a Keila IA
+        </button>
+
+        <hr>
+        
+        <div class="seccion-contabilidad">
+            <h2>Contabilidad Diaria</h2>
+            <button class="btn-excel" onclick="window.location.href='/exportar-excel'">
+                Descargar Reporte en Excel
+            </button>
+        </div>
+    </div>
+
+    <script>
+        async function enviarReporte() {
+            const texto = document.getElementById('texto_reporte').value;
+            
+            if (texto.trim() === "") {
+                alert("Por favor, escribe un reporte antes de enviar.");
+                return;
+            }
+
+            try {
+                const res = await fetch('/procesar-mensaje', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ texto: texto })
+                });
+                const data = await res.json();
+                
+                document.getElementById('texto_reporte').value = "";
+                alert("Guardado: " + data.mensaje_bd);
+                
+            } catch (e) {
+                console.error("Error:", e);
+                alert("Error al conectar con el servidor.");
+            }
+        }
+    </script>
+</body>
+</html>

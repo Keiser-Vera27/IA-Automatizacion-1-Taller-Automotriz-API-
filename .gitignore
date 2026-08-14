@@ -1,0 +1,14 @@
+# Ignorar el entorno virtual
+venv/
+env/
+
+# Ignorar variables de entorno (¡AQUÍ ESTÁ TU API KEY, NO SE DEBE SUBIR!)
+.env
+
+# Ignorar bases de datos locales y carpetas de Excel para no exponer datos reales del taller
+*.db
+respaldos_excel/
+
+# Ignorar archivos temporales de Python
+__pycache__/
+*.pyc
