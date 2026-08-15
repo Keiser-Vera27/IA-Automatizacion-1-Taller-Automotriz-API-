@@ -9,7 +9,6 @@
 
 body {
     font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    /* Fondo con gradiente radial inspirado en la imagen */
     background: radial-gradient(circle at top center, #231b54 0%, #111126 50%, #0a0a16 100%);
     color: #ffffff;
     display: flex;
@@ -20,16 +19,14 @@ body {
 }
 
 /* =========================================
-   CONTENEDOR PRINCIPAL (Efecto Cristal/Neón)
+   CONTENEDOR PRINCIPAL
 ========================================= */
 .contenedor {
-    /* Fondo semitransparente oscuro */
     background: rgba(20, 20, 40, 0.6);
     backdrop-filter: blur(10px);
     width: 100%;
     max-width: 600px;
     border-radius: 16px;
-    /* Borde morado con efecto de brillo */
     border: 1px solid rgba(138, 43, 226, 0.4);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(138, 43, 226, 0.15);
     padding: 40px 30px;
@@ -51,7 +48,6 @@ body {
     letter-spacing: -0.5px;
 }
 
-/* Texto de acento morado (como el "Diseñadora Web" de la imagen) */
 .cabecera p {
     color: #a855f7; 
     font-size: 16px;
@@ -59,7 +55,7 @@ body {
 }
 
 /* =========================================
-   ÁREA DE TEXTO (Input)
+   ÁREA DE TEXTO
 ========================================= */
 .grupo-formulario {
     margin-bottom: 25px;
@@ -105,7 +101,6 @@ button {
     transition: all 0.3s ease;
 }
 
-/* Botón Principal (Morado vibrante) */
 .btn-enviar {
     background: linear-gradient(135deg, #8a2be2, #6b21a8);
     box-shadow: 0 4px 15px rgba(138, 43, 226, 0.4);
@@ -118,11 +113,6 @@ button {
     box-shadow: 0 6px 20px rgba(138, 43, 226, 0.6);
 }
 
-.btn-enviar:active {
-    transform: scale(0.98);
-}
-
-/* Separador con gradiente */
 hr {
     border: 0;
     height: 1px;
@@ -131,7 +121,7 @@ hr {
 }
 
 /* =========================================
-   SECCIÓN DE DESCARGA EXCEL
+   SECCIÓN DE CONTABILIDAD
 ========================================= */
 .seccion-contabilidad h2 {
     color: #e2e8f0;
@@ -141,18 +131,44 @@ hr {
     font-weight: 500;
 }
 
-/* Botón secundario adaptado al modo oscuro pero manteniendo esencia verde por Excel */
+/* Contenedor flexible para los botones de reporte */
+.grupo-botones-reportes {
+    display: flex;
+    gap: 15px;
+}
+
 .btn-excel {
     background: rgba(39, 174, 96, 0.1);
     border: 1px solid rgba(39, 174, 96, 0.5);
     color: #2ecc71;
-    box-shadow: 0 4px 15px rgba(39, 174, 96, 0.1);
+    flex: 1;
+    padding: 12px;
+    font-size: 14px;
 }
 
 .btn-excel:hover {
     background: rgba(39, 174, 96, 0.2);
     border-color: #2ecc71;
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(39, 174, 96, 0.3);
-    color: #ffffff;
+    color: #e43535;
+}
+
+.btn-inventario {
+    background: rgba(23, 162, 184, 0.1);
+    border: 1px solid rgba(23, 162, 184, 0.5);
+    color: #17a2b8;
+    flex: 1;
+    padding: 12px;
+    font-size: 14px;
+}
+
+.btn-inventario:hover {
+    background: rgba(23, 162, 184, 0.2);
+    border: 1px solid rgba(39, 174, 96, 0.5);
+    color: #2ecc71;
+}
+
+/* Notificaciones */
+#caja-notificacion-ia {
+    margin-top: 15px;
+    width: 100%;
 }

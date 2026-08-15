@@ -11,7 +11,7 @@
     <div class="contenedor">
         <div class="cabecera">
             <h1>Autotronic Solutions IA</h1>
-            <p>Keila IA te ayudará con la organización de gastos e ingresos.</p>
+            <p>Keila IA le ayudará con la organización de gastos, ingresos e inventario.</p>
         </div>
         
         <div class="grupo-formulario">
@@ -25,38 +25,132 @@
         <hr>
         
         <div class="seccion-contabilidad">
-            <h2>Contabilidad Diaria</h2>
-            <button class="btn-excel" onclick="window.location.href='/exportar-excel'">
-                Descargar Reporte en Excel
-            </button>
+            <h2>Panel de Control y Reportes</h2>
+            <div class="grupo-botones-reportes">
+                <button class="btn-excel" onclick="window.location.href='/exportar-excel'">
+                    Descargar Reporte Diario
+                </button>
+                <button class="btn-inventario" onclick="descargarInventario()">
+                    Descargar Auditoria de Inventario
+                </button>
+            </div>
         </div>
     </div>
 
     <script>
-        async function enviarReporte() {
-            const texto = document.getElementById('texto_reporte').value;
-            
-            if (texto.trim() === "") {
-                alert("Por favor, escribe un reporte antes de enviar.");
-                return;
-            }
-
-            try {
-                const res = await fetch('/procesar-mensaje', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ texto: texto })
-                });
-                const data = await res.json();
-                
-                document.getElementById('texto_reporte').value = "";
-                alert("Guardado: " + data.mensaje_bd);
-                
-            } catch (e) {
-                console.error("Error:", e);
-                alert("Error al conectar con el servidor.");
-            }
+    async function enviarReporte() {
+        const inputTexto = document.getElementById('texto_reporte');
+        const texto = inputTexto.value;
+        
+        if (texto.trim() === "") {
+            mostrarNotificacion("Por favor, escriba un reporte antes de enviar.", "warning");
+            return;
         }
-    </script>
+
+        try {
+            mostrarNotificacion("Procesando reporte con inteligencia artificial...", "info");
+
+            const res = await fetch('/procesar-mensaje', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ texto: texto })
+            });
+            const data = await res.json();
+            
+            if (data.status === "éxito") {
+                inputTexto.value = ""; 
+                
+                let tipoEtiqueta = "";
+                if (data.tipo_detectado === "reparacion") tipoEtiqueta = "[Taller]";
+                else if (data.tipo_detectado === "gasto") tipoEtiqueta = "[Gasto]";
+                else if (data.tipo_detectado === "inventario") tipoEtiqueta = "[Inventario]";
+                else if (data.tipo_detectado === "devolucion") tipoEtiqueta = "[Devolucion]";
+
+                mostrarNotificacion(`Operacion exitosa: ${data.mensaje_bd} <b>${tipoEtiqueta}</b>`, "success");
+            } else {
+                mostrarNotificacion(`Error del sistema: ${data.mensaje}`, "error");
+            }
+            
+        } catch (e) {
+            console.error("Error:", e);
+            mostrarNotificacion("Error al conectar con el servidor.", "error");
+        }
+    }
+
+    async function descargarInventario() {
+        try {
+            mostrarNotificacion("Generando formato de auditoria de inventario...", "info");
+            
+            const response = await fetch('/exportar-inventario');
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Auditoria Inventario ${new Date().toLocaleDateString()}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                
+                mostrarNotificacion("Auditoria de inventario descargada correctamente.", "success");
+            } else {
+                mostrarNotificacion("Error al generar el archivo de inventario.", "error");
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            mostrarNotificacion("Error de conexion al descargar el inventario.", "error");
+        }
+    }
+
+    function mostrarNotificacion(mensaje, tipo) {
+        let cajaNotificacion = document.getElementById('caja-notificacion-ia');
+        if (!cajaNotificacion) {
+            cajaNotificacion = document.createElement('div');
+            cajaNotificacion.id = 'caja-notificacion-ia';
+            
+            cajaNotificacion.style.marginTop = '15px';
+            cajaNotificacion.style.padding = '12px 20px';
+            cajaNotificacion.style.borderRadius = '6px';
+            cajaNotificacion.style.fontFamily = 'sans-serif';
+            cajaNotificacion.style.fontSize = '14px';
+            cajaNotificacion.style.transition = 'all 0.3s ease';
+            cajaNotificacion.style.display = 'inline-block';
+            cajaNotificacion.style.width = '100%';
+            cajaNotificacion.style.boxSizing = 'border-box';
+            
+            const inputTexto = document.getElementById('texto_reporte');
+            inputTexto.parentNode.insertBefore(cajaNotificacion, inputTexto.nextSibling);
+        }
+
+        if (tipo === "success") {
+            cajaNotificacion.style.backgroundColor = '#e2f0d9';
+            cajaNotificacion.style.color = '#385723';
+            cajaNotificacion.style.border = '1px solid #c8e1b7';
+        } else if (tipo === "error") {
+            cajaNotificacion.style.backgroundColor = '#fce4d6';
+            cajaNotificacion.style.color = '#c65911';
+            cajaNotificacion.style.border = '1px solid #f8cbad';
+        } else if (tipo === "warning") {
+            cajaNotificacion.style.backgroundColor = '#fff2cc';
+            cajaNotificacion.style.color = '#7f6000';
+            cajaNotificacion.style.border = '1px solid #ffe599';
+        } else if (tipo === "info") {
+            cajaNotificacion.style.backgroundColor = '#d9e1f2';
+            cajaNotificacion.style.color = '#1f4e78';
+            cajaNotificacion.style.border = '1px solid #b4c6e7';
+        }
+
+        cajaNotificacion.style.opacity = '1';
+        cajaNotificacion.innerHTML = mensaje;
+        
+        if (tipo === "success") {
+            setTimeout(() => {
+                cajaNotificacion.style.opacity = '0';
+                setTimeout(() => { cajaNotificacion.innerHTML = ""; cajaNotificacion.style.padding = "0"; }, 300);
+            }, 5000);
+        }
+    }
+</script>
 </body>
 </html>
