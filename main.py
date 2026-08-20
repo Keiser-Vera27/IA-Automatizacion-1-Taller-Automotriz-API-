@@ -877,19 +877,29 @@ def exportar_excel(request: Request):
 @app.get("/vehiculos-pendientes")
 def listar_pendientes(request: Request):
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
-    hoy_str = datetime.now().strftime("%Y-%m-%d")
+    hoy_inicio = datetime.now().strftime("%Y-%m-%d") + " 00:00:00"
     
-    # Traemos tanto los Pendientes como los Terminados del día actual
-    data = (
+    # Consultamos los pendientes del taller
+    pendientes = (
         cliente_seguro.table("reparaciones")
         .select("vehiculo, cliente, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
         .eq("taller_id", taller_id)
-        .or_(f"estado.eq.Pendiente,and(estado.eq.Terminado,fecha_hora.ilike.{hoy_str}%)")
-        .order("fecha_hora", desc=True)
+        .eq("estado", "Pendiente")
         .execute()
     ).data
-    
-    return {"vehiculos": data}
+
+    # Consultamos los terminados que hayan sido registrados hoy
+    terminados_hoy = (
+        cliente_seguro.table("reparaciones")
+        .select("vehiculo, cliente, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
+        .eq("taller_id", taller_id)
+        .eq("estado", "Terminado")
+        .gte("fecha_hora", hoy_inicio)
+        .execute()
+    ).data
+
+    # Unimos ambas listas para enviarlas juntas al frontend
+    return {"vehiculos": pendientes + terminados_hoy}
 @app.get("/exportar-inventario")
 def exportar_inventario(request: Request):
     try:
