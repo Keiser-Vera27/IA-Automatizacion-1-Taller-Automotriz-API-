@@ -227,7 +227,10 @@ async function descargarReporteDiario() {
 // GESTIÓN DEL PANEL VISUAL DE VEHÍCULOS PENDIENTES (Glassmorphism)
 // ==============================================================================
 
-async function cargarVehiculosPendientes() {
+let filtroEstadoActual = 'Pendiente'; // Por defecto muestra pendientes
+
+async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
+    filtroEstadoActual = estadoFiltro;
     const token = localStorage.getItem("taller_token");
     if (!token) return;
 
@@ -241,7 +244,6 @@ async function cargarVehiculosPendientes() {
         
         let container = document.getElementById('panel-vehiculos-pendientes');
         
-        // Si no existe el contenedor en el DOM, lo creamos dinámicamente debajo del contenedor principal
         if (!container) {
             container = document.createElement('div');
             container.id = 'panel-vehiculos-pendientes';
@@ -250,23 +252,43 @@ async function cargarVehiculosPendientes() {
             if (app) app.appendChild(container);
         }
 
-        if (data.pendientes && data.pendientes.length > 0) {
-            let html = `<h3>Vehículos Pendientes <span style="font-size: 0.8rem; opacity: 0.7;">(Toca la placa para usarla)</span></h3>`;
-            data.pendientes.forEach(v => {
+        // Filtramos localmente según el botón seleccionado
+        const vehiculosFiltrados = data.vehiculos ? data.vehiculos.filter(v => v.estado === filtroEstadoActual) : [];
+
+        let html = `
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; border: none; padding: 0;">Control de Vehículos</h3>
+                <div style="display: flex; gap: 5px; background: rgba(0,0,0,0.3); padding: 3px; border-radius: 8px;">
+                    <button onclick="cargarVehiculosPendientes('Pendiente')" style="background: ${filtroEstadoActual === 'Pendiente' ? 'rgba(0, 210, 255, 0.3)' : 'transparent'}; color: #fff; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">Pendientes</button>
+                    <button onclick="cargarVehiculosPendientes('Terminado')" style="background: ${filtroEstadoActual === 'Terminado' ? 'rgba(46, 133, 64, 0.4)' : 'transparent'}; color: #fff; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">Terminados Hoy</button>
+                </div>
+            </div>
+        `;
+
+        if (vehiculosFiltrados.length > 0) {
+            vehiculosFiltrados.forEach(v => {
+                // Subtítulo con el motivo / descripción y detalles financieros si ya terminó
+                let detalleExtra = v.estado === 'Terminado' 
+                    ? `<div style="color: #a8f5b6; font-size: 0.85rem; margin-top: 4px;">✅ Cobro: $${v.cobro || 0} (${v.metodo_pago || 'Efectivo'})</div>` 
+                    : `<div class="info-taller-item"><strong>Falla / Motivo:</strong> ${v.motivo || 'No especificado'}</div>`;
+
                 html += `
                     <div class="tarjeta-vehiculo-pendiente" onclick="usarPlaca('${v.vehiculo}')" title="Haz clic para usar esta placa">
-                        <div><span class="placa-badge">${v.vehiculo}</span></div>
-                        <div class="info-taller-item"><strong>Cliente:</strong> ${v.cliente || 'N/A'}</div>
-                        <div class="info-taller-item"><strong>Falla / Motivo:</strong> ${v.motivo || 'No especificado'}</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="placa-badge">${v.vehiculo}</span>
+                            <span style="font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: ${v.estado === 'Pendiente' ? 'rgba(240, 173, 78, 0.2)' : 'rgba(46, 133, 64, 0.2)'}; color: ${v.estado === 'Pendiente' ? '#ffe066' : '#a8f5b6'};">${v.estado}</span>
+                        </div>
+                        <div class="info-taller-item" style="margin-top: 6px;"><strong>Cliente:</strong> ${v.cliente || 'N/A'}</div>
+                        ${detalleExtra}
                     </div>
                 `;
             });
             container.innerHTML = html;
         } else {
-            container.innerHTML = `<h3>Vehículos Pendientes</h3><p class="info-talian-item" style="color: #a0a0a0; font-size: 0.9rem;">No hay vehículos en espera actualmente.</p>`;
+            container.innerHTML += `<p style="color: #a0a0a0; font-size: 0.9rem; text-align: center; margin: 20px 0;">No hay vehículos en la categoría '${filtroEstadoActual}'.</p>`;
         }
     } catch (e) {
-        console.error("Error al cargar vehículos pendientes:", e);
+        console.error("Error al cargar vehículos:", e);
     }
 }
 

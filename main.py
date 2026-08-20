@@ -877,9 +877,19 @@ def exportar_excel(request: Request):
 @app.get("/vehiculos-pendientes")
 def listar_pendientes(request: Request):
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
-    data = cliente_seguro.table("reparaciones").select("vehiculo, cliente, motivo, fecha_hora").eq("estado", "Pendiente").eq("taller_id", taller_id).execute().data
-    return {"pendientes": data}
-
+    hoy_str = datetime.now().strftime("%Y-%m-%d")
+    
+    # Traemos tanto los Pendientes como los Terminados del día actual
+    data = (
+        cliente_seguro.table("reparaciones")
+        .select("vehiculo, cliente, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
+        .eq("taller_id", taller_id)
+        .or_(f"estado.eq.Pendiente,and(estado.eq.Terminado,fecha_hora.ilike.{hoy_str}%)")
+        .order("fecha_hora", desc=True)
+        .execute()
+    ).data
+    
+    return {"vehiculos": data}
 @app.get("/exportar-inventario")
 def exportar_inventario(request: Request):
     try:
