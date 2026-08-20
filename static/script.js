@@ -8,12 +8,9 @@ window.onload = function() {
     if (token) {
         document.getElementById("login-container").style.display = "none";
         document.getElementById("app-container").style.display = "block";
-        cargarVehiculosPendientes(); // <--- Carga los pendientes al recargar con sesión activa
+        cargarVehiculosPendientes(); 
     }
 
-    // --- AJUSTE: permitir enviar con ENTER ---
-
-    // Login: ENTER en correo o contraseña dispara iniciarSesion()
     const emailInput = document.getElementById("email_login");
     const passwordInput = document.getElementById("password_login");
 
@@ -31,8 +28,6 @@ window.onload = function() {
         }
     });
 
-    // Mensaje: ENTER envía, SHIFT+ENTER permite salto de línea
-    // (útil porque es un textarea de varias líneas, no un input simple)
     const textoReporte = document.getElementById("texto_reporte");
     textoReporte.addEventListener("keydown", function (e) {
         if (e.key === "Enter" && !e.shiftKey) {
@@ -68,7 +63,7 @@ async function iniciarSesion() {
             localStorage.setItem("taller_token", data.token);
             document.getElementById("login-container").style.display = "none";
             document.getElementById("app-container").style.display = "block";
-            cargarVehiculosPendientes(); // <--- Carga los pendientes al iniciar sesión
+            cargarVehiculosPendientes(); 
         } else {
             msgError.innerText = data.mensaje;
             msgError.style.display = "block";
@@ -86,14 +81,12 @@ function cerrarSesion() {
     document.getElementById("login-container").style.display = "block";
     document.getElementById("password_login").value = "";
 
-    // --- AJUSTE: limpiar la última respuesta/notificación visible ---
     const cajaNotificacion = document.getElementById('caja-notificacion-ia');
     if (cajaNotificacion) {
         cajaNotificacion.innerHTML = "";
         cajaNotificacion.style.padding = "0";
     }
     
-    // Limpiar el panel de pendientes al cerrar sesión
     const panelPendientes = document.getElementById('panel-vehiculos-pendientes');
     if (panelPendientes) {
         panelPendientes.remove();
@@ -133,7 +126,6 @@ async function enviarReporte() {
 
         const data = await res.json();
 
-        // Manejo específico si el servidor responde con un código de error HTTP (ej. 402 Suspendido, 403, etc.)
         if (!res.ok) {
             inputTexto.value = "";
             const mensajeError = data.detail || "Error al procesar la solicitud en el servidor.";
@@ -144,7 +136,7 @@ async function enviarReporte() {
         if (data.status === "éxito") {
             inputTexto.value = "";
             mostrarNotificacion(`${data.mensaje_bd}`, "success");
-            cargarVehiculosPendientes(); // <--- Refresca la lista de pendientes al registrar algo nuevo
+            cargarVehiculosPendientes(); 
         }
         else if (data.status === "éxito_consulta") {
             inputTexto.value = "";
@@ -224,10 +216,10 @@ async function descargarReporteDiario() {
 }
 
 // ==============================================================================
-// GESTIÓN DEL PANEL VISUAL DE VEHÍCULOS PENDIENTES (Glassmorphism)
+// GESTIÓN DEL PANEL VISUAL DE VEHÍCULOS (Glassmorphism)
 // ==============================================================================
 
-let filtroEstadoActual = 'Pendiente'; // Por defecto muestra pendientes
+let filtroEstadoActual = 'Pendiente'; 
 
 async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
     filtroEstadoActual = estadoFiltro;
@@ -252,8 +244,9 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
             if (app) app.appendChild(container);
         }
 
-        // Filtramos localmente según el botón seleccionado
-        const vehiculosFiltrados = data.vehiculos ? data.vehiculos.filter(v => v.estado === filtroEstadoActual) : [];
+        // Se usa data.vehiculos que mapea correctamente con la respuesta del backend
+        const listaVehiculos = data.vehiculos || [];
+        const vehiculosFiltrados = listaVehiculos.filter(v => v.estado === filtroEstadoActual);
 
         let html = `
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; margin-bottom: 15px;">
@@ -267,7 +260,6 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
 
         if (vehiculosFiltrados.length > 0) {
             vehiculosFiltrados.forEach(v => {
-                // Subtítulo con el motivo / descripción y detalles financieros si ya terminó
                 let detalleExtra = v.estado === 'Terminado' 
                     ? `<div style="color: #a8f5b6; font-size: 0.85rem; margin-top: 4px;">✅ Cobro: $${v.cobro || 0} (${v.metodo_pago || 'Efectivo'})</div>` 
                     : `<div class="info-taller-item"><strong>Falla / Motivo:</strong> ${v.motivo || 'No especificado'}</div>`;
@@ -285,7 +277,7 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
             });
             container.innerHTML = html;
         } else {
-            container.innerHTML += `<p style="color: #a0a0a0; font-size: 0.9rem; text-align: center; margin: 20px 0;">No hay vehículos en la categoría '${filtroEstadoActual}'.</p>`;
+            container.innerHTML = html + `<p style="color: #a0a0a0; font-size: 0.9rem; text-align: center; margin: 20px 0;">No hay vehículos en la categoría '${filtroEstadoActual}'.</p>`;
         }
     } catch (e) {
         console.error("Error al cargar vehículos:", e);
@@ -342,7 +334,6 @@ function mostrarNotificacion(mensaje, tipo) {
 
     cajaNotificacion.style.opacity = '1';
 
-    // Si es respuesta analítica de la IA, traducimos el formato Markdown a HTML limpio con marked.js
     if (tipo === "info" && mensaje.includes("Respuesta del Gerente IA")) {
         cajaNotificacion.innerHTML = marked.parse(mensaje);
     } else {
