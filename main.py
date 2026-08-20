@@ -75,7 +75,16 @@ def obtener_cliente_seguro(request: Request):
 
     try:
         user_data = supabase.auth.get_user(token)
-        taller_id = user_data.user.app_metadata.get("taller_id")
+        usuario = user_data.user
+        # Intentamos obtener el taller_id de los app_metadata
+        taller_id = usuario.app_metadata.get("taller_id") if usuario.app_metadata else None
+        
+        # --- AUTOCORRECCIÓN SI FALTA EN METADATA ---
+        if not taller_id and usuario.email:
+            # Buscamos en la tabla de talleres si este correo es el jefe del taller
+            taller_por_email = supabase.table("talleres").select("id").eq("email", usuario.email).execute().data
+            if taller_por_email:
+                taller_id = taller_por_email[0]["id"]
     except Exception as e:
         print(f"🔴 401: Supabase rechazó el token → {e}")
         raise HTTPException(status_code=401, detail="Sesión inválida o expirada")
@@ -84,8 +93,7 @@ def obtener_cliente_seguro(request: Request):
         print("🟠 403: token válido pero el usuario no tiene taller_id asignado")
         raise HTTPException(status_code=403, detail="Usuario sin taller asignado")
 
-    # Verificar que el taller tenga acceso vigente (usamos el cliente admin
-    # porque este chequeo debe correr SIEMPRE, sin depender de RLS todavía).
+    # Verificar que el taller tenga acceso vigente
     taller_info = supabase.table("talleres").select("estado_pago, fecha_vencimiento").eq("id", taller_id).execute().data
     if taller_info:
         estado_pago = taller_info[0].get("estado_pago")
