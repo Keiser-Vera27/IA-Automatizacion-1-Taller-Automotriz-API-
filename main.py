@@ -295,6 +295,10 @@ class RepuestoUsado(BaseModel):
 
 class TrabajoTaller(BaseModel):
     vehiculo: str = Field(description="OBLIGATORIO: Extrae ÚNICAMENTE la placa del vehículo (letras y números sin espacios, ej: PXY9876, ABB777). No incluyas marca ni color. Si no hay placa, extrae solo el modelo principal.")
+    modelo: str = Field(default="", description="Marca y modelo del vehículo si se menciona, ej: 'Toyota Corolla', 'Kia Sportage'. Vacío si no se menciona.")
+    color: str = Field(default="", description="Color del vehículo si se menciona, ej: 'blanco', 'gris plata'. Vacío si no se menciona.")
+    anio: str = Field(default="", description="Año del vehículo si se menciona, ej: '2019'. Vacío si no se menciona.")
+    cilindraje: str = Field(default="", description="Cilindraje del motor si se menciona, ej: '1.6', '2000cc'. Vacío si no se menciona.")
     cliente: str = ""
     cedula: str = ""
     telefono: str = ""
@@ -388,7 +392,7 @@ async def trabajador_silencioso():
 
         if tipo == "reparacion" and resultado.get("reparacion"):
             d = resultado["reparacion"]
-            res_rep = supabase.table("reparaciones").select("id, estado, fecha_hora").eq("vehiculo", d.get("vehiculo", "S/C")).eq("taller_id", taller_id).order("id", desc=True).limit(1).execute()
+            res_rep = supabase.table("reparaciones").select("id, estado, fecha_hora, modelo, color, anio, cilindraje").eq("vehiculo", d.get("vehiculo", "S/C")).eq("taller_id", taller_id).order("id", desc=True).limit(1).execute()
             ultima_orden = res_rep.data[0] if res_rep.data else None
 
             if ultima_orden and ultima_orden["estado"] == 'Terminado' and (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != ""):
@@ -420,9 +424,23 @@ async def trabajador_silencioso():
                     continue
             else:
                 estado_nuevo = 'Terminado' if (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") else 'Pendiente'
+
+                # Si el mensaje nuevo no trae modelo/color/año/cilindraje, se heredan
+                # del último registro de esta misma placa (el mecánico no suele
+                # repetir esos datos en visitas posteriores del mismo carro).
+                def _heredar(campo):
+                    valor_nuevo = d.get(campo, "")
+                    if valor_nuevo:
+                        return valor_nuevo
+                    return ultima_orden.get(campo, "") if ultima_orden else ""
+
                 supabase.table("reparaciones").insert({
                     "taller_id": taller_id,
                     "vehiculo": d.get("vehiculo", "S/C"),
+                    "modelo": _heredar("modelo"),
+                    "color": _heredar("color"),
+                    "anio": _heredar("anio"),
+                    "cilindraje": _heredar("cilindraje"),
                     "cliente": d.get("cliente", ""),
                     "cedula": d.get("cedula", ""),
                     "telefono": d.get("telefono", ""),
@@ -888,7 +906,7 @@ def listar_pendientes(request: Request):
     # Consultamos los pendientes del taller
     pendientes = (
         cliente_seguro.table("reparaciones")
-        .select("vehiculo, cliente, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
+        .select("vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
         .eq("taller_id", taller_id)
         .eq("estado", "Pendiente")
         .execute()
@@ -897,7 +915,7 @@ def listar_pendientes(request: Request):
     # Consultamos los terminados que hayan sido registrados hoy
     terminados_hoy = (
         cliente_seguro.table("reparaciones")
-        .select("vehiculo, cliente, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
+        .select("vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
         .gte("fecha_hora", hoy_inicio)

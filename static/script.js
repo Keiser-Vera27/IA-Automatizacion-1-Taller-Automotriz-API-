@@ -268,6 +268,18 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                     ? `<div style="color: #a8f5b6; font-size: 0.85rem; margin-top: 4px;">✅ Cobro: $${v.cobro || 0} (${v.metodo_pago || 'Efectivo'})</div>` 
                     : `<div class="info-taller-item"><strong>Falla / Motivo:</strong> ${v.motivo || 'No especificado'}</div>`;
 
+                // Arma la línea de datos del vehículo solo con lo que sí venga informado
+                const partesVehiculo = [v.modelo, v.color, v.anio, v.cilindraje ? `${v.cilindraje}cc` : ''].filter(Boolean);
+                const infoVehiculo = partesVehiculo.length > 0
+                    ? `<div class="info-taller-item"><strong>Vehículo:</strong> ${partesVehiculo.join(' · ')}</div>`
+                    : '';
+
+                // Teléfono con enlace "tel:" para llamar directo; stopPropagation
+                // evita que el clic también dispare usarPlaca() de la tarjeta.
+                const infoTelefono = v.telefono
+                    ? `<div class="info-taller-item"><strong>Tel:</strong> <a href="tel:${v.telefono}" onclick="event.stopPropagation()" style="color: #00d2ff; text-decoration: none;">${v.telefono}</a></div>`
+                    : '';
+
                 html += `
                     <div class="tarjeta-vehiculo-pendiente" onclick="usarPlaca('${v.vehiculo}')" title="Haz clic para usar esta placa">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -275,6 +287,8 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                             <span style="font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: ${v.estado === 'Pendiente' ? 'rgba(240, 173, 78, 0.2)' : 'rgba(46, 133, 64, 0.2)'}; color: ${v.estado === 'Pendiente' ? '#ffe066' : '#a8f5b6'};">${v.estado}</span>
                         </div>
                         <div class="info-taller-item" style="margin-top: 6px;"><strong>Cliente:</strong> ${v.cliente || 'N/A'}</div>
+                        ${infoVehiculo}
+                        ${infoTelefono}
                         ${detalleExtra}
                     </div>
                 `;
