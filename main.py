@@ -940,3 +940,4 @@ if __name__ == "__main__":
     # En la nube, el proveedor (Railway/Render) asigna el puerto dinámicamente
     puerto = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=puerto, reload=False)
+    # Forzar actualización de ruta
