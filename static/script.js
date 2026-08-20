@@ -124,7 +124,16 @@ async function enviarReporte() {
             },
             body: JSON.stringify({ texto: texto })
         });
+
         const data = await res.json();
+
+        // Manejo específico si el servidor responde con un código de error HTTP (ej. 402 Suspendido, 403, etc.)
+        if (!res.ok) {
+            inputTexto.value = "";
+            const mensajeError = data.detail || "Error al procesar la solicitud en el servidor.";
+            mostrarNotificacion(mensajeError, "warning");
+            return;
+        }
 
         if (data.status === "éxito") {
             inputTexto.value = "";
@@ -135,7 +144,8 @@ async function enviarReporte() {
             mostrarNotificacion(`<b>Respuesta del Gerente IA:</b><br>${data.mensaje_bd}`, "info");
         }
         else {
-            mostrarNotificacion(`Error del sistema: ${data.mensaje}`, "error");
+            inputTexto.value = "";
+            mostrarNotificacion(`Error del sistema: ${data.mensaje || "Desconocido"}`, "error");
         }
 
     } catch (e) {
@@ -166,7 +176,8 @@ async function descargarInventario() {
 
             mostrarNotificacion("Auditoria de inventario descargada correctamente.", "success");
         } else {
-            mostrarNotificacion("Error al generar el archivo de inventario.", "error");
+            const errData = await response.json().catch(() => ({}));
+            mostrarNotificacion(errData.detail || "Error al generar el archivo de inventario.", "warning");
         }
     } catch (error) {
         console.error("Error:", error);
@@ -196,7 +207,8 @@ async function descargarReporteDiario() {
 
             mostrarNotificacion("Reporte diario descargado correctamente.", "success");
         } else {
-            mostrarNotificacion("Error al generar el reporte diario.", "error");
+            const errData = await response.json().catch(() => ({}));
+            mostrarNotificacion(errData.detail || "Error al generar el reporte diario.", "warning");
         }
     } catch (error) {
         console.error("Error:", error);

@@ -98,10 +98,15 @@ def obtener_cliente_seguro(request: Request):
     if taller_info:
         estado_pago = taller_info[0].get("estado_pago")
         fecha_vencimiento = taller_info[0].get("fecha_vencimiento")
-        if estado_pago == "suspendido":
-            raise HTTPException(status_code=402, detail="El acceso del taller está suspendido. Contacta al administrador.")
-        if fecha_vencimiento and datetime.now().strftime("%Y-%m-%d") > fecha_vencimiento:
-            raise HTTPException(status_code=402, detail="La suscripción del taller venció. Contacta al administrador para renovar.")
+        
+        # Mensaje personalizado y profesional
+        mensaje_amable = (
+            "Tu acceso está suspendido actualmente por falta de pago."
+            "Por favor, comunícate con Keiser para gestionar la reactivación de tu cuenta"
+        )
+
+        if estado_pago == "suspendido" or (fecha_vencimiento and datetime.now().strftime("%Y-%m-%d") > fecha_vencimiento):
+            raise HTTPException(status_code=402, detail=mensaje_amable)
 
     cliente_seguro = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
     cliente_seguro.postgrest.auth(token)
