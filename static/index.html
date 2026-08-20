@@ -5,152 +5,89 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Taller Automotriz</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Librería para renderizar Markdown (negritas y listas de la IA) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+    .btn-cerrar-sesion {
+        width: auto !important; /* Mantenemos el tamaño pequeño */
+        background: rgba(255, 77, 77, 0.1);
+        border: 1px solid #ff4d4d;
+        color: #ff4d4d;
+        padding: 6px 15px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: bold;
+        transition: all 0.3s ease-in-out;
+        box-shadow: 0 0 5px rgba(255, 77, 77, 0.2);
+    }
+
+    .btn-cerrar-sesion:hover {
+        background: rgba(255, 77, 77, 0.3);
+        color: #ffffff;
+        box-shadow: 0 0 15px rgba(255, 77, 77, 0.8), 0 0 30px rgba(255, 77, 77, 0.5);
+        border-color: #ff1a1a;
+        transform: translateY(-2px); /* Un pequeño salto hacia arriba */
+    }
+</style>
 </head>
-<body>
+<body style="background-color: #121212; color: #ffffff; font-family: sans-serif;">
 
-    <div class="contenedor">
-        <div class="cabecera">
-            <h1>Autotronic Solutions IA</h1>
-            <p>Keila IA le ayudará con la organización de gastos, ingresos e inventario.</p>
-        </div>
+    <!-- PANTALLA DE LOGIN -->
+    <div id="login-container" class="glass-container" style="max-width: 400px; margin: 100px auto; padding: 30px; text-align: center; border-radius: 15px; background: rgba(20, 20, 25, 0.8); box-shadow: 0 0 15px rgba(138, 43, 226, 0.5); border: 1px solid rgba(138, 43, 226, 0.3);">
+        <h2 style="color: #fff; text-shadow: 0 0 5px #8a2be2;">Acceso al Sistema</h2>
+        <p style="color: #ccc; margin-bottom: 20px;">Ingresa tus credenciales de taller</p>
         
-        <div class="grupo-formulario">
-            <textarea id="texto_reporte" placeholder="Ej: Se gastó 5$ en gasolina para placa GBC-456, pagó Carlos. O: Juan Pérez, placa ABC-123, cambio de aceite, cobró Carlos 30$"></textarea>
-        </div>
+        <input type="email" id="email_login" placeholder="Correo electrónico" style="width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #444; background: #222; color: #fff; box-sizing: border-box;">
         
-        <button class="btn-enviar" onclick="enviarReporte()">
-            Enviar a Keila IA
+        <input type="password" id="password_login" placeholder="Contraseña" style="width: 100%; padding: 10px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #444; background: #222; color: #fff; box-sizing: border-box;">
+        
+        <button onclick="iniciarSesion()" style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: linear-gradient(45deg, #8a2be2, #4b0082); color: white; font-weight: bold; cursor: pointer; box-shadow: 0 0 10px rgba(138, 43, 226, 0.6);">
+            Ingresar al Taller
         </button>
+        <p id="login_error" style="color: #ff4d4d; margin-top: 15px; display: none;"></p>
+    </div>
 
-        <hr>
-        
-        <div class="seccion-contabilidad">
-            <h2>Panel de Control y Reportes</h2>
-            <div class="grupo-botones-reportes">
-                <button class="btn-excel" onclick="window.location.href='/exportar-excel'">
-                    Descargar Reporte Diario
+    <!-- APLICACIÓN PRINCIPAL (Oculta hasta iniciar sesión) -->
+    <div id="app-container" style="display: none;">
+        <div class="contenedor">
+            
+            <!-- Barra superior para el botón de salir -->
+            <div style="display: flex; justify-content: flex-end; margin-top: -15px; margin-bottom: 15px; width: 100%;">
+                <button class="btn-cerrar-sesion" onclick="cerrarSesion()">
+                    Cerrar Sesión
                 </button>
-                <button class="btn-inventario" onclick="descargarInventario()">
-                    Descargar Auditoria de Inventario
-                </button>
+            </div>
+
+            <div class="cabecera">
+                <h1>Autotronic Solutions IA</h1>
+                <p>Keila IA le ayudará con la organización de gastos, ingresos, inventario y consultas analíticas.</p>
+            </div>
+            
+            <div class="grupo-formulario">
+                <textarea id="texto_reporte" placeholder="Escribe aquí un registro (ej: Entró Toyota PXY9876...) o haz una pregunta analítica (ej: ¿Cuál fue el cliente que gastó más?)"></textarea>
+            </div>
+            
+            <button class="btn-enviar" onclick="enviarReporte()">
+                Enviar a Keila IA
+            </button>
+
+            <hr>
+            
+            <div class="seccion-contabilidad">
+                <h2>Panel de Control y Reportes</h2>
+                <div class="grupo-botones-reportes">
+                    <button class="btn-excel" onclick="descargarReporteDiario()">
+                        Descargar Reporte Diario
+                    </button>
+                    <button class="btn-inventario" onclick="descargarInventario()">
+                        Descargar Auditoria de Inventario
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <script>
-    async function enviarReporte() {
-        const inputTexto = document.getElementById('texto_reporte');
-        const texto = inputTexto.value;
-        
-        if (texto.trim() === "") {
-            mostrarNotificacion("Por favor, escriba un reporte antes de enviar.", "warning");
-            return;
-        }
-
-        try {
-            mostrarNotificacion("Procesando reporte con inteligencia artificial...", "info");
-
-            const res = await fetch('/procesar-mensaje', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ texto: texto })
-            });
-            const data = await res.json();
-            
-            if (data.status === "éxito") {
-                inputTexto.value = ""; 
-                
-                let tipoEtiqueta = "";
-                if (data.tipo_detectado === "reparacion") tipoEtiqueta = "[Taller]";
-                else if (data.tipo_detectado === "gasto") tipoEtiqueta = "[Gasto]";
-                else if (data.tipo_detectado === "inventario") tipoEtiqueta = "[Inventario]";
-                else if (data.tipo_detectado === "devolucion") tipoEtiqueta = "[Devolucion]";
-
-                mostrarNotificacion(`Operacion exitosa: ${data.mensaje_bd} <b>${tipoEtiqueta}</b>`, "success");
-            } else {
-                mostrarNotificacion(`Error del sistema: ${data.mensaje}`, "error");
-            }
-            
-        } catch (e) {
-            console.error("Error:", e);
-            mostrarNotificacion("Error al conectar con el servidor.", "error");
-        }
-    }
-
-    async function descargarInventario() {
-        try {
-            mostrarNotificacion("Generando formato de auditoria de inventario...", "info");
-            
-            const response = await fetch('/exportar-inventario');
-            
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Auditoria Inventario ${new Date().toLocaleDateString()}.xlsx`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                
-                mostrarNotificacion("Auditoria de inventario descargada correctamente.", "success");
-            } else {
-                mostrarNotificacion("Error al generar el archivo de inventario.", "error");
-            }
-        } catch (error) {
-            console.error("Error:", error);
-            mostrarNotificacion("Error de conexion al descargar el inventario.", "error");
-        }
-    }
-
-    function mostrarNotificacion(mensaje, tipo) {
-        let cajaNotificacion = document.getElementById('caja-notificacion-ia');
-        if (!cajaNotificacion) {
-            cajaNotificacion = document.createElement('div');
-            cajaNotificacion.id = 'caja-notificacion-ia';
-            
-            cajaNotificacion.style.marginTop = '15px';
-            cajaNotificacion.style.padding = '12px 20px';
-            cajaNotificacion.style.borderRadius = '6px';
-            cajaNotificacion.style.fontFamily = 'sans-serif';
-            cajaNotificacion.style.fontSize = '14px';
-            cajaNotificacion.style.transition = 'all 0.3s ease';
-            cajaNotificacion.style.display = 'inline-block';
-            cajaNotificacion.style.width = '100%';
-            cajaNotificacion.style.boxSizing = 'border-box';
-            
-            const inputTexto = document.getElementById('texto_reporte');
-            inputTexto.parentNode.insertBefore(cajaNotificacion, inputTexto.nextSibling);
-        }
-
-        if (tipo === "success") {
-            cajaNotificacion.style.backgroundColor = '#e2f0d9';
-            cajaNotificacion.style.color = '#385723';
-            cajaNotificacion.style.border = '1px solid #c8e1b7';
-        } else if (tipo === "error") {
-            cajaNotificacion.style.backgroundColor = '#fce4d6';
-            cajaNotificacion.style.color = '#c65911';
-            cajaNotificacion.style.border = '1px solid #f8cbad';
-        } else if (tipo === "warning") {
-            cajaNotificacion.style.backgroundColor = '#fff2cc';
-            cajaNotificacion.style.color = '#7f6000';
-            cajaNotificacion.style.border = '1px solid #ffe599';
-        } else if (tipo === "info") {
-            cajaNotificacion.style.backgroundColor = '#d9e1f2';
-            cajaNotificacion.style.color = '#1f4e78';
-            cajaNotificacion.style.border = '1px solid #b4c6e7';
-        }
-
-        cajaNotificacion.style.opacity = '1';
-        cajaNotificacion.innerHTML = mensaje;
-        
-        if (tipo === "success") {
-            setTimeout(() => {
-                cajaNotificacion.style.opacity = '0';
-                setTimeout(() => { cajaNotificacion.innerHTML = ""; cajaNotificacion.style.padding = "0"; }, 300);
-            }, 5000);
-        }
-    }
-</script>
+    <script src="script.js"></script>
 </body>
 </html>

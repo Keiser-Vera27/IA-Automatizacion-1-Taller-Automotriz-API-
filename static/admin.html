@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Control Center - Autotronic</title>
+    <link rel="stylesheet" href="admin_style.css">
+</head>
+<body>
+
+    <!-- NOTIFICACIONES TOAST (Reemplaza los alerts con IP) -->
+    <div id="toast-container"></div>
+
+    <!-- MODAL DE ACCIONES (Reemplaza los prompts con IP) -->
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal-box">
+            <h3 id="modal-titulo" class="section-title">Acción</h3>
+            <div id="modal-body" style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px;">
+                <!-- Se llena dinámicamente -->
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn-ghost" onclick="cerrarModal()">Cancelar</button>
+                <button id="modal-btn-confirmar" class="btn-primary">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOGIN SUPERADMIN -->
+    <div id="login-admin" style="max-width: 380px; margin: 100px auto; padding: 35px;" class="panel-box">
+        <div class="logo-title" style="justify-content: center; margin-bottom: 25px;">
+            <div class="logo-dot"></div>
+            <span>Autotronic SaaS</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <input type="email" id="admin_email" placeholder="Correo Master">
+            <input type="password" id="admin_password" placeholder="Contraseña Master">
+            <button class="btn-primary" onclick="loginAdmin()" style="width: 100%; margin-top: 10px;">Entrar al Panel</button>
+        </div>
+    </div>
+
+    <!-- PANEL PRINCIPAL -->
+    <div id="panel-admin" style="display: none;">
+        <div class="header-bar">
+            <div class="logo-title">
+                <div class="logo-dot"></div>
+                <span>Panel SaaS Autotronic</span>
+            </div>
+            <button class="btn-ghost" onclick="cerrarSesionAdmin()">Cerrar Sesión</button>
+        </div>
+
+        <div class="panel-box">
+            <h3 class="section-title">Registrar Nuevo Taller Cliente</h3>
+            <div class="form-alta-taller">
+                <input type="text" id="nuevo_nombre" placeholder="Nombre Taller">
+                <input type="email" id="nuevo_email" placeholder="Email Jefe">
+                <input type="password" id="nuevo_pass" placeholder="Password Jefe">
+                <select id="nuevo_plan">
+                    <option value="mensual">Plan Mensual</option>
+                    <option value="trimestral">Plan Trimestral</option>
+                    <option value="anual">Plan Anual</option>
+                </select>
+                <button class="btn-primary" onclick="crearTaller()">Crear Taller</button>
+            </div>
+        </div>
+
+        <h3 class="section-title">Talleres Registrados</h3>
+        <div id="lista-talleres" class="talleres-grid">
+            <!-- Cargado por JS -->
+        </div>
+    </div>
+
+    <script src="admin_script.js"></script>
+</body>
+</html>

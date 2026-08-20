@@ -1,0 +1,334 @@
+/* ==========================================================================
+   ESTILOS PREMIUM DARK & ORANGE - PANEL SAAS AUTOTRONIC
+   ========================================================================== */
+
+:root {
+    --bg-main: #0c0d11;
+    --bg-card: #15161e;
+    --bg-card-hover: #1c1d28;
+    --bg-input: #1b1c26;
+    --accent-orange: #ff7300;
+    --accent-orange-glow: rgba(255, 115, 0, 0.35);
+    --accent-green: #10b981;
+    --accent-green-bg: rgba(16, 185, 129, 0.12);
+    --accent-red: #ef4444;
+    --accent-red-bg: rgba(239, 68, 68, 0.12);
+    --accent-blue: #3b82f6;
+    --text-main: #f3f4f6;
+    --text-muted: #9ca3af;
+    --border-color: rgba(255, 255, 255, 0.07);
+    --radius-card: 18px;
+    --radius-btn: 12px;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* --- TOAST NOTIFICATIONS (Reemplazo de los alert con IP) --- */
+#toast-container {
+    position: fixed;
+    top: 25px;
+    right: 25px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.toast {
+    background: #1e1f2b;
+    color: #fff;
+    padding: 14px 22px;
+    border-radius: 14px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    animation: slideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    backdrop-filter: blur(10px);
+}
+
+.toast.success { border-left: 4px solid var(--accent-green); }
+.toast.error { border-left: 4px solid var(--accent-red); }
+.toast.info { border-left: 4px solid var(--accent-orange); }
+
+@keyframes slideIn {
+    from { transform: translateX(100%) scale(0.9); opacity: 0; }
+    to { transform: translateX(0) scale(1); opacity: 1; }
+}
+
+/* --- MODAL PERSONALIZADO (Reemplazo de los prompt con IP) --- */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9000;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s ease;
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    padding: 30px;
+    border-radius: 22px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+    transform: scale(0.9);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-overlay.active .modal-box {
+    transform: scale(1);
+}
+
+/* --- ESTRUCTURA GENERAL --- */
+#panel-admin {
+    max-width: 1100px;
+    margin: 40px auto;
+    padding: 0 20px;
+}
+
+.header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 35px;
+}
+
+.logo-title {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.logo-dot {
+    width: 12px;
+    height: 12px;
+    background-color: var(--accent-orange);
+    border-radius: 50%;
+    box-shadow: 0 0 12px var(--accent-orange);
+}
+
+/* --- CAJA CREAR TALLER --- */
+.panel-box {
+    background: var(--bg-card);
+    padding: 28px;
+    border-radius: var(--radius-card);
+    border: 1px solid var(--border-color);
+    margin-bottom: 40px;
+}
+
+.section-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: var(--text-main);
+}
+
+.form-alta-taller {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+input, select {
+    background: var(--bg-input);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    padding: 13px 16px;
+    border-radius: var(--radius-btn);
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+input:focus, select:focus {
+    border-color: var(--accent-orange);
+    box-shadow: 0 0 0 3px var(--accent-orange-glow);
+}
+
+/* --- BOTONES PREMIUM --- */
+button {
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 14px;
+    border: none;
+    border-radius: var(--radius-btn);
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-primary {
+    background: var(--accent-orange);
+    color: #ffffff;
+    padding: 13px 24px;
+    box-shadow: 0 4px 15px var(--accent-orange-glow);
+}
+
+.btn-primary:hover {
+    background: #ff851a;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px var(--accent-orange-glow);
+}
+
+.btn-ghost {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+}
+
+.btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main);
+}
+
+/* --- TARJETAS TALLERES (ESTILO REFERENCIA) --- */
+.talleres-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.taller-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-card);
+    padding: 22px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.taller-card:hover {
+    background: var(--bg-card-hover);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+}
+
+.taller-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.taller-header-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.taller-nombre {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0;
+}
+
+/* Insignias estilo Pill (Referencia) */
+.pill-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.pill-plan {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+}
+
+.pill-activo {
+    background: var(--accent-green-bg);
+    color: var(--accent-green);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.pill-suspendido {
+    background: var(--accent-red-bg);
+    color: var(--accent-red);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.taller-meta {
+    font-size: 13px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 15px;
+}
+
+/* Botones Acción en Tarjeta */
+.card-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn-action {
+    padding: 9px 16px;
+    font-size: 13px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-pay {
+    background: rgba(255, 115, 0, 0.1);
+    color: var(--accent-orange);
+    border: 1px solid rgba(255, 115, 0, 0.2);
+}
+
+.btn-pay:hover {
+    background: var(--accent-orange);
+    color: #fff;
+    box-shadow: 0 4px 15px var(--accent-orange-glow);
+}
+
+.btn-suspend {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--accent-red);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.btn-suspend:hover {
+    background: var(--accent-red);
+    color: #fff;
+}
+
+.btn-user {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+}
+
+.btn-user:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
