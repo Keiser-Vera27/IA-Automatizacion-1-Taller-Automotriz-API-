@@ -172,3 +172,63 @@ hr {
     margin-top: 15px;
     width: 100%;
 }
+/* Contenedor principal de Vehículos Pendientes con efecto Glassmorphism */
+.panel-pendientes {
+    background: rgba(20, 20, 30, 0.65); /* Fondo oscuro semitransparente */
+    backdrop-filter: blur(12px);         /* Efecto de vidrio esmerilado */
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08); /* Borde sutil de cristal */
+    border-radius: 16px;
+    padding: 20px;
+    margin-top: 25px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    color: #e0e0e0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.panel-pendientes h3 {
+    margin-top: 0;
+    font-size: 1.1rem;
+    color: #00d2ff; /* Toque neón sutil */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Tarjeta individual de cada vehículo pendiente */
+.tarjeta-vehiculo-pendiente {
+    background: rgba(30, 30, 45, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-left: 4px solid #00d2ff; /* Destaque lateral neón */
+    border-radius: 10px;
+    padding: 12px 15px;
+    margin-bottom: 12px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.tarjeta-vehiculo-pendiente:hover {
+    background: rgba(40, 40, 60, 0.7);
+    border-color: rgba(0, 210, 255, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 210, 255, 0.15);
+}
+
+.placa-badge {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #ffffff;
+    letter-spacing: 1px;
+    background: rgba(0, 210, 255, 0.15);
+    padding: 2px 8px;
+    border-radius: 6px;
+    display: inline-block;
+}
+
+.info-taller-item {
+    font-size: 0.9rem;
+    color: #b0b0b0;
+    margin-top: 5px;
+}

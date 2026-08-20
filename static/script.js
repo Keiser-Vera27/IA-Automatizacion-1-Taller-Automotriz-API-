@@ -8,6 +8,7 @@ window.onload = function() {
     if (token) {
         document.getElementById("login-container").style.display = "none";
         document.getElementById("app-container").style.display = "block";
+        cargarVehiculosPendientes(); // <--- Carga los pendientes al recargar con sesión activa
     }
 
     // --- AJUSTE: permitir enviar con ENTER ---
@@ -67,6 +68,7 @@ async function iniciarSesion() {
             localStorage.setItem("taller_token", data.token);
             document.getElementById("login-container").style.display = "none";
             document.getElementById("app-container").style.display = "block";
+            cargarVehiculosPendientes(); // <--- Carga los pendientes al iniciar sesión
         } else {
             msgError.innerText = data.mensaje;
             msgError.style.display = "block";
@@ -85,14 +87,18 @@ function cerrarSesion() {
     document.getElementById("password_login").value = "";
 
     // --- AJUSTE: limpiar la última respuesta/notificación visible ---
-    // Sin esto, la caja de notificación (creada dinámicamente la primera vez)
-    // seguía en el DOM con el contenido de la última consulta, y al volver
-    // a iniciar sesión se veía la respuesta de la sesión anterior.
     const cajaNotificacion = document.getElementById('caja-notificacion-ia');
     if (cajaNotificacion) {
         cajaNotificacion.innerHTML = "";
         cajaNotificacion.style.padding = "0";
     }
+    
+    // Limpiar el panel de pendientes al cerrar sesión
+    const panelPendientes = document.getElementById('panel-vehiculos-pendientes');
+    if (panelPendientes) {
+        panelPendientes.remove();
+    }
+
     document.getElementById("texto_reporte").value = "";
 }
 
@@ -138,6 +144,7 @@ async function enviarReporte() {
         if (data.status === "éxito") {
             inputTexto.value = "";
             mostrarNotificacion(`${data.mensaje_bd}`, "success");
+            cargarVehiculosPendientes(); // <--- Refresca la lista de pendientes al registrar algo nuevo
         }
         else if (data.status === "éxito_consulta") {
             inputTexto.value = "";
@@ -213,6 +220,62 @@ async function descargarReporteDiario() {
     } catch (error) {
         console.error("Error:", error);
         mostrarNotificacion("Error de conexion al descargar el reporte.", "error");
+    }
+}
+
+// ==============================================================================
+// GESTIÓN DEL PANEL VISUAL DE VEHÍCULOS PENDIENTES (Glassmorphism)
+// ==============================================================================
+
+async function cargarVehiculosPendientes() {
+    const token = localStorage.getItem("taller_token");
+    if (!token) return;
+
+    try {
+        const response = await fetch('/vehiculos-pendientes', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!response.ok) return;
+        const data = await response.json();
+        
+        let container = document.getElementById('panel-vehiculos-pendientes');
+        
+        // Si no existe el contenedor en el DOM, lo creamos dinámicamente debajo del contenedor principal
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'panel-vehiculos-pendientes';
+            container.className = 'panel-pendientes';
+            const app = document.getElementById('app-container');
+            if (app) app.appendChild(container);
+        }
+
+        if (data.pendientes && data.pendientes.length > 0) {
+            let html = `<h3>Vehículos Pendientes <span style="font-size: 0.8rem; opacity: 0.7;">(Toca la placa para usarla)</span></h3>`;
+            data.pendientes.forEach(v => {
+                html += `
+                    <div class="tarjeta-vehiculo-pendiente" onclick="usarPlaca('${v.vehiculo}')" title="Haz clic para usar esta placa">
+                        <div><span class="placa-badge">${v.vehiculo}</span></div>
+                        <div class="info-taller-item"><strong>Cliente:</strong> ${v.cliente || 'N/A'}</div>
+                        <div class="info-taller-item"><strong>Falla / Motivo:</strong> ${v.motivo || 'No especificado'}</div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = `<h3>Vehículos Pendientes</h3><p class="info-talian-item" style="color: #a0a0a0; font-size: 0.9rem;">No hay vehículos en espera actualmente.</p>`;
+        }
+    } catch (e) {
+        console.error("Error al cargar vehículos pendientes:", e);
+    }
+}
+
+// Función auxiliar para copiar la placa al campo de texto del chat
+function usarPlaca(placa) {
+    const inputTexto = document.getElementById('texto_reporte');
+    if (inputTexto) {
+        inputTexto.value = placa + " "; 
+        inputTexto.focus();
     }
 }
 

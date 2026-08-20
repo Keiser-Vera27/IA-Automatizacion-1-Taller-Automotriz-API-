@@ -874,6 +874,11 @@ def exportar_excel(request: Request):
 
     except Exception as error_principal:
         return {"status": "error_critico", "motivo_exacto": str(error_principal)}
+@app.get("/vehiculos-pendientes")
+def listar_pendientes(request: Request):
+    cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    data = cliente_seguro.table("reparaciones").select("vehiculo, cliente, motivo, fecha_hora").eq("estado", "Pendiente").eq("taller_id", taller_id).execute().data
+    return {"pendientes": data}
 
 @app.get("/exportar-inventario")
 def exportar_inventario(request: Request):
