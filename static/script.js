@@ -231,7 +231,11 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        if (!response.ok) return;
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            console.error(`Error al cargar vehículos pendientes (${response.status}):`, errData.detail || errData);
+            return;
+        }
         const data = await response.json();
         
         let container = document.getElementById('panel-vehiculos-pendientes');

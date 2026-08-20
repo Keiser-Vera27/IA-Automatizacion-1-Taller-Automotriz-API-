@@ -94,7 +94,13 @@ def obtener_cliente_seguro(request: Request):
         raise HTTPException(status_code=403, detail="Usuario sin taller asignado")
 
     # Verificar que el taller tenga acceso vigente
-    taller_info = supabase.table("talleres").select("estado_pago, fecha_vencimiento").eq("id", taller_id).execute().data
+    try:
+        taller_info = supabase.table("talleres").select("estado_pago, fecha_vencimiento").eq("id", taller_id).execute().data
+    except Exception as e:
+        print(f"🔴 500: fallo al verificar suscripción del taller {taller_id} → {e}")
+        print("   ¿Ya corriste migracion_panel_admin.sql? Verifica que 'talleres' tenga las columnas estado_pago y fecha_vencimiento.")
+        raise HTTPException(status_code=500, detail="Error interno verificando la suscripción del taller")
+
     if taller_info:
         estado_pago = taller_info[0].get("estado_pago")
         fecha_vencimiento = taller_info[0].get("fecha_vencimiento")
