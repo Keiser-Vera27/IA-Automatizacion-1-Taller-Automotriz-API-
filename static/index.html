@@ -87,7 +87,51 @@
             </div>
         </div>
     </div>
+<!-- Plantilla oculta para la Ficha de Servicio -->
+<div id="plantilla-orden" style="display: none; padding: 40px; background: white; color: black; width: 800px; font-family: Arial, sans-serif;">
+    <div style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px;">
+        <h2>AUTOTRONIC SOLUTIONS</h2>
+        <p>Ficha de Servicio / Orden de Trabajo</p>
+    </div>
+    
+    <div style="display: flex; justify-content: space-between; margin-bottom: 30px;">
+        <div>
+            <p><strong>Placa:</strong> <span id="orden-placa">---</span></p>
+            <p><strong>Cliente:</strong> <span id="orden-cliente">---</span></p>
+        </div>
+        <div>
+            <p><strong>Fecha:</strong> <span id="orden-fecha">---</span></p>
+            <p><strong>Técnico:</strong> <span id="orden-tecnico">No asignado</span></p>
+        </div>
+    </div>
 
+    <div style="margin-bottom: 20px;">
+        <h3>Motivo de Ingreso:</h3>
+        <p id="orden-motivo">---</p>
+        <h3>Trabajo Realizado:</h3>
+        <p id="orden-trabajo">---</p>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+        <thead>
+            <tr style="background-color: #f2f2f2;">
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Código</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Repuesto</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Cant.</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">P. Unitario</th>
+                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Subtotal</th>
+            </tr>
+        </thead>
+        <tbody id="orden-repuestos-body">
+            <!-- Se llena dinámicamente con JS -->
+        </tbody>
+    </table>
+
+    <div style="text-align: right; font-size: 1.2em;">
+        <strong>Total a Pagar: $<span id="orden-total">0.00</span></strong>
+    </div>
+</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

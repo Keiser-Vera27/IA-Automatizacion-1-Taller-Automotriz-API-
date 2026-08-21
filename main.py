@@ -9,7 +9,7 @@ import json
 import asyncio
 from datetime import datetime
 from fastapi import FastAPI, BackgroundTasks, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware # <--- NUEVA IMPORTACIÓN
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator, EmailStr
@@ -23,8 +23,6 @@ from supabase import create_client, Client
 def normalizar_placa(texto: str) -> str:
     """
     Deja la placa en un formato único: mayúsculas, sin espacios ni guiones.
-    Así "abb777", "ABB 777" y "ABB-777" quedan todas como "ABB777",
-    en vez de crear vehículos duplicados en la base de datos.
     """
     if not texto:
         return texto
@@ -37,8 +35,8 @@ def normalizar_placa(texto: str) -> str:
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # Llave maestra para el trabajador en segundo plano
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")     # Llave pública para crear clientes seguros
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") 
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")     
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -47,12 +45,11 @@ app = FastAPI(title="API del Taller Automotriz - Cloud Edition")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # En el futuro, aquí pondrás el dominio exacto de tu web
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# ------------------------------------------------
 
 app.mount("/web", StaticFiles(directory="static", html=True), name="static")
 
@@ -61,14 +58,8 @@ app.mount("/web", StaticFiles(directory="static", html=True), name="static")
 # ==============================================================================
 
 def obtener_cliente_seguro(request: Request):
-    """
-    Atrapa el Token de la petición, extrae el taller_id y crea una
-    conexión a la base de datos blindada por las políticas RLS.
-    También verifica que la suscripción del taller esté vigente.
-    """
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
-        print("🔴 401: la petición llegó SIN header Authorization (el frontend no mandó el token)")
         raise HTTPException(status_code=401, detail="Falta el Pase VIP (Token)")
 
     token = auth_header.split(" ")[1]
@@ -76,36 +67,27 @@ def obtener_cliente_seguro(request: Request):
     try:
         user_data = supabase.auth.get_user(token)
         usuario = user_data.user
-        # Intentamos obtener el taller_id de los app_metadata
         taller_id = usuario.app_metadata.get("taller_id") if usuario.app_metadata else None
         
-        # --- AUTOCORRECCIÓN SI FALTA EN METADATA ---
         if not taller_id and usuario.email:
-            # Buscamos en la tabla de talleres si este correo es el jefe del taller
             taller_por_email = supabase.table("talleres").select("id").eq("email", usuario.email).execute().data
             if taller_por_email:
                 taller_id = taller_por_email[0]["id"]
     except Exception as e:
-        print(f"🔴 401: Supabase rechazó el token → {e}")
         raise HTTPException(status_code=401, detail="Sesión inválida o expirada")
 
     if not taller_id:
-        print("🟠 403: token válido pero el usuario no tiene taller_id asignado")
         raise HTTPException(status_code=403, detail="Usuario sin taller asignado")
 
-    # Verificar que el taller tenga acceso vigente
     try:
         taller_info = supabase.table("talleres").select("estado_pago, fecha_vencimiento").eq("id", taller_id).execute().data
     except Exception as e:
-        print(f"🔴 500: fallo al verificar suscripción del taller {taller_id} → {e}")
-        print("   ¿Ya corriste migracion_panel_admin.sql? Verifica que 'talleres' tenga las columnas estado_pago y fecha_vencimiento.")
         raise HTTPException(status_code=500, detail="Error interno verificando la suscripción del taller")
 
     if taller_info:
         estado_pago = taller_info[0].get("estado_pago")
         fecha_vencimiento = taller_info[0].get("fecha_vencimiento")
         
-        # Mensaje personalizado y profesional
         mensaje_amable = (
             "Tu acceso está suspendido actualmente por falta de pago."
             "Por favor, comunícate con Keiser para gestionar la reactivación de tu cuenta"
@@ -121,12 +103,6 @@ def obtener_cliente_seguro(request: Request):
 
 
 def obtener_superadmin(request: Request) -> str:
-    """
-    Protege los endpoints del panel de administración global (/admin/*).
-    Solo pasa si el token pertenece a un usuario con "rol": "superadmin"
-    en su app_metadata (asignado a mano desde el Dashboard de Supabase,
-    nunca por API — ver migracion_panel_admin.sql).
-    """
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Falta el Pase VIP (Token)")
@@ -137,11 +113,9 @@ def obtener_superadmin(request: Request) -> str:
         user_data = supabase.auth.get_user(token)
         rol = user_data.user.app_metadata.get("rol")
     except Exception as e:
-        print(f"🔴 401 (admin): Supabase rechazó el token → {e}")
         raise HTTPException(status_code=401, detail="Sesión inválida o expirada")
 
     if rol != "superadmin":
-        print(f"🟠 403 (admin): usuario sin rol superadmin intentó acceder al panel")
         raise HTTPException(status_code=403, detail="No tienes permisos de administrador")
 
     return token
@@ -149,19 +123,13 @@ def obtener_superadmin(request: Request) -> str:
 # ==============================================================================
 # SISTEMA DE AUTENTICACIÓN (LOGIN)
 # ==============================================================================
-# ==============================================================================
-# SISTEMA DE AUTENTICACIÓN (LOGIN) AISLADO
-# ==============================================================================
 class LoginRequest(BaseModel):
     email: str
     password: str
 
 @app.post("/login")
 def login(credenciales: LoginRequest):
-    # IMPORTANTE: Creamos un cliente temporal solo para autenticar.
-    # Así no contaminamos el cliente 'supabase' global que tiene la llave maestra.
     cliente_auth = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    
     try:
         respuesta = cliente_auth.auth.sign_in_with_password({
             "email": credenciales.email,
@@ -173,54 +141,42 @@ def login(credenciales: LoginRequest):
         return {"status": "error", "mensaje": "Credenciales inválidas o error de red."}
 
 # ==============================================================================
-# PANEL DE ADMINISTRACIÓN GLOBAL (SOLO SUPERADMIN)
-#
-# Todos los endpoints aquí usan el cliente `supabase` (llave de servicio),
-# NO `cliente_seguro`, porque el superadmin necesita ver/crear datos de
-# TODOS los talleres — RLS filtraría por taller_id, que el superadmin no tiene.
-# La protección aquí es obtener_superadmin(), no RLS.
+# PANEL DE ADMINISTRACIÓN GLOBAL
 # ==============================================================================
 
 class NuevoTallerRequest(BaseModel):
     nombre_taller: str
     email_jefe: EmailStr
-    password_jefe: str = Field(min_length=6, description="Mínimo 6 caracteres (requisito de Supabase Auth)")
-    plan: str = "mensual"  # 'mensual', 'trimestral' o 'anual'
+    password_jefe: str = Field(min_length=6)
+    plan: str = "mensual"
 
 class ActualizarTallerRequest(BaseModel):
     plan: str | None = None
-    estado_pago: str | None = None       # 'activo' o 'suspendido'
-    fecha_vencimiento: str | None = None  # formato YYYY-MM-DD
+    estado_pago: str | None = None
+    fecha_vencimiento: str | None = None
 
 class NuevoUsuarioTallerRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6)
-    rol: str = "supervisor"  # 'jefe' o 'supervisor', solo informativo
+    rol: str = "supervisor"
 
 
 @app.post("/admin/talleres")
 def crear_taller(datos: NuevoTallerRequest, request: Request):
-    # Aislar al superadmin...
     obtener_superadmin(request)
 
-    # 1) Crear el registro del taller (¡AQUÍ AGREGAMOS EL EMAIL!)
     resultado_taller = supabase.table("talleres").insert({
         "nombre": datos.nombre_taller,
-        "email": datos.email_jefe,     # <--- LÍNEA NUEVA
+        "email": datos.email_jefe,
         "plan": datos.plan,
         "estado_pago": "activo",
     }).execute()
-    
-    # ... (el resto queda igual)
 
     if not resultado_taller.data:
         raise HTTPException(status_code=500, detail="No se pudo crear el registro del taller")
 
     taller_id = resultado_taller.data[0]["id"]
 
-    # 2) Crear el usuario "jefe" en Supabase Auth, ya vinculado a ese taller_id.
-    #    Esto es lo que le da acceso: sin este app_metadata, el login
-    #    funcionaría pero obtener_cliente_seguro lo rechazaría con 403.
     try:
         supabase.auth.admin.create_user({
             "email": datos.email_jefe,
@@ -229,20 +185,13 @@ def crear_taller(datos: NuevoTallerRequest, request: Request):
             "app_metadata": {"taller_id": taller_id, "rol": "jefe"}
         })
     except Exception as e:
-        # El taller ya se creó pero el usuario falló (ej: correo duplicado).
-        # No revertimos el insert del taller para no perder el registro;
-        # el superadmin puede agregar el usuario después con el otro endpoint.
         return {
             "status": "parcial",
             "taller_id": taller_id,
-            "mensaje": f"Taller creado, pero el usuario jefe falló: {e}. Usa /admin/talleres/{taller_id}/usuarios para reintentar."
+            "mensaje": f"Taller creado, pero el usuario jefe falló: {e}."
         }
 
-    return {
-        "status": "éxito",
-        "taller_id": taller_id,
-        "mensaje": f"Taller '{datos.nombre_taller}' creado con su usuario jefe ({datos.email_jefe})."
-    }
+    return {"status": "éxito", "taller_id": taller_id, "mensaje": f"Taller '{datos.nombre_taller}' creado."}
 
 
 @app.get("/admin/talleres")
@@ -255,7 +204,6 @@ def listar_talleres(request: Request):
 @app.patch("/admin/talleres/{taller_id}")
 def actualizar_taller(taller_id: str, datos: ActualizarTallerRequest, request: Request):
     obtener_superadmin(request)
-
     cambios = {k: v for k, v in datos.model_dump().items() if v is not None}
     if not cambios:
         raise HTTPException(status_code=400, detail="No enviaste ningún campo para actualizar")
@@ -267,8 +215,6 @@ def actualizar_taller(taller_id: str, datos: ActualizarTallerRequest, request: R
 @app.post("/admin/talleres/{taller_id}/usuarios")
 def agregar_usuario_taller(taller_id: str, datos: NuevoUsuarioTallerRequest, request: Request):
     obtener_superadmin(request)
-
-    # Confirmar que el taller exista antes de crear el usuario
     taller = supabase.table("talleres").select("id").eq("id", taller_id).execute().data
     if not taller:
         raise HTTPException(status_code=404, detail="Ese taller no existe")
@@ -283,10 +229,10 @@ def agregar_usuario_taller(taller_id: str, datos: NuevoUsuarioTallerRequest, req
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No se pudo crear el usuario: {e}")
 
-    return {"status": "éxito", "mensaje": f"Usuario {datos.email} agregado al taller {taller_id} como {datos.rol}"}
+    return {"status": "éxito", "mensaje": f"Usuario agregado."}
 
 # ==============================================================================
-# ESTRUCTURAS DE DATOS (PYDANTIC) — sin cambios
+# ESTRUCTURAS DE DATOS (PYDANTIC)
 # ==============================================================================
 
 class RepuestoUsado(BaseModel):
@@ -347,7 +293,7 @@ class SolicitudUnificada(BaseModel):
     texto: str
 
 # ==============================================================================
-# TRABAJADOR SILENCIOSO — sin cambios respecto a tu versión
+# TRABAJADOR SILENCIOSO
 # ==============================================================================
 
 async def trabajador_silencioso():
@@ -425,9 +371,6 @@ async def trabajador_silencioso():
             else:
                 estado_nuevo = 'Terminado' if (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") else 'Pendiente'
 
-                # Si el mensaje nuevo no trae modelo/color/año/cilindraje, se heredan
-                # del último registro de esta misma placa (el mecánico no suele
-                # repetir esos datos en visitas posteriores del mismo carro).
                 def _heredar(campo):
                     valor_nuevo = d.get(campo, "")
                     if valor_nuevo:
@@ -514,16 +457,9 @@ async def trabajador_silencioso():
         await asyncio.sleep(3)
 
 # ==============================================================================
-# GERENTE ANALÍTICO — NUEVO: function calling en vez de volcar tablas completas
-#
-# Idea central: Gemini NUNCA ve tus datos crudos. Solo decide qué función
-# ejecutar y con qué parámetros (según la pregunta), tu backend ejecuta una
-# consulta puntual y ya agregada en Postgres, y solo el resultado pequeño
-# (una fila o pocas) se le devuelve a Gemini para redactar la respuesta.
-# Esto es rápido y exacto sin importar si tienes 100 o 100,000 registros.
+# GERENTE ANALÍTICO 
 # ==============================================================================
 
-# --- Declaración de las funciones que Gemini puede "pedir" ejecutar ---
 HERRAMIENTAS_REPORTES = types.Tool(function_declarations=[
     types.FunctionDeclaration(
         name="historial_vehiculo",
@@ -592,13 +528,7 @@ HERRAMIENTAS_REPORTES = types.Tool(function_declarations=[
     ),
 ])
 
-
 def ejecutar_funcion_reporte(cliente_seguro, nombre_funcion: str, args: dict) -> dict:
-    """
-    Ejecuta la consulta puntual correspondiente contra Supabase.
-    cliente_seguro ya trae el token del taller, así que RLS filtra
-    automáticamente por taller_id — no hace falta pasarlo a mano aquí.
-    """
     if nombre_funcion == "historial_vehiculo":
         placa = normalizar_placa(args.get("placa", ""))
         data = (
@@ -645,13 +575,7 @@ def ejecutar_funcion_reporte(cliente_seguro, nombre_funcion: str, args: dict) ->
 
     return {"error": f"Función '{nombre_funcion}' no reconocida"}
 
-
 def formatear_resultado_sin_ia(nombre_funcion: str, resultado: dict) -> str:
-    """
-    Arma una respuesta legible en Markdown directo desde el resultado de Supabase,
-    sin pasar por Gemini. Se usa como respaldo cuando la IA falla o está saturada,
-    para que el usuario siempre reciba el dato aunque Google esté teniendo problemas.
-    """
     if nombre_funcion == "info_repuesto":
         items = resultado.get("resultados", [])
         if not items:
@@ -663,15 +587,6 @@ def formatear_resultado_sin_ia(nombre_funcion: str, resultado: dict) -> str:
                 f"Precio venta: ${r.get('precio_venta', 0)} · Stock: {r.get('cantidad', 0)} · "
                 f"Proveedor: {r.get('proveedor', 'N/A')}"
             )
-        return "\n".join(lineas)
-
-    if nombre_funcion == "repuestos_bajo_stock":
-        items = resultado.get("resultados", [])
-        if not items:
-            return "No hay repuestos por debajo del umbral consultado."
-        lineas = ["**Repuestos con stock bajo:**"]
-        for r in items:
-            lineas.append(f"- {r.get('nombre', '?')} ({r.get('codigo', 'S/C')}): {r.get('cantidad', 0)} unidades")
         return "\n".join(lineas)
 
     if nombre_funcion == "historial_vehiculo":
@@ -703,17 +618,7 @@ def formatear_resultado_sin_ia(nombre_funcion: str, resultado: dict) -> str:
 
     return f"Resultado: {resultado}"
 
-
 def responder_consulta_analitica(cliente_seguro, texto_usuario: str) -> str:
-    """
-    Flujo de 2 llamadas, ambas livianas (nunca se manda la base de datos completa):
-      1) Gemini decide qué función llamar y con qué parámetros.
-      2) Le devolvemos el resultado (pequeño, ya calculado por SQL) y redacta la respuesta.
-    Si Gemini falla o está saturado, se usa formatear_resultado_sin_ia como respaldo
-    en vez de perder la respuesta o tumbar el endpoint.
-    """
-    import time
-    t0 = time.time()
     contents = [types.Content(role="user", parts=[types.Part(text=texto_usuario)])]
 
     try:
@@ -733,36 +638,20 @@ def responder_consulta_analitica(cliente_seguro, texto_usuario: str) -> str:
     except (errors.ClientError, errors.ServerError) as e:
         codigo = getattr(e, "code", None)
         if codigo == 429:
-            return (
-                "⏳ Se agotó la cuota de consultas a la IA por ahora. "
-                "Intenta de nuevo en unos minutos, o si esto se repite seguido, "
-                "hay que revisar el plan de facturación de Gemini."
-            )
+            return "⏳ Se agotó la cuota de consultas a la IA por ahora. Intenta de nuevo en unos minutos."
         if codigo == 503:
-            return (
-                "⚠️ El modelo de IA está temporalmente saturado del lado de Google. "
-                "Intenta de nuevo en un momento."
-            )
+            return "⚠️ El modelo de IA está temporalmente saturado del lado de Google. Intenta de nuevo en un momento."
         raise
-
-    t1 = time.time()
-    print(f"⏱️ Llamada 1 (elegir función): {t1 - t0:.2f}s")
 
     parte = primera_respuesta.candidates[0].content.parts[0]
     llamada = getattr(parte, "function_call", None)
 
     if not llamada:
-        # La IA no encontró una función aplicable; devolvemos su texto tal cual
-        # (puede pasar si la pregunta no es realmente una consulta de reportes).
         return primera_respuesta.text or "No pude interpretar esa pregunta como una consulta de reportes."
 
     args = dict(llamada.args) if llamada.args else {}
     resultado_funcion = ejecutar_funcion_reporte(cliente_seguro, llamada.name, args)
 
-    t2 = time.time()
-    print(f"⏱️ Consulta a Supabase ({llamada.name}): {t2 - t1:.2f}s")
-
-    # Segunda llamada: solo con el resultado pequeño, no con las tablas completas
     contents.append(primera_respuesta.candidates[0].content)
     contents.append(types.Content(
         role="user",
@@ -779,28 +668,18 @@ def responder_consulta_analitica(cliente_seguro, texto_usuario: str) -> str:
             config=types.GenerateContentConfig(
                 tools=[HERRAMIENTAS_REPORTES],
                 system_instruction=(
-                    "Redacta la respuesta final en español, clara y con formato Markdown "
-                    "(viñetas/negritas para montos y fechas). Si el resultado viene vacío, "
-                    "dilo explícitamente en vez de inventar datos."
+                    "Redacta la respuesta final en español, clara y con formato Markdown. "
+                    "Si el resultado viene vacío, dilo explícitamente en vez de inventar datos."
                 ),
             ),
         )
     except (errors.ClientError, errors.ServerError) as e:
-        # Gemini falló al redactar, pero el dato YA está calculado y correcto
-        # (viene de Supabase, no de la IA) — lo formateamos nosotros mismos
-        # en vez de perder la respuesta o dejar que el endpoint truene.
-        print(f"⚠️ Gemini falló en la redacción final ({e}); usando formateador de respaldo")
         return formatear_resultado_sin_ia(llamada.name, resultado_funcion)
-
-    t3 = time.time()
-    print(f"⏱️ Llamada 2 (redactar respuesta): {t3 - t2:.2f}s")
-    print(f"⏱️ TOTAL: {t3 - t0:.2f}s")
 
     return segunda_respuesta.text
 
-
 # ==============================================================================
-# RECEPCIÓN WEB UNIFICADA (ENRUTADOR INTELIGENTE: REGISTRO O CONSULTA IA)
+# RECEPCIÓN WEB UNIFICADA (ENRUTADOR INTELIGENTE MODIFICADO)
 # ==============================================================================
 
 @app.post("/procesar-mensaje")
@@ -809,34 +688,66 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
     texto_usuario = solicitud.texto
     tiempo_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    # MODIFICACIÓN: El router ahora devuelve JSON para saber si debe imprimir la orden
     prompt_router = f"""
-    Analiza el siguiente texto de un usuario de taller mecánico y clasifícalo estrictamente en una de estas dos categorías:
-    - "registro": Si el usuario está reportando un ingreso de vehículo, un trabajo hecho, un gasto, compra de repuestos o devolución.
-    - "consulta": Si el usuario está haciendo una pregunta sobre reportes, estadísticas, historial de vehículos, precios, proveedores, técnicos o clientes.
+    Analiza el siguiente texto de un usuario de taller mecánico y determina la intención.
+    Responde ESTRICTAMENTE en formato JSON con las siguientes claves:
+    - "accion": Debe ser "generar_orden" (si pide imprimir, descargar, ficha, factura u orden de trabajo de un vehículo), "consulta" (si hace preguntas de estadísticas, historiales o repuestos), o "registro" (si reporta trabajos, ingresos o gastos).
+    - "placa": Extrae la placa del vehículo SOLO si la acción es "generar_orden" (sin espacios ni guiones). De lo contrario, déjalo vacío.
 
     Texto: "{texto_usuario}"
-    Responde únicamente con la palabra: "registro" o "consulta".
     """
 
     try:
-        clasificacion = client.models.generate_content(
+        resp_router = client.models.generate_content(
             model='gemini-3.6-flash',
             contents=prompt_router,
-        ).text.strip().lower()
+            config=types.GenerateContentConfig(response_mime_type="application/json")
+        )
+        respuesta_ia = json.loads(resp_router.text)
+        accion = respuesta_ia.get("accion", "registro")
+        placa_extraida = respuesta_ia.get("placa", "")
     except Exception:
-        clasificacion = "registro"
+        accion = "registro"
+        placa_extraida = ""
 
-    # --- CONSULTA ANALÍTICA: ahora vía function calling, no volcado de tablas ---
-    if "consulta" in clasificacion:
-        respuesta_ia = responder_consulta_analitica(cliente_seguro, texto_usuario)
+    # --- NUEVA LÓGICA: GENERAR ORDEN DE TRABAJO ---
+    if accion == "generar_orden":
+        placa = normalizar_placa(placa_extraida)
+        
+        # Buscamos la reparación más reciente de esa placa, trayendo también sus repuestos anidados
+        orden = (
+            cliente_seguro.table("reparaciones")
+            .select("*, reparacion_detalles(*, repuestos(codigo_producto, nombre_repuesto))")
+            .eq("vehiculo", placa)
+            .eq("taller_id", taller_id)
+            .order("fecha_hora", desc=True)
+            .limit(1)
+            .execute()
+        )
+        
+        # Lanzamos un HTTPException (Error 400) para que tu frontend salte al bloque 'if (!res.ok)'
+        if not orden.data:
+            raise HTTPException(status_code=400, detail=f"No se encontraron registros para la placa {placa} en este taller.")
+            
+        # Enviamos el paquete de datos puros al frontend
+        return {
+            "status": "imprimir_orden",
+            "datos_orden": orden.data[0],
+            "mensaje_bd": f"Preparando la orden de trabajo para el vehículo {placa}."
+        }
+
+    # --- CONSULTA ANALÍTICA ---
+    if accion == "consulta":
+        respuesta_analitica = responder_consulta_analitica(cliente_seguro, texto_usuario)
         return {
             "status": "éxito_consulta",
             "tipo_detectado": "consulta",
-            "mensaje_bd": respuesta_ia,
+            "mensaje_bd": respuesta_analitica,
             "registrado_a_las": tiempo_actual
         }
 
-    # --- REGISTRO NORMAL: sin cambios ---
+    # --- REGISTRO NORMAL (En segundo plano) ---
     cliente_seguro.table("cola_mensajes").insert({
         "taller_id": taller_id,
         "texto": texto_usuario,
@@ -854,7 +765,7 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
     }
 
 # ==============================================================================
-# EXPORTACIÓN CON SEGURIDAD RLS APLICADA — sin cambios
+# EXPORTACIONES E INVENTARIOS
 # ==============================================================================
 
 @app.get("/exportar-excel")
@@ -898,12 +809,12 @@ def exportar_excel(request: Request):
 
     except Exception as error_principal:
         return {"status": "error_critico", "motivo_exacto": str(error_principal)}
+
 @app.get("/vehiculos-pendientes")
 def listar_pendientes(request: Request):
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
     hoy_inicio = datetime.now().strftime("%Y-%m-%d") + " 00:00:00"
     
-    # Consultamos los pendientes del taller
     pendientes = (
         cliente_seguro.table("reparaciones")
         .select("vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
@@ -912,7 +823,6 @@ def listar_pendientes(request: Request):
         .execute()
     ).data
 
-    # Consultamos los terminados que hayan sido registrados hoy
     terminados_hoy = (
         cliente_seguro.table("reparaciones")
         .select("vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
@@ -922,8 +832,8 @@ def listar_pendientes(request: Request):
         .execute()
     ).data
 
-    # Unimos ambas listas para enviarlas juntas al frontend
     return {"vehiculos": pendientes + terminados_hoy}
+
 @app.get("/exportar-inventario")
 def exportar_inventario(request: Request):
     try:
@@ -956,12 +866,11 @@ def exportar_inventario(request: Request):
 
     except Exception as e:
         return {"status": "error_critico", "motivo_exacto": str(e)}
-    # ==============================================================================
+
+# ==============================================================================
 # CONFIGURACIÓN DE ARRANQUE PARA LA NUBE
 # ==============================================================================
 if __name__ == "__main__":
     import uvicorn
-    # En la nube, el proveedor (Railway/Render) asigna el puerto dinámicamente
     puerto = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=puerto, reload=False)
-    # Forzar actualización de ruta

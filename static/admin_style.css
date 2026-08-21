@@ -332,3 +332,30 @@ button {
 .btn-user:hover {
     background: rgba(255, 255, 255, 0.15);
 }
+/* =========================================
+   RESPONSIVE PARA TARJETAS DE TALLERES
+========================================= */
+@media (max-width: 768px) {
+    /* Asumiendo que esta es la clase de tu tarjeta, ajusta el nombre si es distinto */
+    .tarjeta-taller { 
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        padding: 15px !important;
+    }
+
+    /* El contenedor donde están los botones */
+    .contenedor-botones {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 15px;
+        justify-content: stretch;
+    }
+
+    /* Hace que los botones ocupen el ancho disponible de manera uniforme */
+    .contenedor-botones button {
+        flex: 1;
+        min-width: 120px;
+    }
+}
