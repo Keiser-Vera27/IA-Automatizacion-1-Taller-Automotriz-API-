@@ -335,7 +335,16 @@ class SolicitudUnificada(BaseModel):
 # ==============================================================================
 
 async def trabajador_silencioso():
-    response = supabase.table("cola_mensajes").select("id, texto, taller_id").eq("estado", "Pendiente").order("id").execute()
+    # Incluye "Pendiente" (nuevos) y los que fallaron por caída temporal de la IA,
+    # para que se autorreintenten. NO incluye "Error (No clasificable)" ni los
+    # "Bloqueado (...)" — esos son fallos de contenido, no de disponibilidad.
+    response = (
+        supabase.table("cola_mensajes")
+        .select("id, texto, taller_id")
+        .in_("estado", ["Pendiente", "Error (IA no disponible, se reintentará)"])
+        .order("id")
+        .execute()
+    )
     pendientes = response.data
 
     if not pendientes:
@@ -370,9 +379,14 @@ async def trabajador_silencioso():
             tipo = resultado.get("tipo")
 
         except Exception as e:
-            print(f"⚠️ Google saturado. Pausando la cola por 30 segundos... Error: {e}")
-            await asyncio.sleep(30)
-            break
+            # Antes esto detenía TODA la cola con un 'break', dejando mensajes
+            # sanos sin procesar hasta que llegara un mensaje nuevo que la
+            # reactivara (de ahí los retrasos de horas). Ahora marcamos SOLO
+            # este mensaje como error y seguimos con el resto de la cola.
+            print(f"⚠️ Error de IA procesando mensaje {id_msj}: {e}")
+            supabase.table("cola_mensajes").update({"estado": "Error (IA no disponible, se reintentará)"}).eq("id", id_msj).execute()
+            await asyncio.sleep(2)
+            continue
 
         if tipo == "reparacion" and resultado.get("reparacion"):
             d = resultado["reparacion"]
@@ -493,6 +507,27 @@ async def trabajador_silencioso():
 
         supabase.table("cola_mensajes").update({"estado": "Procesado"}).eq("id", id_msj).execute()
         await asyncio.sleep(3)
+
+
+# ==============================================================================
+# AUTO-RECUPERACIÓN DE LA COLA (sin depender de que llegue un mensaje nuevo)
+# ==============================================================================
+# Antes, si la cola se quedaba a medias (ej: cuota de Gemini agotada), se
+# congelaba hasta que alguien enviara otro mensaje nuevo desde la app —
+# de ahí los retrasos de horas. Este ciclo revisa la cola cada 3 minutos
+# por su cuenta, para que se recupere sola en cuanto la IA vuelva a responder.
+
+@app.on_event("startup")
+async def iniciar_vigilancia_de_cola():
+    async def ciclo_de_vigilancia():
+        while True:
+            await asyncio.sleep(180)  # cada 3 minutos
+            try:
+                await trabajador_silencioso()
+            except Exception as e:
+                print(f"⚠️ Error en el ciclo de auto-recuperación de la cola: {e}")
+
+    asyncio.create_task(ciclo_de_vigilancia())
 
 # ==============================================================================
 # GERENTE ANALÍTICO 
@@ -745,8 +780,22 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         respuesta_ia = json.loads(resp_router.text)
         accion = respuesta_ia.get("accion", "registro")
         placa_extraida = respuesta_ia.get("placa", "")
-    except Exception:
-        accion = "registro"
+    except Exception as e:
+        # El enrutador de IA falló (saturación, cuota, respuesta inválida, etc.).
+        # NO asumimos "registro" a ciegas: eso mete preguntas analíticas a la cola
+        # de trabajo y el usuario nunca ve respuesta. Usamos un respaldo por
+        # palabras clave para no perder la intención real del mensaje.
+        print(f"⚠️ Router de IA falló, usando respaldo por palabras clave. Error: {e}")
+        texto_min = texto_usuario.lower()
+        palabras_consulta = (
+            "cuánt", "cuant", "cuál", "cual", "quién", "quien", "qué", "que ",
+            "cómo", "como ", "dame", "dime", "muéstrame", "muestrame",
+            "cuando fue", "última vez", "ultima vez", "?"
+        )
+        if any(p in texto_min for p in palabras_consulta):
+            accion = "consulta"
+        else:
+            accion = "registro"
         placa_extraida = ""
 
     # --- NUEVA LÓGICA: GENERAR ORDEN DE TRABAJO ---
@@ -777,7 +826,14 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
 
     # --- CONSULTA ANALÍTICA ---
     if accion == "consulta":
-        respuesta_analitica = responder_consulta_analitica(cliente_seguro, texto_usuario)
+        try:
+            respuesta_analitica = responder_consulta_analitica(cliente_seguro, texto_usuario)
+        except Exception as e:
+            print(f"⚠️ Falló la consulta analítica: {e}")
+            respuesta_analitica = (
+                "⚠️ El asistente de IA no está disponible en este momento. "
+                "Intenta de nuevo en unos segundos."
+            )
         return {
             "status": "éxito_consulta",
             "tipo_detectado": "consulta",
