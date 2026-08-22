@@ -5,7 +5,7 @@
 // Modo claro/oscuro (persistido en localStorage, aplicado también al cargar en index.html)
 function alternarTema() {
     const raiz = document.documentElement;
-    const temaActual = raiz.getAttribute("data-theme") || "light";
+    const temaActual = raiz.getAttribute("data-theme") || "dark";
     const nuevoTema = temaActual === "light" ? "dark" : "light";
     raiz.setAttribute("data-theme", nuevoTema);
     localStorage.setItem("as_tema", nuevoTema);
@@ -20,15 +20,35 @@ function actualizarIconoTema(tema) {
     texto.innerText = tema === "dark" ? "Oscuro" : "Claro";
 }
 
+// Bienvenida personalizada con el nombre del taller (definido por el admin)
+async function cargarBienvenidaTaller() {
+    const token = localStorage.getItem("taller_token");
+    const banner = document.getElementById('banner-bienvenida');
+    if (!token || !banner) return;
+
+    try {
+        const res = await fetch('/mi-taller', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+
+        const data = await res.json();
+        banner.innerHTML = `¡Bienvenido, <span class="nombre-taller-destacado">${data.nombre_taller}</span>! Empecemos a trabajar 🚀`;
+    } catch (e) {
+        console.error("No se pudo cargar el nombre del taller:", e);
+    }
+}
+
 // Validar sesión activa al cargar
 window.onload = function() {
-    actualizarIconoTema(document.documentElement.getAttribute("data-theme") || "light");
+    actualizarIconoTema(document.documentElement.getAttribute("data-theme") || "dark");
 
     const token = localStorage.getItem("taller_token");
     if (token) {
         document.getElementById("login-container").style.display = "none";
         document.getElementById("app-container").style.display = "block";
-        cargarVehiculosPendientes(); 
+        cargarVehiculosPendientes();
+        cargarBienvenidaTaller();
     }
 
     const emailInput = document.getElementById("email_login");
@@ -83,7 +103,8 @@ async function iniciarSesion() {
             localStorage.setItem("taller_token", data.token);
             document.getElementById("login-container").style.display = "none";
             document.getElementById("app-container").style.display = "block";
-            cargarVehiculosPendientes(); 
+            cargarVehiculosPendientes();
+            cargarBienvenidaTaller();
         } else {
             msgError.innerText = data.mensaje;
             msgError.style.display = "block";
@@ -115,6 +136,11 @@ function cerrarSesion() {
     const panelCaja = document.getElementById('panel-cuadre-caja');
     if (panelCaja) {
         panelCaja.innerHTML = "";
+    }
+
+    const banner = document.getElementById('banner-bienvenida');
+    if (banner) {
+        banner.innerHTML = "";
     }
 
     document.getElementById("texto_reporte").value = "";

@@ -802,6 +802,17 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         "registrado_a_las": tiempo_actual
     }
 
+@app.get("/mi-taller")
+def mi_taller(request: Request):
+    """
+    Devuelve el nombre del taller del usuario autenticado, tal como lo
+    ingresó el admin al crearlo, para mostrarlo en el saludo de bienvenida.
+    """
+    _, taller_id = obtener_cliente_seguro(request)
+    data = supabase.table("talleres").select("nombre").eq("id", taller_id).execute().data
+    nombre = data[0]["nombre"] if data and data[0].get("nombre") else "tu taller"
+    return {"nombre_taller": nombre}
+
 # ==============================================================================
 # CUADRE DE CAJA DIARIO
 # ==============================================================================

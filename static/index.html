@@ -7,7 +7,7 @@
     <!-- Aplica el tema guardado ANTES de pintar, para evitar el parpadeo de color -->
     <script>
         (function () {
-            var tema = localStorage.getItem("as_tema") || "light";
+            var tema = localStorage.getItem("as_tema") || "dark";
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
@@ -19,8 +19,8 @@
 
     <!-- TOGGLE DE TEMA (visible en toda la app) -->
     <button class="theme-toggle" onclick="alternarTema()" id="boton-tema" title="Cambiar tema">
-        <span class="punto-icono" id="icono-tema">☀</span>
-        <span class="etiqueta" id="texto-tema">Claro</span>
+        <span class="punto-icono" id="icono-tema">☾</span>
+        <span class="etiqueta" id="texto-tema">Oscuro</span>
     </button>
 
     <!-- PANTALLA DE LOGIN -->
@@ -103,6 +103,8 @@
                     Cerrar Sesión
                 </button>
             </div>
+
+            <div id="banner-bienvenida" class="banner-bienvenida"></div>
 
             <div class="cabecera">
                 <h1>Autotronic Solutions IA</h1>
