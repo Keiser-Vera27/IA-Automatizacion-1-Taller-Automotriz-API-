@@ -3,57 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Taller Automotriz</title>
+    <title>Autotronic Solutions</title>
+    <!-- Aplica el tema guardado ANTES de pintar, para evitar el parpadeo de color -->
+    <script>
+        (function () {
+            var tema = localStorage.getItem("as_tema") || "light";
+            document.documentElement.setAttribute("data-theme", tema);
+        })();
+    </script>
     <link rel="stylesheet" href="style.css">
     <!-- Librería para renderizar Markdown (negritas y listas de la IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <style>
-    .btn-cerrar-sesion {
-        width: auto !important; /* Mantenemos el tamaño pequeño */
-        background: rgba(255, 77, 77, 0.1);
-        border: 1px solid #ff4d4d;
-        color: #ff4d4d;
-        padding: 6px 15px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: bold;
-        transition: all 0.3s ease-in-out;
-        box-shadow: 0 0 5px rgba(255, 77, 77, 0.2);
-    }
-
-    .btn-cerrar-sesion:hover {
-        background: rgba(255, 77, 77, 0.3);
-        color: #ffffff;
-        box-shadow: 0 0 15px rgba(255, 77, 77, 0.8), 0 0 30px rgba(255, 77, 77, 0.5);
-        border-color: #ff1a1a;
-        transform: translateY(-2px); /* Un pequeño salto hacia arriba */
-    }
-</style>
 </head>
-<body style="background-color: #121212; color: #ffffff; font-family: sans-serif;">
+<body>
+
+    <!-- TOGGLE DE TEMA (visible en toda la app) -->
+    <button class="theme-toggle" onclick="alternarTema()" id="boton-tema" title="Cambiar tema">
+        <span class="punto-icono" id="icono-tema">☀</span>
+        <span class="etiqueta" id="texto-tema">Claro</span>
+    </button>
 
     <!-- PANTALLA DE LOGIN -->
-    <div id="login-container" class="glass-container" style="max-width: 400px; margin: 100px auto; padding: 30px; text-align: center; border-radius: 15px; background: rgba(20, 20, 25, 0.8); box-shadow: 0 0 15px rgba(138, 43, 226, 0.5); border: 1px solid rgba(138, 43, 226, 0.3);">
-        <h2 style="color: #fff; text-shadow: 0 0 5px #8a2be2;">Acceso al Sistema</h2>
-        <p style="color: #ccc; margin-bottom: 20px;">Ingresa tus credenciales de taller</p>
-        
-        <input type="email" id="email_login" placeholder="Correo electrónico" style="width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #444; background: #222; color: #fff; box-sizing: border-box;">
-        
-        <input type="password" id="password_login" placeholder="Contraseña" style="width: 100%; padding: 10px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #444; background: #222; color: #fff; box-sizing: border-box;">
-        
-        <button onclick="iniciarSesion()" style="width: 100%; padding: 12px; border-radius: 8px; border: none; background: linear-gradient(45deg, #8a2be2, #4b0082); color: white; font-weight: bold; cursor: pointer; box-shadow: 0 0 10px rgba(138, 43, 226, 0.6);">
-            Ingresar al Taller
-        </button>
-        <p id="login_error" style="color: #ff4d4d; margin-top: 15px; display: none;"></p>
+    <div id="login-container">
+
+        <!-- Panel visual: ilustración original de auto deportivo con estela de luz -->
+        <div class="login-visual">
+            <svg viewBox="0 0 500 700" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="estela" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#DB1FFF" stop-opacity="0.9"/>
+                        <stop offset="100%" stop-color="#7030EF" stop-opacity="0"/>
+                    </linearGradient>
+                    <linearGradient id="carroceria" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#B98BFF"/>
+                        <stop offset="100%" stop-color="#DB1FFF"/>
+                    </linearGradient>
+                </defs>
+
+                <!-- estelas de velocidad -->
+                <path d="M -50 180 L 550 60" stroke="url(#estela)" stroke-width="2" opacity="0.5"/>
+                <path d="M -50 260 L 550 150" stroke="url(#estela)" stroke-width="1.5" opacity="0.35"/>
+                <path d="M -50 340 L 550 240" stroke="url(#estela)" stroke-width="1" opacity="0.25"/>
+
+                <!-- silueta lineal de auto deportivo -->
+                <g transform="translate(30, 380)" fill="none" stroke="url(#carroceria)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
+                    <path d="M10,120 C10,95 35,90 60,88 L95,55 C115,35 150,22 195,20 L290,20 C330,22 360,38 385,62 L410,88 C430,90 448,98 448,120 L448,145 C448,155 440,160 428,160 L20,160 C10,160 10,152 10,145 Z"/>
+                    <path d="M95,55 L130,58 C150,40 175,32 205,30 L270,30 C295,32 315,42 335,58 L385,62" opacity="0.7"/>
+                    <circle cx="105" cy="160" r="34"/>
+                    <circle cx="105" cy="160" r="14"/>
+                    <circle cx="375" cy="160" r="34"/>
+                    <circle cx="375" cy="160" r="14"/>
+                    <path d="M40,110 L120,105 L150,80 L260,80 L300,105 L420,112" opacity="0.5"/>
+                </g>
+
+                <!-- destellos de faros -->
+                <circle cx="440" cy="470" r="4" fill="#DB1FFF"/>
+                <circle cx="440" cy="470" r="10" fill="#DB1FFF" opacity="0.25"/>
+            </svg>
+
+            <div class="marca-visual">
+                <div class="eyebrow">Autotronic Solutions</div>
+                <h2>Gestión inteligente para talleres que van adelante.</h2>
+                <p>Control de reparaciones, gastos e inventario asistido por IA, en un solo lugar.</p>
+            </div>
+        </div>
+
+        <!-- Panel del formulario -->
+        <div class="login-form-panel">
+            <div class="login-card">
+                <div class="badge-marca">AS</div>
+                <h2>Acceso al sistema</h2>
+                <p>Ingresa tus credenciales de taller para continuar.</p>
+
+                <div class="campo-login">
+                    <label for="email_login">Correo electrónico</label>
+                    <input type="email" id="email_login" placeholder="nombre@taller.com">
+                </div>
+
+                <div class="campo-login">
+                    <label for="password_login">Contraseña</label>
+                    <input type="password" id="password_login" placeholder="••••••••">
+                </div>
+
+                <button class="btn-login" onclick="iniciarSesion()">
+                    Ingresar al taller
+                </button>
+                <p id="login_error"></p>
+            </div>
+        </div>
     </div>
 
     <!-- APLICACIÓN PRINCIPAL (Oculta hasta iniciar sesión) -->
     <div id="app-container" style="display: none;">
         <div class="contenedor">
-            
+
             <!-- Barra superior para el botón de salir -->
-            <div style="display: flex; justify-content: flex-end; margin-top: -15px; margin-bottom: 15px; width: 100%;">
+            <div class="barra-superior-app">
                 <button class="btn-cerrar-sesion" onclick="cerrarSesion()">
                     Cerrar Sesión
                 </button>
@@ -63,20 +108,25 @@
                 <h1>Autotronic Solutions IA</h1>
                 <p>Keila IA le ayudará con la organización de gastos, ingresos, inventario y consultas analíticas.</p>
             </div>
-            
-            <div class="grupo-formulario">
-                <textarea id="texto_reporte" placeholder="Escribe aquí un registro (ej: Entró Toyota PXY9876...) o haz una pregunta analítica (ej: ¿Cuál fue el cliente que gastó más?)"></textarea>
+
+            <div class="glass-container" style="padding: 22px;">
+                <div class="grupo-formulario">
+                    <textarea id="texto_reporte" placeholder="Escribe aquí un registro (ej: Entró Toyota PXY9876...) o haz una pregunta analítica (ej: ¿Cuál fue el cliente que gastó más?)"></textarea>
+                </div>
+
+                <button class="btn-enviar" onclick="enviarReporte()">
+                    Enviar a Keila IA
+                </button>
             </div>
-            
-            <button class="btn-enviar" onclick="enviarReporte()">
-                Enviar a Keila IA
-            </button>
 
             <hr>
-            
+
             <div class="seccion-contabilidad">
                 <h2>Panel de Control y Reportes</h2>
                 <div class="grupo-botones-reportes">
+                    <button class="btn-excel" onclick="verCuadreDeCaja()">
+                        Ver Cuadre de Caja del Día
+                    </button>
                     <button class="btn-excel" onclick="descargarReporteDiario()">
                         Descargar Reporte Diario
                     </button>
@@ -84,9 +134,11 @@
                         Descargar Auditoria de Inventario
                     </button>
                 </div>
+                <div id="panel-cuadre-caja"></div>
             </div>
         </div>
     </div>
+
 <!-- Plantilla oculta para la Ficha de Servicio -->
 <div id="plantilla-orden" style="display: none; padding: 40px; background: white; color: black; width: 800px; font-family: Arial, sans-serif;">
     <div style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px;">

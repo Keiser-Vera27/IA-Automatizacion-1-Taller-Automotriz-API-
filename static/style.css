@@ -1,234 +1,528 @@
-/* =========================================
-   ESTILOS GENERALES Y RESPONSIVE
-========================================= */
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
+/* ==============================================================================
+   Autotronic Solutions — Sistema de diseño
+   Paleta: #7030EF (morado) · #DB1FFF (magenta) · #090820 (tinta) · #FFFFFF (papel)
+   Tipografía: General Sans (display/UI) · Inter (datos/tablas)
+   ============================================================================== */
+
+@import url('https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+:root {
+    --morado: #7030EF;
+    --magenta: #DB1FFF;
+    --tinta: #090820;
+    --gradiente-marca: linear-gradient(135deg, var(--morado), var(--magenta));
+
+    /* Modo claro (por defecto) */
+    --bg: #FBFAFE;
+    --bg-alterno: #F1EDFB;
+    --superficie: #FFFFFF;
+    --superficie-elevada: #FFFFFF;
+    --borde: rgba(112, 48, 239, 0.14);
+    --texto: #14102B;
+    --texto-tenue: #635C80;
+    --sombra-marca: rgba(112, 48, 239, 0.18);
+
+    --fuente-display: 'General Sans', 'Inter', sans-serif;
+    --fuente-datos: 'Inter', sans-serif;
+
+    color-scheme: light;
 }
+
+html[data-theme="dark"] {
+    --bg: #0A0818;
+    --bg-alterno: #12102B;
+    --superficie: #14112E;
+    --superficie-elevada: #1B1740;
+    --borde: rgba(219, 31, 255, 0.18);
+    --texto: #F3F0FF;
+    --texto-tenue: #A79EC9;
+    --sombra-marca: rgba(219, 31, 255, 0.28);
+    color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
 
 body {
-    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    background: radial-gradient(circle at top center, #231b54 0%, #111126 50%, #0a0a16 100%);
-    color: #ffffff;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
+    margin: 0;
+    background: var(--bg);
+    color: var(--texto);
+    font-family: var(--fuente-display);
+    transition: background 0.3s ease, color 0.3s ease;
     min-height: 100vh;
-    padding: 20px;
 }
 
-/* =========================================
-   CONTENEDOR PRINCIPAL
-========================================= */
-.contenedor {
-    background: rgba(20, 20, 40, 0.6);
-    backdrop-filter: blur(10px);
-    width: 100%;
-    max-width: 600px;
-    border-radius: 16px;
-    border: 1px solid rgba(138, 43, 226, 0.4);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(138, 43, 226, 0.15);
-    padding: 40px 30px;
-    margin-top: 40px;
+/* Fondo ambiental sutil: aurora morada, un único acento con moderación */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+        radial-gradient(ellipse 900px 500px at 15% -10%, var(--sombra-marca), transparent 60%),
+        radial-gradient(ellipse 700px 500px at 110% 10%, rgba(219, 31, 255, 0.10), transparent 55%);
+    pointer-events: none;
 }
 
-/* =========================================
-   TIPOGRAFÍA Y CABECERA
-========================================= */
-.cabecera {
-    text-align: center;
-    margin-bottom: 30px;
-}
-
-.cabecera h1 {
-    font-size: 32px;
-    font-weight: 700;
-    margin-bottom: 10px;
-    letter-spacing: -0.5px;
-}
-
-.cabecera p {
-    color: #a855f7; 
-    font-size: 16px;
-    font-weight: 500;
-}
-
-/* =========================================
-   ÁREA DE TEXTO
-========================================= */
-.grupo-formulario {
-    margin-bottom: 25px;
-}
-
-textarea {
-    width: 100%;
-    height: 120px;
-    padding: 15px;
-    background-color: rgba(0, 0, 0, 0.3);
-    color: #ffffff;
-    border: 1px solid rgba(138, 43, 226, 0.3);
-    border-radius: 12px;
-    font-size: 16px;
-    font-family: inherit;
-    resize: vertical;
-    transition: all 0.3s ease;
-}
-
-textarea::placeholder {
-    color: #8b8baf;
-}
-
-textarea:focus {
-    outline: none;
-    border-color: #a855f7;
-    box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
-    background-color: rgba(0, 0, 0, 0.5);
-}
-
-/* =========================================
-   BOTONES
-========================================= */
-button {
-    width: 100%;
-    padding: 16px;
-    font-size: 16px;
-    font-weight: bold;
-    color: #fff;
-    border: none;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.btn-enviar {
-    background: linear-gradient(135deg, #8a2be2, #6b21a8);
-    box-shadow: 0 4px 15px rgba(138, 43, 226, 0.4);
-    margin-bottom: 30px;
-}
-
-.btn-enviar:hover {
-    background: linear-gradient(135deg, #a855f7, #7e22ce);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(138, 43, 226, 0.6);
+h1, h2, h3, h4 {
+    font-family: var(--fuente-display);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px 0;
 }
 
 hr {
-    border: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(138, 43, 226, 0.3), transparent);
-    margin-bottom: 30px;
+    border: none;
+    border-top: 1px solid var(--borde);
+    margin: 28px 0;
 }
 
-/* =========================================
-   SECCIÓN DE CONTABILIDAD
-========================================= */
-.seccion-contabilidad h2 {
-    color: #e2e8f0;
-    font-size: 18px;
-    text-align: center;
-    margin-bottom: 20px;
+/* ==============================================================================
+   TOGGLE DE TEMA
+   ============================================================================== */
+.theme-toggle {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--superficie);
+    border: 1px solid var(--borde);
+    border-radius: 999px;
+    padding: 6px 14px 6px 6px;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(9, 8, 32, 0.08);
+    color: var(--texto);
+    font-family: var(--fuente-datos);
+    font-size: 12.5px;
     font-weight: 500;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.theme-toggle:hover { transform: translateY(-1px); box-shadow: 0 6px 18px var(--sombra-marca); }
+.theme-toggle .punto-icono {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--gradiente-marca);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
 }
 
-/* Contenedor flexible para los botones de reporte */
+/* ==============================================================================
+   LOGIN — Panel dividido: ilustración automotriz + formulario
+   ============================================================================== */
+#login-container {
+    display: flex;
+    min-height: 100vh;
+    align-items: stretch;
+    justify-content: center;
+}
+
+.login-visual {
+    flex: 1.1;
+    position: relative;
+    display: none; /* se activa en pantallas medianas+ */
+    background: linear-gradient(160deg, var(--tinta) 0%, #1B0F45 55%, var(--morado) 130%);
+    overflow: hidden;
+    align-items: flex-end;
+    padding: 48px;
+}
+
+.login-visual svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.login-visual .marca-visual {
+    position: relative;
+    z-index: 2;
+    color: #fff;
+}
+.login-visual .marca-visual .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 11px;
+    color: #D9C6FF;
+    font-family: var(--fuente-datos);
+    margin-bottom: 10px;
+}
+.login-visual .marca-visual h2 {
+    font-size: 30px;
+    line-height: 1.15;
+    max-width: 340px;
+    margin-bottom: 10px;
+}
+.login-visual .marca-visual p {
+    color: #C7B8ED;
+    font-size: 13.5px;
+    max-width: 320px;
+    font-family: var(--fuente-datos);
+}
+
+.login-form-panel {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+    background: var(--bg);
+}
+
+.login-card {
+    width: 100%;
+    max-width: 360px;
+}
+
+.login-card .badge-marca {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    background: var(--gradiente-marca);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 18px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 20px var(--sombra-marca);
+}
+
+.login-card h2 {
+    font-size: 24px;
+    color: var(--texto);
+}
+.login-card > p {
+    color: var(--texto-tenue);
+    font-size: 14px;
+    margin-bottom: 26px;
+    font-family: var(--fuente-datos);
+}
+
+.campo-login {
+    margin-bottom: 16px;
+}
+.campo-login label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--texto-tenue);
+    margin-bottom: 6px;
+    font-family: var(--fuente-datos);
+}
+.campo-login input {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1.5px solid var(--borde);
+    background: var(--superficie);
+    color: var(--texto);
+    font-family: var(--fuente-datos);
+    font-size: 14.5px;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.campo-login input::placeholder { color: var(--texto-tenue); opacity: 0.7; }
+.campo-login input:focus {
+    border-color: var(--morado);
+    box-shadow: 0 0 0 3px var(--sombra-marca);
+}
+
+.btn-login {
+    width: 100%;
+    padding: 13px;
+    border-radius: 10px;
+    border: none;
+    background: var(--gradiente-marca);
+    color: #fff;
+    font-family: var(--fuente-display);
+    font-weight: 600;
+    font-size: 14.5px;
+    cursor: pointer;
+    box-shadow: 0 10px 24px var(--sombra-marca);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    margin-top: 6px;
+}
+.btn-login:hover { transform: translateY(-1px); box-shadow: 0 12px 28px var(--sombra-marca); }
+.btn-login:active { transform: translateY(0); }
+
+#login_error {
+    color: #E0397A;
+    font-size: 13px;
+    margin-top: 14px;
+    font-family: var(--fuente-datos);
+    display: none;
+}
+
+@media (min-width: 860px) {
+    .login-visual { display: flex; }
+}
+
+/* ==============================================================================
+   APP PRINCIPAL
+   ============================================================================== */
+.contenedor {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 60px 20px 80px;
+}
+
+.barra-superior-app {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 18px;
+}
+
+.cabecera { margin-bottom: 28px; }
+.cabecera h1 {
+    font-size: 30px;
+    background: var(--gradiente-marca);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.cabecera p {
+    color: var(--texto-tenue);
+    font-family: var(--fuente-datos);
+    font-size: 14.5px;
+}
+
+.glass-container {
+    background: var(--superficie);
+    border: 1px solid var(--borde);
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(9, 8, 32, 0.06);
+}
+
+.grupo-formulario textarea {
+    width: 100%;
+    min-height: 96px;
+    padding: 16px;
+    border-radius: 14px;
+    border: 1.5px solid var(--borde);
+    background: var(--superficie);
+    color: var(--texto);
+    font-family: var(--fuente-datos);
+    font-size: 14.5px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.grupo-formulario textarea:focus {
+    border-color: var(--morado);
+    box-shadow: 0 0 0 3px var(--sombra-marca);
+}
+
+.btn-enviar {
+    width: 100%;
+    margin-top: 12px;
+    padding: 13px;
+    border-radius: 12px;
+    border: none;
+    background: var(--gradiente-marca);
+    color: #fff;
+    font-family: var(--fuente-display);
+    font-weight: 600;
+    font-size: 14.5px;
+    cursor: pointer;
+    box-shadow: 0 10px 24px var(--sombra-marca);
+    transition: transform 0.15s ease;
+}
+.btn-enviar:hover { transform: translateY(-1px); }
+
+.seccion-contabilidad h2 {
+    font-size: 18px;
+    color: var(--texto);
+}
+
 .grupo-botones-reportes {
     display: flex;
-    gap: 15px;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.btn-excel, .btn-inventario {
+    flex: 1;
+    min-width: 180px;
+    padding: 11px 16px;
+    border-radius: 10px;
+    font-family: var(--fuente-datos);
+    font-weight: 500;
+    font-size: 13.5px;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    border: 1.5px solid var(--borde);
 }
 
 .btn-excel {
-    background: rgba(39, 174, 96, 0.1);
-    border: 1px solid rgba(39, 174, 96, 0.5);
-    color: #2ecc71;
-    flex: 1;
-    padding: 12px;
-    font-size: 14px;
+    background: var(--superficie);
+    color: var(--morado);
 }
-
-.btn-excel:hover {
-    background: rgba(39, 174, 96, 0.2);
-    border-color: #2ecc71;
-    color: #e43535;
-}
+.btn-excel:hover { border-color: var(--morado); box-shadow: 0 6px 16px var(--sombra-marca); transform: translateY(-1px); }
 
 .btn-inventario {
-    background: rgba(23, 162, 184, 0.1);
-    border: 1px solid rgba(23, 162, 184, 0.5);
-    color: #17a2b8;
-    flex: 1;
-    padding: 12px;
-    font-size: 14px;
+    background: var(--bg-alterno);
+    color: var(--texto);
+}
+.btn-inventario:hover { border-color: var(--magenta); box-shadow: 0 6px 16px var(--sombra-marca); transform: translateY(-1px); }
+
+.btn-cerrar-sesion {
+    width: auto !important;
+    background: rgba(224, 57, 122, 0.08);
+    border: 1px solid #E0397A;
+    color: #E0397A;
+    padding: 6px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12.5px;
+    font-family: var(--fuente-datos);
+    font-weight: 600;
+    transition: all 0.2s ease-in-out;
+}
+.btn-cerrar-sesion:hover {
+    background: #E0397A;
+    color: #fff;
 }
 
-.btn-inventario:hover {
-    background: rgba(23, 162, 184, 0.2);
-    border: 1px solid rgba(39, 174, 96, 0.5);
-    color: #2ecc71;
-}
-
-/* Notificaciones */
-#caja-notificacion-ia {
-    margin-top: 15px;
-    width: 100%;
-}
-/* Contenedor principal de Vehículos Pendientes con efecto Glassmorphism */
+/* ==============================================================================
+   PANEL DE VEHÍCULOS
+   ============================================================================== */
 .panel-pendientes {
-    background: rgba(20, 20, 30, 0.65); /* Fondo oscuro semitransparente */
-    backdrop-filter: blur(12px);         /* Efecto de vidrio esmerilado */
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.08); /* Borde sutil de cristal */
+    margin-top: 28px;
+    background: var(--superficie);
+    border: 1px solid var(--borde);
     border-radius: 16px;
     padding: 20px;
-    margin-top: 25px;
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-    color: #e0e0e0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    box-shadow: 0 10px 30px rgba(9, 8, 32, 0.06);
+    font-family: var(--fuente-datos);
 }
+.panel-pendientes h3 { font-family: var(--fuente-display); color: var(--texto); }
 
-.panel-pendientes h3 {
-    margin-top: 0;
-    font-size: 1.1rem;
-    color: #00d2ff; /* Toque neón sutil */
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    padding-bottom: 10px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-/* Tarjeta individual de cada vehículo pendiente */
 .tarjeta-vehiculo-pendiente {
-    background: rgba(30, 30, 45, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-left: 4px solid #00d2ff; /* Destaque lateral neón */
-    border-radius: 10px;
-    padding: 12px 15px;
-    margin-bottom: 12px;
-    transition: all 0.3s ease;
+    background: var(--bg-alterno);
+    border: 1px solid var(--borde);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
     cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    font-family: var(--fuente-datos);
+    font-size: 13.5px;
+    color: var(--texto);
 }
-
 .tarjeta-vehiculo-pendiente:hover {
-    background: rgba(40, 40, 60, 0.7);
-    border-color: rgba(0, 210, 255, 0.4);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(0, 210, 255, 0.15);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px var(--sombra-marca);
+    border-color: var(--morado);
 }
 
 .placa-badge {
-    font-size: 1.1rem;
-    font-weight: bold;
-    color: #ffffff;
-    letter-spacing: 1px;
-    background: rgba(0, 210, 255, 0.15);
-    padding: 2px 8px;
+    font-family: var(--fuente-datos);
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    background: var(--gradiente-marca);
+    color: #fff;
+    padding: 3px 10px;
     border-radius: 6px;
-    display: inline-block;
+    font-size: 12.5px;
 }
 
 .info-taller-item {
-    font-size: 0.9rem;
-    color: #b0b0b0;
-    margin-top: 5px;
+    font-size: 12.5px;
+    color: var(--texto-tenue);
+    margin-top: 3px;
+}
+
+/* ==============================================================================
+   PANEL CUADRE DE CAJA
+   ============================================================================== */
+.panel-caja {
+    margin-top: 20px;
+    padding: 22px;
+    border-radius: 14px;
+    background: var(--superficie);
+    border: 1px solid var(--borde);
+    box-shadow: 0 10px 30px rgba(9, 8, 32, 0.06);
+    font-family: var(--fuente-datos);
+}
+.panel-caja h3 {
+    font-family: var(--fuente-display);
+    color: var(--texto);
+}
+.panel-caja h4 {
+    font-family: var(--fuente-display);
+    font-size: 14px;
+    color: var(--texto);
+    margin-bottom: 8px;
+}
+
+.tarjetas-resumen-caja {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 15px 0 25px 0;
+}
+.tarjeta-resumen-caja {
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+    background: var(--bg-alterno);
+    border-radius: 10px;
+    padding: 12px;
+}
+.tarjeta-resumen-caja .etiqueta {
+    color: var(--texto-tenue);
+    font-size: 12px;
+}
+.tarjeta-resumen-caja .monto {
+    font-size: 1.3rem;
+    font-weight: 700;
+    font-family: var(--fuente-display);
+}
+.monto-positivo { color: #1E9E5B; }
+.monto-negativo { color: #E0397A; }
+.monto-neutro { color: var(--morado); }
+
+/* Envoltorio con scroll horizontal para que las tablas no rompan el layout en móviles */
+.tabla-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 20px;
+}
+.tabla-caja {
+    width: 100%;
+    min-width: 420px; /* fuerza el scroll en vez de comprimir columnas ilegibles */
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.tabla-caja th {
+    color: var(--texto-tenue);
+    text-align: left;
+    padding: 6px 8px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.tabla-caja td {
+    padding: 7px 8px;
+    border-bottom: 1px solid var(--borde);
+    color: var(--texto);
+}
+.tabla-caja td.num { text-align: right; }
+.tabla-caja td.centro { text-align: center; }
+.tabla-caja td.vacio {
+    text-align: center;
+    color: var(--texto-tenue);
+    padding: 14px;
+}
+
+/* ==============================================================================
+   RESPONSIVE
+   ============================================================================== */
+@media (max-width: 600px) {
+    .contenedor { padding: 40px 16px 60px; }
+    .grupo-botones-reportes { flex-direction: column; }
+    .theme-toggle span.etiqueta { display: none; }
 }

@@ -7,7 +7,8 @@ import os
 import re
 import json
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from fastapi import FastAPI, BackgroundTasks, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -27,6 +28,43 @@ def normalizar_placa(texto: str) -> str:
     if not texto:
         return texto
     return re.sub(r"[\s\-]", "", texto).upper().strip()
+
+
+# ==============================================================================
+# MANEJO DE ZONA HORARIA (ECUADOR)
+# ==============================================================================
+# IMPORTANTE: todo fecha_hora que guardamos en Supabase se genera con
+# ahora_utc_str(), es decir, es UTC explícito (no depende de en qué
+# timezone esté corriendo el servidor/contenedor). Para calcular "el día
+# de hoy" para un taller en Ecuador, convertimos el día calendario de
+# Ecuador a su rango equivalente en UTC antes de filtrar en la base.
+
+ZONA_ECUADOR = ZoneInfo("America/Guayaquil")
+
+
+def ahora_utc_str() -> str:
+    """Timestamp actual en UTC explícito, en el formato que usamos para guardar fecha_hora."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def limites_dia_ecuador(fecha_str: str | None = None) -> tuple[str, str]:
+    """
+    Devuelve (inicio_utc, fin_utc) del día calendario en Ecuador (00:00:00 a 23:59:59
+    hora de Guayaquil), convertidos a UTC, en el mismo formato de texto usado al
+    guardar fecha_hora. Si no se pasa fecha_str, usa el día actual en Ecuador.
+    """
+    if fecha_str:
+        dia_base = datetime.strptime(fecha_str, "%Y-%m-%d").replace(tzinfo=ZONA_ECUADOR)
+    else:
+        dia_base = datetime.now(ZONA_ECUADOR)
+
+    inicio_local = dia_base.replace(hour=0, minute=0, second=0, microsecond=0)
+    fin_local = dia_base.replace(hour=23, minute=59, second=59, microsecond=0)
+
+    inicio_utc = inicio_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    fin_utc = fin_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return inicio_utc, fin_utc
+
 
 # ==============================================================================
 # CONFIGURACIÓN DE SUPABASE Y CLIENTE DE IA
@@ -307,7 +345,7 @@ async def trabajador_silencioso():
         id_msj = msj["id"]
         texto_msj = msj["texto"]
         taller_id = msj["taller_id"]
-        tiempo_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        tiempo_actual = ahora_utc_str()
 
         prompt = f"""
         Eres un asistente contable inteligente de un taller mecánico.
@@ -686,7 +724,7 @@ def responder_consulta_analitica(cliente_seguro, texto_usuario: str) -> str:
 async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_tasks: BackgroundTasks, request: Request):
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
     texto_usuario = solicitud.texto
-    tiempo_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    tiempo_actual = ahora_utc_str()
 
     # MODIFICACIÓN: El router ahora devuelve JSON para saber si debe imprimir la orden
     prompt_router = f"""
@@ -765,6 +803,68 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
     }
 
 # ==============================================================================
+# CUADRE DE CAJA DIARIO
+# ==============================================================================
+
+@app.get("/reporte-dia")
+def reporte_del_dia(request: Request, fecha: str | None = None):
+    """
+    Cuadre de caja del día: órdenes cerradas, egresos, ingresos vs egresos
+    y rendimiento por técnico. 'fecha' es opcional en formato YYYY-MM-DD
+    (día calendario de Ecuador); si se omite, usa el día actual en Ecuador.
+    """
+    cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    inicio_utc, fin_utc = limites_dia_ecuador(fecha)
+
+    ordenes_cerradas = (
+        cliente_seguro.table("reparaciones")
+        .select("vehiculo, cliente, modelo, oficial, trabajo_realizado, cobro, metodo_pago, fecha_hora")
+        .eq("taller_id", taller_id)
+        .eq("estado", "Terminado")
+        .gte("fecha_hora", inicio_utc)
+        .lte("fecha_hora", fin_utc)
+        .order("fecha_hora", desc=True)
+        .execute()
+    ).data
+
+    egresos = (
+        cliente_seguro.table("gastos")
+        .select("monto, motivo, vehiculo, responsable, fecha_hora")
+        .eq("taller_id", taller_id)
+        .gte("fecha_hora", inicio_utc)
+        .lte("fecha_hora", fin_utc)
+        .order("fecha_hora", desc=True)
+        .execute()
+    ).data
+
+    total_ingresos = sum(o.get("cobro", 0) or 0 for o in ordenes_cerradas)
+    total_egresos = sum(g.get("monto", 0) or 0 for g in egresos)
+
+    rendimiento: dict[str, dict] = {}
+    for o in ordenes_cerradas:
+        tecnico = o.get("oficial") or "Sin asignar"
+        registro = rendimiento.setdefault(tecnico, {"trabajos": 0, "total_generado": 0.0})
+        registro["trabajos"] += 1
+        registro["total_generado"] += o.get("cobro", 0) or 0
+
+    ranking_tecnicos = [
+        {"tecnico": nombre, **datos}
+        for nombre, datos in sorted(
+            rendimiento.items(), key=lambda item: item[1]["total_generado"], reverse=True
+        )
+    ]
+
+    return {
+        "fecha": fecha or datetime.now(ZONA_ECUADOR).strftime("%Y-%m-%d"),
+        "ordenes_cerradas": ordenes_cerradas,
+        "egresos": egresos,
+        "total_ingresos": round(total_ingresos, 2),
+        "total_egresos": round(total_egresos, 2),
+        "neto": round(total_ingresos - total_egresos, 2),
+        "rendimiento_tecnicos": ranking_tecnicos,
+    }
+
+# ==============================================================================
 # EXPORTACIONES E INVENTARIOS
 # ==============================================================================
 
@@ -781,14 +881,18 @@ def exportar_excel(request: Request):
         df_gastos = pd.DataFrame(gasts)
         df_inventario = pd.DataFrame(inv)
 
-        hoy_str = datetime.now().strftime("%Y-%m-%d")
-        hoy_archivo = datetime.now().strftime("%d-%m-%Y")
+        hoy_archivo = datetime.now(ZONA_ECUADOR).strftime("%d-%m-%Y")
+        inicio_utc, fin_utc = limites_dia_ecuador()
 
         if not df_reparaciones.empty and 'fecha_hora' in df_reparaciones.columns:
-            df_reparaciones = df_reparaciones[df_reparaciones['fecha_hora'].str.startswith(hoy_str)]
+            df_reparaciones = df_reparaciones[
+                (df_reparaciones['fecha_hora'] >= inicio_utc) & (df_reparaciones['fecha_hora'] <= fin_utc)
+            ]
 
         if not df_gastos.empty and 'fecha_hora' in df_gastos.columns:
-            df_gastos = df_gastos[df_gastos['fecha_hora'].str.startswith(hoy_str)]
+            df_gastos = df_gastos[
+                (df_gastos['fecha_hora'] >= inicio_utc) & (df_gastos['fecha_hora'] <= fin_utc)
+            ]
 
         carpeta_respaldos = "respaldos_excel"
         os.makedirs(carpeta_respaldos, exist_ok=True)
@@ -813,8 +917,8 @@ def exportar_excel(request: Request):
 @app.get("/vehiculos-pendientes")
 def listar_pendientes(request: Request):
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
-    hoy_inicio = datetime.now().strftime("%Y-%m-%d") + " 00:00:00"
-    
+    hoy_inicio, hoy_fin = limites_dia_ecuador()
+
     pendientes = (
         cliente_seguro.table("reparaciones")
         .select("vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
@@ -829,6 +933,7 @@ def listar_pendientes(request: Request):
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
         .gte("fecha_hora", hoy_inicio)
+        .lte("fecha_hora", hoy_fin)
         .execute()
     ).data
 
@@ -851,7 +956,7 @@ def exportar_inventario(request: Request):
         carpeta_respaldos = "respaldos_excel"
         os.makedirs(carpeta_respaldos, exist_ok=True)
 
-        hoy_archivo = datetime.now().strftime("%d-%m-%Y")
+        hoy_archivo = datetime.now(ZONA_ECUADOR).strftime("%d-%m-%Y")
         nombre_archivo = f"Auditoria_Inventario_{hoy_archivo}.xlsx"
         ruta_completa = os.path.join(carpeta_respaldos, nombre_archivo)
 

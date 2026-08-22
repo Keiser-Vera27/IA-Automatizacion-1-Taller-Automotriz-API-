@@ -2,8 +2,28 @@
 // Script del Taller Automotriz - Autotronic Solutions IA
 // ==============================================================================
 
+// Modo claro/oscuro (persistido en localStorage, aplicado también al cargar en index.html)
+function alternarTema() {
+    const raiz = document.documentElement;
+    const temaActual = raiz.getAttribute("data-theme") || "light";
+    const nuevoTema = temaActual === "light" ? "dark" : "light";
+    raiz.setAttribute("data-theme", nuevoTema);
+    localStorage.setItem("as_tema", nuevoTema);
+    actualizarIconoTema(nuevoTema);
+}
+
+function actualizarIconoTema(tema) {
+    const icono = document.getElementById("icono-tema");
+    const texto = document.getElementById("texto-tema");
+    if (!icono || !texto) return;
+    icono.innerText = tema === "dark" ? "☾" : "☀";
+    texto.innerText = tema === "dark" ? "Oscuro" : "Claro";
+}
+
 // Validar sesión activa al cargar
 window.onload = function() {
+    actualizarIconoTema(document.documentElement.getAttribute("data-theme") || "light");
+
     const token = localStorage.getItem("taller_token");
     if (token) {
         document.getElementById("login-container").style.display = "none";
@@ -90,6 +110,11 @@ function cerrarSesion() {
     const panelPendientes = document.getElementById('panel-vehiculos-pendientes');
     if (panelPendientes) {
         panelPendientes.remove();
+    }
+
+    const panelCaja = document.getElementById('panel-cuadre-caja');
+    if (panelCaja) {
+        panelCaja.innerHTML = "";
     }
 
     document.getElementById("texto_reporte").value = "";
@@ -217,6 +242,133 @@ async function descargarReporteDiario() {
     } catch (error) {
         mostrarNotificacion("Error de conexion al descargar el reporte.", "error");
     }
+}
+
+// Cuadre de caja del día (dashboard en pantalla, no descarga)
+async function verCuadreDeCaja() {
+    const token = localStorage.getItem("taller_token");
+    const panel = document.getElementById('panel-cuadre-caja');
+    if (!panel) return;
+
+    panel.innerHTML = `<p style="color: #a0a0a0; text-align: center; margin: 20px 0;">Calculando cuadre de caja...</p>`;
+
+    try {
+        const response = await fetch('/reporte-dia', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            panel.innerHTML = "";
+            mostrarNotificacion(errData.detail || "Error al calcular el cuadre de caja.", "warning");
+            return;
+        }
+
+        const data = await response.json();
+        renderizarCuadreDeCaja(data);
+    } catch (error) {
+        panel.innerHTML = "";
+        mostrarNotificacion("Error de conexión al calcular el cuadre de caja.", "error");
+    }
+}
+
+function renderizarCuadreDeCaja(data) {
+    const panel = document.getElementById('panel-cuadre-caja');
+    if (!panel) return;
+
+    const claseNeto = data.neto > 0 ? 'monto-positivo' : (data.neto < 0 ? 'monto-negativo' : 'monto-neutro');
+
+    let filasOrdenes = data.ordenes_cerradas.length > 0
+        ? data.ordenes_cerradas.map(o => `
+            <tr>
+                <td>${o.vehiculo || '-'}</td>
+                <td>${o.cliente || '-'}</td>
+                <td>${o.oficial || 'Sin asignar'}</td>
+                <td class="num">$${(o.cobro || 0).toFixed(2)}</td>
+            </tr>`).join('')
+        : `<tr><td colspan="4" class="vacio">Sin órdenes cerradas hoy.</td></tr>`;
+
+    let filasEgresos = data.egresos.length > 0
+        ? data.egresos.map(g => `
+            <tr>
+                <td>${g.motivo || '-'}</td>
+                <td>${g.responsable || '-'}</td>
+                <td class="num">$${(g.monto || 0).toFixed(2)}</td>
+            </tr>`).join('')
+        : `<tr><td colspan="3" class="vacio">Sin egresos registrados hoy.</td></tr>`;
+
+    let filasTecnicos = data.rendimiento_tecnicos.length > 0
+        ? data.rendimiento_tecnicos.map(t => `
+            <tr>
+                <td>${t.tecnico}</td>
+                <td class="centro">${t.trabajos}</td>
+                <td class="num">$${t.total_generado.toFixed(2)}</td>
+            </tr>`).join('')
+        : `<tr><td colspan="3" class="vacio">Sin datos de técnicos hoy.</td></tr>`;
+
+    panel.innerHTML = `
+        <div class="panel-caja">
+            <h3>Cuadre de Caja — ${data.fecha}</h3>
+
+            <div class="tarjetas-resumen-caja">
+                <div class="tarjeta-resumen-caja">
+                    <div class="etiqueta">Ingresos</div>
+                    <div class="monto monto-positivo">$${data.total_ingresos.toFixed(2)}</div>
+                </div>
+                <div class="tarjeta-resumen-caja">
+                    <div class="etiqueta">Egresos</div>
+                    <div class="monto monto-negativo">$${data.total_egresos.toFixed(2)}</div>
+                </div>
+                <div class="tarjeta-resumen-caja">
+                    <div class="etiqueta">Neto</div>
+                    <div class="monto ${claseNeto}">$${data.neto.toFixed(2)}</div>
+                </div>
+            </div>
+
+            <h4>Órdenes cerradas hoy (${data.ordenes_cerradas.length})</h4>
+            <div class="tabla-scroll">
+                <table class="tabla-caja">
+                    <thead>
+                        <tr>
+                            <th>Placa</th>
+                            <th>Cliente</th>
+                            <th>Técnico</th>
+                            <th style="text-align: right;">Cobro</th>
+                        </tr>
+                    </thead>
+                    <tbody>${filasOrdenes}</tbody>
+                </table>
+            </div>
+
+            <h4>Egresos de hoy (${data.egresos.length})</h4>
+            <div class="tabla-scroll">
+                <table class="tabla-caja">
+                    <thead>
+                        <tr>
+                            <th>Motivo</th>
+                            <th>Responsable</th>
+                            <th style="text-align: right;">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>${filasEgresos}</tbody>
+                </table>
+            </div>
+
+            <h4>Rendimiento por técnico</h4>
+            <div class="tabla-scroll">
+                <table class="tabla-caja">
+                    <thead>
+                        <tr>
+                            <th>Técnico</th>
+                            <th style="text-align: center;">Trabajos</th>
+                            <th style="text-align: right;">Generado</th>
+                        </tr>
+                    </thead>
+                    <tbody>${filasTecnicos}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
 }
 
 // ==============================================================================
