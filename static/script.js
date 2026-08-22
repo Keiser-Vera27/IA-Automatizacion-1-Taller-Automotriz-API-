@@ -33,7 +33,7 @@ async function cargarBienvenidaTaller() {
         if (!res.ok) return;
 
         const data = await res.json();
-        banner.innerHTML = `¡Bienvenido, <span class="nombre-taller-destacado">${data.nombre_taller}</span>! Empecemos a trabajar 🚀`;
+        banner.innerHTML = `¡Bienvenido, <span class="nombre-taller-destacado">${data.nombre_taller}</span>! Empecemos a trabajar`;
     } catch (e) {
         console.error("No se pudo cargar el nombre del taller:", e);
     }
@@ -496,9 +496,7 @@ function mostrarNotificacion(mensaje, tipo) {
         cajaNotificacion = document.createElement('div');
         cajaNotificacion.id = 'caja-notificacion-ia';
         cajaNotificacion.style.marginTop = '20px';
-        cajaNotificacion.style.padding = '15px 20px';
-        cajaNotificacion.style.borderRadius = '10px';
-        cajaNotificacion.style.fontFamily = 'sans-serif';
+        cajaNotificacion.style.fontFamily = 'var(--fuente-datos)';
         cajaNotificacion.style.fontSize = '14px';
         cajaNotificacion.style.lineHeight = '1.6';
         cajaNotificacion.style.transition = 'all 0.3s ease';
@@ -510,28 +508,12 @@ function mostrarNotificacion(mensaje, tipo) {
         inputTexto.parentNode.insertBefore(cajaNotificacion, inputTexto.nextSibling);
     }
 
-    if (tipo === "success") {
-        cajaNotificacion.style.backgroundColor = 'rgba(46, 133, 64, 0.15)';
-        cajaNotificacion.style.color = '#a8f5b6';
-        cajaNotificacion.style.border = '1px solid rgba(46, 133, 64, 0.4)';
-    } else if (tipo === "error") {
-        cajaNotificacion.style.backgroundColor = 'rgba(217, 83, 79, 0.15)';
-        cajaNotificacion.style.color = '#ff9999';
-        cajaNotificacion.style.border = '1px solid rgba(217, 83, 79, 0.4)';
-    } else if (tipo === "warning") {
-        cajaNotificacion.style.backgroundColor = 'rgba(240, 173, 78, 0.15)';
-        cajaNotificacion.style.color = '#ffe066';
-        cajaNotificacion.style.border = '1px solid rgba(240, 173, 78, 0.4)';
-    } else if (tipo === "info") {
-        cajaNotificacion.style.backgroundColor = 'rgba(0, 191, 255, 0.1)';
-        cajaNotificacion.style.color = '#e0f7ff';
-        cajaNotificacion.style.border = '1px solid rgba(0, 191, 255, 0.3)';
-    }
-
+    cajaNotificacion.className = `mensaje-procesando-ia ${tipo}`;
     cajaNotificacion.style.opacity = '1';
+    cajaNotificacion.style.padding = '15px 20px';
+    cajaNotificacion.style.borderRadius = '10px';
 
     if (tipo === "info" && mensaje.includes("Respuesta del Gerente IA")) {
-        // Asume que usas marked.js, si no lo tienes, mostrará el texto normal
         if (typeof marked !== 'undefined') cajaNotificacion.innerHTML = marked.parse(mensaje);
         else cajaNotificacion.innerHTML = mensaje;
     } else {
