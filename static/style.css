@@ -1,7 +1,6 @@
 /* ==============================================================================
-   Autotronic Solutions — Sistema de diseño (Premium Glassmorphism)
-   Paleta: #7030EF (morado) · #DB1FFF (magenta) · #090820 (tinta) · #FFFFFF (papel)
-   Tipografía: General Sans (display/UI) · Inter (datos/tablas)
+   Autotronic Solutions — Sistema de diseño (Premium Glassmorphism + Grid)
+   Paleta: #7030EF (morado) · #DB1FFF (magenta) · Cyan/Lima (Filtros)
    ============================================================================== */
 
 @import url('https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700,400&display=swap');
@@ -13,10 +12,10 @@
     --tinta: #090820;
     --gradiente-marca: linear-gradient(135deg, var(--morado), var(--magenta));
 
-    /* Modo claro (por defecto - Mantenemos tu diseño limpio) */
+    /* Modo claro (por defecto) */
     --bg: #FBFAFE;
     --bg-alterno: #F1EDFB;
-    --superficie: rgba(255, 255, 255, 0.85); /* Ligeramente translúcido */
+    --superficie: rgba(255, 255, 255, 0.85);
     --superficie-elevada: rgba(255, 255, 255, 0.95);
     --borde: rgba(112, 48, 239, 0.14);
     --texto: #14102B;
@@ -24,22 +23,38 @@
     --sombra-marca: rgba(112, 48, 239, 0.18);
     --filtro-cristal: blur(16px);
 
+    /* Estados dinámicos - Modo Claro */
+    --bg-pendiente: rgba(217, 119, 6, 0.15);
+    --text-pendiente: #B45309; 
+    --bg-terminado: rgba(5, 150, 105, 0.15);
+    --text-terminado: #047857; 
+    --text-cobro: #059669;
+    --bg-filtros: rgba(0, 0, 0, 0.05);
+
     --fuente-display: 'General Sans', 'Inter', sans-serif;
     --fuente-datos: 'Inter', sans-serif;
-
     color-scheme: light;
 }
 
-/* 🌙 MODO OSCURO MEJORADO (Aquí ocurre la magia del Glassmorphism Neón) */
 html[data-theme="dark"] {
+    /* Modo oscuro */
     --bg: linear-gradient(135deg, #0A0818 0%, #150d30 50%, #0A0818 100%);
-    --bg-alterno: rgba(18, 16, 43, 0.3); /* Transparencia para el cristal */
-    --superficie: rgba(20, 17, 46, 0.45); /* Cristal principal */
-    --superficie-elevada: rgba(27, 23, 64, 0.55); /* Cristal resaltado */
-    --borde: rgba(219, 31, 255, 0.25); /* Bordes ligeramente más brillantes */
+    --bg-alterno: rgba(18, 16, 43, 0.3);
+    --superficie: rgba(20, 17, 46, 0.45);
+    --superficie-elevada: rgba(27, 23, 64, 0.55);
+    --borde: rgba(219, 31, 255, 0.25);
     --texto: #F3F0FF;
     --texto-tenue: #A79EC9;
     --sombra-marca: rgba(219, 31, 255, 0.4);
+
+    /* Estados dinámicos - Modo Oscuro */
+    --bg-pendiente: rgba(245, 158, 11, 0.2);
+    --text-pendiente: #FCD34D; 
+    --bg-terminado: rgba(16, 185, 129, 0.2);
+    --text-terminado: #6EE7B7; 
+    --text-cobro: #A8F5B6;
+    --bg-filtros: rgba(0, 0, 0, 0.3);
+
     color-scheme: dark;
 }
 
@@ -48,14 +63,13 @@ html[data-theme="dark"] {
 body {
     margin: 0;
     background: var(--bg);
-    background-attachment: fixed; /* Crucial para que el gradiente no se estire feo al hacer scroll */
+    background-attachment: fixed;
     color: var(--texto);
     font-family: var(--fuente-display);
     transition: background 0.3s ease, color 0.3s ease;
     min-height: 100vh;
 }
 
-/* Fondo ambiental sutil: aurora morada */
 body::before {
     content: "";
     position: fixed;
@@ -81,7 +95,7 @@ hr {
 }
 
 /* ==============================================================================
-   ESTILOS COMPARTIDOS GLASSMORPHISM (Se aplica a todos los paneles)
+   ESTILOS COMPARTIDOS GLASSMORPHISM
    ============================================================================== */
 .glass-container, .panel-pendientes, .panel-caja, .login-card, .tarjeta-vehiculo-pendiente {
     backdrop-filter: var(--filtro-cristal);
@@ -127,7 +141,7 @@ hr {
 }
 
 /* ==============================================================================
-   LOGIN — Panel dividido
+   LOGIN
    ============================================================================== */
 #login-container {
     display: flex;
@@ -140,7 +154,7 @@ hr {
     flex: 1.1;
     position: relative;
     display: none; 
-    background: transparent; /* Deja ver el fondo del body */
+    background: transparent;
     overflow: hidden;
     align-items: flex-end;
     padding: 48px;
@@ -152,7 +166,7 @@ hr {
     position: relative;
     z-index: 2;
     color: #fff;
-    backdrop-filter: blur(5px); /* Pequeño desenfoque detrás del texto */
+    backdrop-filter: blur(5px);
     padding: 20px;
     border-radius: 16px;
     background: rgba(0,0,0,0.2);
@@ -165,18 +179,8 @@ hr {
     font-family: var(--fuente-datos);
     margin-bottom: 10px;
 }
-.login-visual .marca-visual h2 {
-    font-size: 30px;
-    line-height: 1.15;
-    max-width: 340px;
-    margin-bottom: 10px;
-}
-.login-visual .marca-visual p {
-    color: #C7B8ED;
-    font-size: 13.5px;
-    max-width: 320px;
-    font-family: var(--fuente-datos);
-}
+.login-visual .marca-visual h2 { font-size: 30px; line-height: 1.15; max-width: 340px; margin-bottom: 10px; }
+.login-visual .marca-visual p { color: #C7B8ED; font-size: 13.5px; max-width: 320px; font-family: var(--fuente-datos); }
 
 .login-form-panel {
     flex: 1;
@@ -184,18 +188,17 @@ hr {
     align-items: center;
     justify-content: center;
     padding: 32px 24px;
-    background: transparent; /* Permite que se vea el fondo oscuro */
+    background: transparent;
 }
 
 .login-card {
     width: 100%;
     max-width: 360px;
     background: var(--superficie);
-    padding: 35px 25px; /* Un poco más de aire interior */
-    border-radius: 20px; /* Bordes más suaves */
+    padding: 35px 25px;
+    border-radius: 20px;
     box-shadow: 0 15px 35px rgba(0,0,0,0.2);
 }
-
 .login-card .badge-marca {
     width: 46px;
     height: 46px;
@@ -210,35 +213,17 @@ hr {
     margin-bottom: 20px;
     box-shadow: 0 8px 20px var(--sombra-marca);
 }
+.login-card h2 { font-size: 24px; color: var(--texto); }
+.login-card > p { color: var(--texto-tenue); font-size: 14px; margin-bottom: 26px; font-family: var(--fuente-datos); }
 
-.login-card h2 {
-    font-size: 24px;
-    color: var(--texto);
-}
-.login-card > p {
-    color: var(--texto-tenue);
-    font-size: 14px;
-    margin-bottom: 26px;
-    font-family: var(--fuente-datos);
-}
-
-.campo-login {
-    margin-bottom: 16px;
-}
-.campo-login label {
-    display: block;
-    font-size: 12.5px;
-    font-weight: 500;
-    color: var(--texto-tenue);
-    margin-bottom: 6px;
-    font-family: var(--fuente-datos);
-}
+.campo-login { margin-bottom: 16px; }
+.campo-login label { display: block; font-size: 12.5px; font-weight: 500; color: var(--texto-tenue); margin-bottom: 6px; font-family: var(--fuente-datos); }
 .campo-login input {
     width: 100%;
     padding: 12px 14px;
     border-radius: 10px;
     border: 1.5px solid var(--borde);
-    background: var(--bg-alterno); /* Fondo translúcido para inputs */
+    background: var(--bg-alterno);
     color: var(--texto);
     font-family: var(--fuente-datos);
     font-size: 14.5px;
@@ -246,11 +231,7 @@ hr {
     transition: all 0.3s ease;
 }
 .campo-login input::placeholder { color: var(--texto-tenue); opacity: 0.7; }
-.campo-login input:focus {
-    border-color: var(--magenta);
-    box-shadow: 0 0 12px var(--sombra-marca);
-    background: rgba(0,0,0,0.2);
-}
+.campo-login input:focus { border-color: var(--magenta); box-shadow: 0 0 12px var(--sombra-marca); background: rgba(0,0,0,0.2); }
 
 .btn-login {
     width: 100%;
@@ -267,196 +248,73 @@ hr {
     transition: all 0.3s ease;
     margin-top: 6px;
 }
-.btn-login:hover { 
-    transform: translateY(-2px); 
-    box-shadow: 0 12px 30px rgba(219, 31, 255, 0.5); /* Resplandor Neón */
-    filter: brightness(1.1);
-}
+.btn-login:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(219, 31, 255, 0.5); filter: brightness(1.1); }
 .btn-login:active { transform: translateY(0); }
 
-#login_error {
-    color: #E0397A;
-    font-size: 13px;
-    margin-top: 14px;
-    font-family: var(--fuente-datos);
-    display: none;
-}
-
-@media (min-width: 860px) {
-    .login-visual { display: flex; }
-}
+#login_error { color: #E0397A; font-size: 13px; margin-top: 14px; font-family: var(--fuente-datos); display: none; }
+@media (min-width: 860px) { .login-visual { display: flex; } }
 
 /* ==============================================================================
-   APP PRINCIPAL
+   APP PRINCIPAL & CONTENEDORES
    ============================================================================== */
-.contenedor {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 60px 20px 80px;
-}
-
-.barra-superior-app {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 18px;
-}
-
+.contenedor { max-width: 720px; margin: 0 auto; padding: 60px 20px 80px; }
+.barra-superior-app { display: flex; justify-content: flex-end; margin-bottom: 18px; }
 .cabecera { margin-bottom: 28px; }
 
-/* ==============================================================================
-   BANNER DE BIENVENIDA
-   ============================================================================== */
 .banner-bienvenida {
-    font-family: var(--fuente-display);
-    font-weight: 700;
-    font-size: 22px;
-    line-height: 1.3;
-    padding: 18px 22px;
-    border-radius: 14px;
-    margin-bottom: 22px;
-    background: var(--gradiente-marca);
-    color: #fff;
+    font-family: var(--fuente-display); font-weight: 700; font-size: 22px; line-height: 1.3;
+    padding: 18px 22px; border-radius: 14px; margin-bottom: 22px;
+    background: var(--gradiente-marca); color: #fff;
     box-shadow: 0 12px 28px var(--sombra-marca);
-    opacity: 0;
-    transform: translateY(-6px);
+    opacity: 0; transform: translateY(-6px);
     animation: aparecer-bienvenida 0.5s ease forwards;
 }
 .banner-bienvenida:empty { display: none; }
-.banner-bienvenida .nombre-taller-destacado {
-    text-decoration: underline;
-    text-decoration-color: rgba(255,255,255,0.5);
-    text-underline-offset: 3px;
-}
+.banner-bienvenida .nombre-taller-destacado { text-decoration: underline; text-decoration-color: rgba(255,255,255,0.5); text-underline-offset: 3px; }
+@keyframes aparecer-bienvenida { to { opacity: 1; transform: translateY(0); } }
 
-@keyframes aparecer-bienvenida {
-    to { opacity: 1; transform: translateY(0); }
-}
+.cabecera h1 { font-size: 30px; background: var(--gradiente-marca); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.cabecera p { color: var(--texto-tenue); font-family: var(--fuente-datos); font-size: 14.5px; }
 
-@media (prefers-reduced-motion: reduce) {
-    .banner-bienvenida { animation: none; opacity: 1; transform: none; }
-}
-
-@media (max-width: 600px) {
-    .banner-bienvenida { font-size: 18px; padding: 15px 18px; }
-}
-.cabecera h1 {
-    font-size: 30px;
-    background: var(--gradiente-marca);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
-.cabecera p {
-    color: var(--texto-tenue);
-    font-family: var(--fuente-datos);
-    font-size: 14.5px;
-}
-
-.glass-container {
-    background: var(--superficie);
-    border-radius: 16px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-}
+.glass-container { background: var(--superficie); border-radius: 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); }
 
 .grupo-formulario textarea {
-    width: 100%;
-    min-height: 96px;
-    padding: 16px;
-    border-radius: 14px;
-    border: 1.5px solid var(--borde);
-    background: var(--bg-alterno);
-    color: var(--texto);
-    font-family: var(--fuente-datos);
-    font-size: 14.5px;
-    resize: vertical;
-    outline: none;
-    transition: all 0.3s ease;
+    width: 100%; min-height: 96px; padding: 16px; border-radius: 14px;
+    border: 1.5px solid var(--borde); background: var(--bg-alterno); color: var(--texto);
+    font-family: var(--fuente-datos); font-size: 14.5px; resize: vertical;
+    outline: none; transition: all 0.3s ease;
 }
-.grupo-formulario textarea:focus {
-    border-color: var(--magenta);
-    box-shadow: 0 0 12px var(--sombra-marca);
-    background: rgba(0,0,0,0.1);
-}
+.grupo-formulario textarea:focus { border-color: var(--magenta); box-shadow: 0 0 12px var(--sombra-marca); background: rgba(0,0,0,0.1); }
 
 .btn-enviar {
-    width: 100%;
-    margin-top: 12px;
-    padding: 13px;
-    border-radius: 12px;
-    border: none;
-    background: var(--gradiente-marca);
-    color: #fff;
-    font-family: var(--fuente-display);
-    font-weight: 600;
-    font-size: 14.5px;
-    cursor: pointer;
-    box-shadow: 0 10px 24px var(--sombra-marca);
-    transition: all 0.3s ease;
+    width: 100%; margin-top: 12px; padding: 13px; border-radius: 12px; border: none;
+    background: var(--gradiente-marca); color: #fff; font-family: var(--fuente-display);
+    font-weight: 600; font-size: 14.5px; cursor: pointer; box-shadow: 0 10px 24px var(--sombra-marca); transition: all 0.3s ease;
 }
-.btn-enviar:hover { 
-    transform: translateY(-2px);
-    box-shadow: 0 12px 30px rgba(219, 31, 255, 0.5);
-    filter: brightness(1.1);
-}
+.btn-enviar:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(219, 31, 255, 0.5); filter: brightness(1.1); }
 
-.seccion-contabilidad h2 {
-    font-size: 18px;
-    color: var(--texto);
-}
+.seccion-contabilidad h2 { font-size: 18px; color: var(--texto); }
 
-.grupo-botones-reportes {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 14px;
-}
-
+.grupo-botones-reportes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .btn-excel, .btn-inventario {
-    flex: 1;
-    min-width: 180px;
-    padding: 11px 16px;
-    border-radius: 10px;
-    font-family: var(--fuente-datos);
-    font-weight: 500;
-    font-size: 13.5px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: 1.5px solid var(--borde);
+    flex: 1; min-width: 180px; padding: 11px 16px; border-radius: 10px;
+    font-family: var(--fuente-datos); font-weight: 500; font-size: 13.5px;
+    cursor: pointer; transition: all 0.2s ease; border: 1.5px solid var(--borde);
 }
-
-.btn-excel {
-    background: var(--superficie);
-    color: var(--texto);
-}
+.btn-excel { background: var(--superficie); color: var(--texto); }
 .btn-excel:hover { border-color: var(--morado); box-shadow: 0 6px 16px var(--sombra-marca); transform: translateY(-2px); }
-
-.btn-inventario {
-    background: var(--bg-alterno);
-    color: var(--texto);
-}
+.btn-inventario { background: var(--bg-alterno); color: var(--texto); }
 .btn-inventario:hover { border-color: var(--magenta); box-shadow: 0 6px 16px var(--sombra-marca); transform: translateY(-2px); }
 
 .btn-cerrar-sesion {
-    width: auto !important;
-    background: rgba(224, 57, 122, 0.08);
-    border: 1px solid #E0397A;
-    color: #E0397A;
-    padding: 6px 15px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 12.5px;
-    font-family: var(--fuente-datos);
-    font-weight: 600;
-    transition: all 0.2s ease-in-out;
+    width: auto !important; background: rgba(224, 57, 122, 0.08); border: 1px solid #E0397A;
+    color: #E0397A; padding: 6px 15px; border-radius: 8px; cursor: pointer;
+    font-size: 12.5px; font-family: var(--fuente-datos); font-weight: 600; transition: all 0.2s ease-in-out;
 }
-.btn-cerrar-sesion:hover {
-    background: #E0397A;
-    color: #fff;
-    box-shadow: 0 0 15px rgba(224, 57, 122, 0.4);
-}
+.btn-cerrar-sesion:hover { background: #E0397A; color: #fff; box-shadow: 0 0 15px rgba(224, 57, 122, 0.4); }
 
 /* ==============================================================================
-   PANEL DE VEHÍCULOS (Efecto Flotante Neón)
+   PANEL DE VEHÍCULOS (GRID RESPONSIVE Y FILTROS COMPLEMENTARIOS)
    ============================================================================== */
 .panel-pendientes {
     margin-top: 28px;
@@ -466,23 +324,76 @@ hr {
     box-shadow: 0 15px 35px rgba(0,0,0,0.2);
     font-family: var(--fuente-datos);
 }
-.panel-pendientes h3 { font-family: var(--fuente-display); color: var(--texto); }
+
+.cabecera-panel-vehiculos {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--borde);
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+    flex-wrap: wrap; 
+    gap: 15px;
+}
+.cabecera-panel-vehiculos h3 { margin: 0; font-family: var(--fuente-display); color: var(--texto); }
+
+.grupo-filtros {
+    display: flex;
+    gap: 6px;
+    background: var(--bg-filtros);
+    padding: 5px;
+    border-radius: 10px;
+    border: 1px solid var(--borde);
+}
+
+.btn-filtro {
+    background: transparent;
+    color: var(--texto-tenue);
+    border: none;
+    padding: 7px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--fuente-datos);
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+.btn-filtro.activo {
+    background: linear-gradient(135deg, #00C9FF, #92FE9D);
+    color: #090820; 
+    box-shadow: 0 4px 15px rgba(0, 201, 255, 0.4);
+    transform: translateY(-1px);
+}
+
+.grid-vehiculos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
 
 .tarjeta-vehiculo-pendiente {
     background: var(--superficie-elevada);
     border-radius: 12px;
     padding: 14px 16px;
-    margin-bottom: 12px;
     cursor: pointer;
     transition: all 0.3s ease;
     font-family: var(--fuente-datos);
     font-size: 13.5px;
     color: var(--texto);
+    display: flex;
+    flex-direction: column;
 }
 .tarjeta-vehiculo-pendiente:hover {
     transform: translateY(-4px);
     box-shadow: 0 10px 25px rgba(0,0,0,0.3), inset 0 0 15px rgba(219, 31, 255, 0.15);
     border-color: var(--magenta);
+}
+
+.tarjeta-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 6px;
 }
 
 .placa-badge {
@@ -497,93 +408,37 @@ hr {
     box-shadow: 0 2px 8px var(--sombra-marca);
 }
 
-.info-taller-item {
-    font-size: 12.5px;
-    color: var(--texto-tenue);
-    margin-top: 3px;
-}
+.badge-estado { font-size: 11.5px; padding: 4px 10px; border-radius: 6px; font-weight: 700; letter-spacing: 0.02em; }
+.estado-pendiente { background: var(--bg-pendiente); color: var(--text-pendiente); }
+.estado-terminado { background: var(--bg-terminado); color: var(--text-terminado); }
+
+.info-taller-item { font-size: 12.5px; color: var(--texto-tenue); margin-top: 3px; }
+.info-cobro { color: var(--text-cobro); font-size: 13.5px; margin-top: 8px; font-weight: 600; }
+.link-telefono { color: var(--magenta); text-decoration: none; font-weight: 500; }
+.link-telefono:hover { text-decoration: underline; }
 
 /* ==============================================================================
    PANEL CUADRE DE CAJA
    ============================================================================== */
-.panel-caja {
-    margin-top: 20px;
-    padding: 22px;
-    border-radius: 14px;
-    background: var(--superficie);
-    box-shadow: 0 15px 35px rgba(0,0,0,0.2);
-    font-family: var(--fuente-datos);
-}
-.panel-caja h3 {
-    font-family: var(--fuente-display);
-    color: var(--texto);
-}
-.panel-caja h4 {
-    font-family: var(--fuente-display);
-    font-size: 14px;
-    color: var(--texto);
-    margin-bottom: 8px;
-}
+.panel-caja { margin-top: 20px; padding: 22px; border-radius: 14px; background: var(--superficie); box-shadow: 0 15px 35px rgba(0,0,0,0.2); font-family: var(--fuente-datos); }
+.panel-caja h3 { font-family: var(--fuente-display); color: var(--texto); }
+.panel-caja h4 { font-family: var(--fuente-display); font-size: 14px; color: var(--texto); margin-bottom: 8px; }
 
-.tarjetas-resumen-caja {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin: 15px 0 25px 0;
-}
-.tarjeta-resumen-caja {
-    flex: 1;
-    min-width: 120px;
-    text-align: center;
-    background: var(--bg-alterno);
-    border-radius: 10px;
-    padding: 12px;
-    border: 1px solid var(--borde);
-}
-.tarjeta-resumen-caja .etiqueta {
-    color: var(--texto-tenue);
-    font-size: 12px;
-}
-.tarjeta-resumen-caja .monto {
-    font-size: 1.3rem;
-    font-weight: 700;
-    font-family: var(--fuente-display);
-}
+.tarjetas-resumen-caja { display: flex; gap: 12px; flex-wrap: wrap; margin: 15px 0 25px 0; }
+.tarjeta-resumen-caja { flex: 1; min-width: 120px; text-align: center; background: var(--bg-alterno); border-radius: 10px; padding: 12px; border: 1px solid var(--borde); }
+.tarjeta-resumen-caja .etiqueta { color: var(--texto-tenue); font-size: 12px; }
+.tarjeta-resumen-caja .monto { font-size: 1.3rem; font-weight: 700; font-family: var(--fuente-display); }
 .monto-positivo { color: #1E9E5B; text-shadow: 0 0 10px rgba(30, 158, 91, 0.4); }
 .monto-negativo { color: #E0397A; text-shadow: 0 0 10px rgba(224, 57, 122, 0.4); }
 .monto-neutro { color: var(--magenta); text-shadow: 0 0 10px rgba(219, 31, 255, 0.4); }
 
-.tabla-scroll {
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    margin-bottom: 20px;
-}
-.tabla-caja {
-    width: 100%;
-    min-width: 420px; 
-    border-collapse: collapse;
-    font-size: 0.85rem;
-}
-.tabla-caja th {
-    color: var(--texto-tenue);
-    text-align: left;
-    padding: 6px 8px;
-    font-weight: 500;
-    white-space: nowrap;
-}
-.tabla-caja td {
-    padding: 7px 8px;
-    border-bottom: 1px solid var(--borde);
-    color: var(--texto);
-}
+.tabla-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 20px; }
+.tabla-caja { width: 100%; min-width: 420px; border-collapse: collapse; font-size: 0.85rem; }
+.tabla-caja th { color: var(--texto-tenue); text-align: left; padding: 6px 8px; font-weight: 500; white-space: nowrap; }
+.tabla-caja td { padding: 7px 8px; border-bottom: 1px solid var(--borde); color: var(--texto); }
 .tabla-caja td.num { text-align: right; }
 .tabla-caja td.centro { text-align: center; }
-.tabla-caja td.vacio {
-    text-align: center;
-    color: var(--texto-tenue);
-    padding: 14px;
-}
+.tabla-caja td.vacio { text-align: center; color: var(--texto-tenue); padding: 14px; }
 
 /* ==============================================================================
    RESPONSIVE

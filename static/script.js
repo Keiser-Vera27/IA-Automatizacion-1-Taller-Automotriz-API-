@@ -429,20 +429,25 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
         const listaVehiculos = data.vehiculos || [];
         const vehiculosFiltrados = listaVehiculos.filter(v => v.estado === filtroEstadoActual);
 
+        // NUEVA ESTRUCTURA HTML: Usando las clases limpias de CSS
         let html = `
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; margin-bottom: 15px;">
-                <h3 style="margin: 0; border: none; padding: 0;">Control de Vehículos</h3>
-                <div style="display: flex; gap: 5px; background: rgba(0,0,0,0.3); padding: 3px; border-radius: 8px;">
-                    <button onclick="cargarVehiculosPendientes('Pendiente')" style="background: ${filtroEstadoActual === 'Pendiente' ? 'rgba(0, 210, 255, 0.3)' : 'transparent'}; color: #fff; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">Pendientes</button>
-                    <button onclick="cargarVehiculosPendientes('Terminado')" style="background: ${filtroEstadoActual === 'Terminado' ? 'rgba(46, 133, 64, 0.4)' : 'transparent'}; color: #fff; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">Terminados Hoy</button>
+            <div class="cabecera-panel-vehiculos">
+                <h3>Control de Vehículos</h3>
+                <div class="grupo-filtros">
+                    <button class="btn-filtro ${filtroEstadoActual === 'Pendiente' ? 'activo' : ''}" onclick="cargarVehiculosPendientes('Pendiente')">Pendientes</button>
+                    <button class="btn-filtro ${filtroEstadoActual === 'Terminado' ? 'activo' : ''}" onclick="cargarVehiculosPendientes('Terminado')">Terminados Hoy</button>
                 </div>
             </div>
+            <div class="grid-vehiculos">
         `;
 
         if (vehiculosFiltrados.length > 0) {
             vehiculosFiltrados.forEach(v => {
+                // Detecta qué colores aplicar
+                let claseEstado = v.estado === 'Pendiente' ? 'estado-pendiente' : 'estado-terminado';
+                
                 let detalleExtra = v.estado === 'Terminado' 
-                    ? `<div style="color: #a8f5b6; font-size: 0.85rem; margin-top: 4px;">✅ Cobro: $${v.cobro || 0} (${v.metodo_pago || 'Efectivo'})</div>` 
+                    ? `<div class="info-cobro">✅ Cobro: $${v.cobro || 0} (${v.metodo_pago || 'Efectivo'})</div>` 
                     : `<div class="info-taller-item"><strong>Falla / Motivo:</strong> ${v.motivo || 'No especificado'}</div>`;
 
                 const partesVehiculo = [v.modelo, v.color, v.anio, v.cilindraje ? `${v.cilindraje}cc` : ''].filter(Boolean);
@@ -451,25 +456,26 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                     : '';
 
                 const infoTelefono = v.telefono
-                    ? `<div class="info-taller-item"><strong>Tel:</strong> <a href="tel:${v.telefono}" onclick="event.stopPropagation()" style="color: #00d2ff; text-decoration: none;">${v.telefono}</a></div>`
+                    ? `<div class="info-taller-item"><strong>Tel:</strong> <a href="tel:${v.telefono}" class="link-telefono" onclick="event.stopPropagation()">${v.telefono}</a></div>`
                     : '';
 
                 html += `
                     <div class="tarjeta-vehiculo-pendiente" onclick="usarPlaca('${v.vehiculo}')" title="Haz clic para usar esta placa">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div class="tarjeta-header">
                             <span class="placa-badge">${v.vehiculo}</span>
-                            <span style="font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: ${v.estado === 'Pendiente' ? 'rgba(240, 173, 78, 0.2)' : 'rgba(46, 133, 64, 0.2)'}; color: ${v.estado === 'Pendiente' ? '#ffe066' : '#a8f5b6'};">${v.estado}</span>
+                            <span class="badge-estado ${claseEstado}">${v.estado}</span>
                         </div>
-                        <div class="info-taller-item" style="margin-top: 6px;"><strong>Cliente:</strong> ${v.cliente || 'N/A'}</div>
+                        <div class="info-taller-item"><strong>Cliente:</strong> ${v.cliente || 'N/A'}</div>
                         ${infoVehiculo}
                         ${infoTelefono}
                         ${detalleExtra}
                     </div>
                 `;
             });
+            html += `</div>`; // Cierra el grid
             container.innerHTML = html;
         } else {
-            container.innerHTML = html + `<p style="color: #a0a0a0; font-size: 0.9rem; text-align: center; margin: 20px 0;">No hay vehículos en la categoría '${filtroEstadoActual}'.</p>`;
+            container.innerHTML = html + `</div><p style="color: var(--texto-tenue); font-size: 0.9rem; text-align: center; margin: 20px 0; width: 100%;">No hay vehículos en la categoría '${filtroEstadoActual}'.</p>`;
         }
     } catch (e) {
         console.error("Error al cargar vehículos:", e);
