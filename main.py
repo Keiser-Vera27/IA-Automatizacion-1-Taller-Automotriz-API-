@@ -90,8 +90,8 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 groq_client = ClienteOpenAICompatible(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
 deepseek_client = ClienteOpenAICompatible(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com") if DEEPSEEK_API_KEY else None
 
-MODELO_GROQ = "llama-3.3-70b-versatile"
-MODELO_DEEPSEEK = "deepseek-chat"
+MODELO_GROQ = "openai/gpt-oss-120b"  # llama-3.3-70b-versatile fue descontinuado por Groq el 16-ago-2026
+MODELO_DEEPSEEK = "deepseek-v4-flash"  # deepseek-chat quedó retirado el 24-jul-2026
 
 
 def generar_json_con_respaldo(prompt: str, temperature: float = 0.0) -> tuple[dict, str]:
