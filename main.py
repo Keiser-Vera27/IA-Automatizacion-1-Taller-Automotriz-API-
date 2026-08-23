@@ -15,8 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator, EmailStr
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types, errors
+from openai import OpenAI as ClienteOpenAICompatible
 import pandas as pd
 from supabase import create_client, Client
 
@@ -77,7 +76,50 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")     
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+# ==============================================================================
+# PROVEEDORES DE IA — Groq (principal) + DeepSeek (respaldo)
+# ==============================================================================
+# Ambos hablan el mismo formato compatible con OpenAI, así que comparten
+# el mismo código de llamada — solo cambia la URL base, la key y el modelo.
+# Si DEEPSEEK_API_KEY no está configurada, el sistema sigue funcionando
+# solo con Groq (respaldo desactivado, no roto).
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+
+groq_client = ClienteOpenAICompatible(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
+deepseek_client = ClienteOpenAICompatible(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com") if DEEPSEEK_API_KEY else None
+
+MODELO_GROQ = "llama-3.3-70b-versatile"
+MODELO_DEEPSEEK = "deepseek-chat"
+
+
+def generar_json_con_respaldo(prompt: str, temperature: float = 0.0) -> tuple[dict, str]:
+    """
+    Pide una respuesta JSON. Intenta primero con Groq; si falla por
+    cualquier motivo, reintenta con DeepSeek (si está configurado) antes
+    de lanzar la excepción. Devuelve (json_parseado, "groq" o "deepseek").
+    """
+    prompt_json = prompt + "\n\nResponde ÚNICAMENTE con JSON válido, sin explicación."
+    try:
+        resp = groq_client.chat.completions.create(
+            model=MODELO_GROQ,
+            temperature=temperature,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt_json}],
+        )
+        return json.loads(resp.choices[0].message.content), "groq"
+    except Exception as e_groq:
+        print(f"⚠️ Groq falló, probando respaldo con DeepSeek: {e_groq}")
+        if not deepseek_client:
+            raise
+        resp = deepseek_client.chat.completions.create(
+            model=MODELO_DEEPSEEK,
+            temperature=temperature,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt_json}],
+        )
+        return json.loads(resp.choices[0].message.content), "deepseek"
 
 app = FastAPI(title="API del Taller Automotriz - Cloud Edition")
 
@@ -335,16 +377,13 @@ class SolicitudUnificada(BaseModel):
 # ==============================================================================
 
 async def trabajador_silencioso():
-    # Incluye "Pendiente" (nuevos) y los que fallaron por caída temporal de la IA,
-    # para que se autorreintenten. NO incluye "Error (No clasificable)" ni los
-    # "Bloqueado (...)" — esos son fallos de contenido, no de disponibilidad.
-    response = (
-        supabase.table("cola_mensajes")
-        .select("id, texto, taller_id")
-        .in_("estado", ["Pendiente", "Error (IA no disponible, se reintentará)"])
-        .order("id")
-        .execute()
-    )
+    # Reclama mensajes de forma ATÓMICA vía la función SQL reclamar_mensajes_pendientes:
+    # marca cada mensaje como "Procesando" en el mismo paso en que lo selecciona
+    # (SELECT ... FOR UPDATE SKIP LOCKED). Esto evita que, si en el futuro corres
+    # más de una instancia del servidor, dos procesos agarren y procesen el
+    # mismo mensaje dos veces. También rescata mensajes que quedaron
+    # "Procesando" por más de 10 minutos (servidor caído a medias).
+    response = supabase.rpc("reclamar_mensajes_pendientes", {"cantidad": 20}).execute()
     pendientes = response.data
 
     if not pendientes:
@@ -362,20 +401,22 @@ async def trabajador_silencioso():
 
         Clasificalo correctamente y extrae los datos correspondientes. Si faltan datos en el mensaje, déjalos vacíos o en 0 según corresponda.
 
+        Responde en JSON con esta forma exacta:
+        {{
+          "tipo": "reparacion" | "gasto" | "inventario" | "devolucion",
+          "reparacion": {{...}} | null,
+          "gasto": {{...}} | null,
+          "inventario": {{...}} | null,
+          "devolucion": {{...}} | null
+        }}
+        Solo llena el objeto que corresponda a "tipo"; los demás van en null.
+
         Mensaje: "{texto_msj}"
         """
 
         try:
-            respuesta = await client.aio.models.generate_content(
-                model='gemini-3.6-flash',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.0,
-                    response_mime_type="application/json",
-                    response_schema=ClasificacionMensaje,
-                ),
-            )
-            resultado = json.loads(respuesta.text)
+            resultado, proveedor_usado = await asyncio.to_thread(generar_json_con_respaldo, prompt)
+            resultado = ClasificacionMensaje.model_validate(resultado).model_dump()
             tipo = resultado.get("tipo")
 
         except Exception as e:
@@ -383,7 +424,8 @@ async def trabajador_silencioso():
             # sanos sin procesar hasta que llegara un mensaje nuevo que la
             # reactivara (de ahí los retrasos de horas). Ahora marcamos SOLO
             # este mensaje como error y seguimos con el resto de la cola.
-            print(f"⚠️ Error de IA procesando mensaje {id_msj}: {e}")
+            # Y ahora también intentamos Groq antes de rendirnos del todo.
+            print(f"⚠️ Error de IA (Gemini y Groq) procesando mensaje {id_msj}: {e}")
             supabase.table("cola_mensajes").update({"estado": "Error (IA no disponible, se reintentará)"}).eq("id", id_msj).execute()
             await asyncio.sleep(2)
             continue
@@ -533,73 +575,81 @@ async def iniciar_vigilancia_de_cola():
 # GERENTE ANALÍTICO 
 # ==============================================================================
 
-HERRAMIENTAS_REPORTES = types.Tool(function_declarations=[
-    types.FunctionDeclaration(
-        name="historial_vehiculo",
-        description=(
-            "Busca el historial de reparaciones de un vehículo por su placa. "
-            "Úsala cuando pregunten quién trabajó un vehículo, cuándo vino la última vez, "
-            "qué se le hizo, cuánto se cobró, método de pago o técnico responsable."
-        ),
-        parameters=types.Schema(
-            type="OBJECT",
-            properties={
-                "placa": types.Schema(type="STRING", description="Placa del vehículo, ej: ABB777")
+HERRAMIENTAS_REPORTES = [
+    {
+        "type": "function",
+        "function": {
+            "name": "historial_vehiculo",
+            "description": (
+                "Busca el historial de reparaciones de un vehículo por su placa. "
+                "Úsala cuando pregunten quién trabajó un vehículo, cuándo vino la última vez, "
+                "qué se le hizo, cuánto se cobró, método de pago o técnico responsable."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"placa": {"type": "string", "description": "Placa del vehículo, ej: ABB777"}},
+                "required": ["placa"],
             },
-            required=["placa"],
-        ),
-    ),
-    types.FunctionDeclaration(
-        name="cliente_top_visitas",
-        description="Devuelve el cliente que más veces ha visitado el taller en un año específico.",
-        parameters=types.Schema(
-            type="OBJECT",
-            properties={
-                "anio": types.Schema(type="INTEGER", description="Año a consultar, ej: 2026")
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cliente_top_visitas",
+            "description": "Devuelve el cliente que más veces ha visitado el taller en un año específico.",
+            "parameters": {
+                "type": "object",
+                "properties": {"anio": {"type": "integer", "description": "Año a consultar, ej: 2026"}},
+                "required": ["anio"],
             },
-            required=["anio"],
-        ),
-    ),
-    types.FunctionDeclaration(
-        name="cliente_top_gasto",
-        description="Devuelve el cliente que más dinero ha gastado en el taller y el monto total.",
-        parameters=types.Schema(
-            type="OBJECT",
-            properties={
-                "fecha_inicio": types.Schema(type="STRING", description="Fecha inicio YYYY-MM-DD, opcional (si no se menciona un rango, omitir)"),
-                "fecha_fin": types.Schema(type="STRING", description="Fecha fin YYYY-MM-DD, opcional (si no se menciona un rango, omitir)"),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cliente_top_gasto",
+            "description": "Devuelve el cliente que más dinero ha gastado en el taller y el monto total.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fecha_inicio": {"type": "string", "description": "Fecha inicio YYYY-MM-DD, opcional"},
+                    "fecha_fin": {"type": "string", "description": "Fecha fin YYYY-MM-DD, opcional"},
+                },
             },
-        ),
-    ),
-    types.FunctionDeclaration(
-        name="rendimiento_tecnico",
-        description=(
-            "Calcula cuánto dinero ha generado un técnico específico, o el ranking de todos "
-            "los técnicos, en un mes y año dado. Úsala para 'cuánto generó Fulano' o "
-            "'quién es el técnico que más generó este mes'."
-        ),
-        parameters=types.Schema(
-            type="OBJECT",
-            properties={
-                "mes": types.Schema(type="INTEGER", description="Mes numérico, 1 a 12"),
-                "anio": types.Schema(type="INTEGER", description="Año, ej: 2026"),
-                "tecnico": types.Schema(type="STRING", description="Nombre del técnico/oficial, opcional. Si preguntan 'quién generó más', omitir para traer el ranking completo."),
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "rendimiento_tecnico",
+            "description": (
+                "Calcula cuánto dinero ha generado un técnico específico, o el ranking de todos "
+                "los técnicos, en un mes y año dado."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "mes": {"type": "integer", "description": "Mes numérico, 1 a 12"},
+                    "anio": {"type": "integer", "description": "Año, ej: 2026"},
+                    "tecnico": {"type": "string", "description": "Nombre del técnico/oficial, opcional"},
+                },
+                "required": ["mes", "anio"],
             },
-            required=["mes", "anio"],
-        ),
-    ),
-    types.FunctionDeclaration(
-        name="info_repuesto",
-        description="Busca precio de venta, costo y proveedor de un repuesto por nombre o código.",
-        parameters=types.Schema(
-            type="OBJECT",
-            properties={
-                "nombre_o_codigo": types.Schema(type="STRING", description="Nombre o código del repuesto, ej: 'pastillas' o 'vss005'")
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "info_repuesto",
+            "description": "Busca precio de venta, costo y proveedor de un repuesto por nombre o código.",
+            "parameters": {
+                "type": "object",
+                "properties": {"nombre_o_codigo": {"type": "string", "description": "Nombre o código del repuesto"}},
+                "required": ["nombre_o_codigo"],
             },
-            required=["nombre_o_codigo"],
-        ),
-    ),
-])
+        },
+    },
+]
 
 def ejecutar_funcion_reporte(cliente_seguro, nombre_funcion: str, args: dict) -> dict:
     if nombre_funcion == "historial_vehiculo":
@@ -692,64 +742,89 @@ def formatear_resultado_sin_ia(nombre_funcion: str, resultado: dict) -> str:
     return f"Resultado: {resultado}"
 
 def responder_consulta_analitica(cliente_seguro, texto_usuario: str) -> str:
-    contents = [types.Content(role="user", parts=[types.Part(text=texto_usuario)])]
+    """
+    Motor analítico de dos turnos: el modelo decide qué función llamar,
+    nosotros la ejecutamos contra Supabase, y el modelo redacta la
+    respuesta final en español con el resultado real. Groq es el
+    proveedor principal; DeepSeek es el respaldo si Groq falla.
+    """
+    instruccion_sistema = (
+        "Eres el gerente analítico de un taller mecánico. Para responder preguntas "
+        "sobre historial de vehículos, clientes, técnicos o repuestos, SIEMPRE debes "
+        "llamar a la función correspondiente en vez de inventar una respuesta. "
+        "Si la pregunta no menciona mes/año explícito para técnicos, usa el mes y año actuales."
+    )
+
+    def _decidir_funcion(cliente_ia, modelo):
+        return cliente_ia.chat.completions.create(
+            model=modelo,
+            messages=[
+                {"role": "system", "content": instruccion_sistema},
+                {"role": "user", "content": texto_usuario},
+            ],
+            tools=HERRAMIENTAS_REPORTES,
+            tool_choice="auto",
+        )
+
+    llamada_nombre = None
+    args = {}
+    texto_directo = None
 
     try:
-        primera_respuesta = client.models.generate_content(
-            model='gemini-3.6-flash',
-            contents=contents,
-            config=types.GenerateContentConfig(
-                tools=[HERRAMIENTAS_REPORTES],
-                system_instruction=(
-                    "Eres el gerente analítico de un taller mecánico. Para responder preguntas "
-                    "sobre historial de vehículos, clientes, técnicos o repuestos, SIEMPRE debes "
-                    "llamar a la función correspondiente en vez de inventar una respuesta. "
-                    "Si la pregunta no menciona mes/año explícito para técnicos, usa el mes y año actuales."
-                ),
-            ),
-        )
-    except (errors.ClientError, errors.ServerError) as e:
-        codigo = getattr(e, "code", None)
-        if codigo == 429:
-            return "⏳ Se agotó la cuota de consultas a la IA por ahora. Intenta de nuevo en unos minutos."
-        if codigo == 503:
-            return "⚠️ El modelo de IA está temporalmente saturado del lado de Google. Intenta de nuevo en un momento."
-        raise
+        resp = _decidir_funcion(groq_client, MODELO_GROQ)
+    except Exception as e_groq:
+        print(f"⚠️ Groq falló decidiendo la consulta analítica: {e_groq}")
+        if not deepseek_client:
+            return "⏳ El asistente de IA no está disponible en este momento. Intenta de nuevo en unos minutos."
+        try:
+            resp = _decidir_funcion(deepseek_client, MODELO_DEEPSEEK)
+        except Exception as e_ds:
+            print(f"⚠️ DeepSeek también falló decidiendo la consulta analítica: {e_ds}")
+            return "⚠️ El asistente de IA no está disponible en este momento (ni el proveedor principal ni el de respaldo). Intenta de nuevo en unos minutos."
 
-    parte = primera_respuesta.candidates[0].content.parts[0]
-    llamada = getattr(parte, "function_call", None)
+    msj = resp.choices[0].message
+    if msj.tool_calls:
+        llamada_nombre = msj.tool_calls[0].function.name
+        args = json.loads(msj.tool_calls[0].function.arguments or "{}")
+    else:
+        texto_directo = msj.content or "No pude interpretar esa pregunta como una consulta de reportes."
 
-    if not llamada:
-        return primera_respuesta.text or "No pude interpretar esa pregunta como una consulta de reportes."
+    if texto_directo is not None:
+        return texto_directo
 
-    args = dict(llamada.args) if llamada.args else {}
-    resultado_funcion = ejecutar_funcion_reporte(cliente_seguro, llamada.name, args)
+    resultado_funcion = ejecutar_funcion_reporte(cliente_seguro, llamada_nombre, args)
 
-    contents.append(primera_respuesta.candidates[0].content)
-    contents.append(types.Content(
-        role="user",
-        parts=[types.Part.from_function_response(
-            name=llamada.name,
-            response=resultado_funcion,
-        )],
-    ))
+    # --- Segundo turno: redactar la respuesta final con el resultado real ---
+    instruccion_redaccion = (
+        "Redacta la respuesta final en español, clara y con formato Markdown. "
+        "Si el resultado viene vacío, dilo explícitamente en vez de inventar datos."
+    )
+    mensajes_redaccion = [
+        {"role": "system", "content": instruccion_redaccion},
+        {"role": "user", "content": texto_usuario},
+        {"role": "assistant", "content": None, "tool_calls": [{
+            "id": "call_1", "type": "function",
+            "function": {"name": llamada_nombre, "arguments": json.dumps(args)},
+        }]},
+        {"role": "tool", "tool_call_id": "call_1", "content": json.dumps(resultado_funcion)},
+    ]
 
     try:
-        segunda_respuesta = client.models.generate_content(
-            model='gemini-3.6-flash',
-            contents=contents,
-            config=types.GenerateContentConfig(
-                tools=[HERRAMIENTAS_REPORTES],
-                system_instruction=(
-                    "Redacta la respuesta final en español, clara y con formato Markdown. "
-                    "Si el resultado viene vacío, dilo explícitamente en vez de inventar datos."
-                ),
-            ),
-        )
-    except (errors.ClientError, errors.ServerError) as e:
-        return formatear_resultado_sin_ia(llamada.name, resultado_funcion)
+        resp_final = groq_client.chat.completions.create(model=MODELO_GROQ, messages=mensajes_redaccion)
+        return resp_final.choices[0].message.content
+    except Exception as e:
+        print(f"⚠️ Groq falló redactando la respuesta final: {e}")
 
-    return segunda_respuesta.text
+    if deepseek_client:
+        try:
+            resp_final = deepseek_client.chat.completions.create(model=MODELO_DEEPSEEK, messages=mensajes_redaccion)
+            return resp_final.choices[0].message.content
+        except Exception as e:
+            print(f"⚠️ DeepSeek también falló redactando la respuesta final: {e}")
+
+    # Última red de seguridad: mostrar el dato crudo sin redacción de IA.
+    return formatear_resultado_sin_ia(llamada_nombre, resultado_funcion)
+
 
 # ==============================================================================
 # RECEPCIÓN WEB UNIFICADA (ENRUTADOR INTELIGENTE MODIFICADO)
@@ -772,20 +847,14 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
     """
 
     try:
-        resp_router = client.models.generate_content(
-            model='gemini-3.6-flash',
-            contents=prompt_router,
-            config=types.GenerateContentConfig(response_mime_type="application/json")
-        )
-        respuesta_ia = json.loads(resp_router.text)
-        accion = respuesta_ia.get("accion", "registro")
-        placa_extraida = respuesta_ia.get("placa", "")
+        resultado_json, proveedor_usado = generar_json_con_respaldo(prompt_router)
+        accion = resultado_json.get("accion", "registro")
+        placa_extraida = resultado_json.get("placa", "")
     except Exception as e:
-        # El enrutador de IA falló (saturación, cuota, respuesta inválida, etc.).
-        # NO asumimos "registro" a ciegas: eso mete preguntas analíticas a la cola
-        # de trabajo y el usuario nunca ve respuesta. Usamos un respaldo por
-        # palabras clave para no perder la intención real del mensaje.
-        print(f"⚠️ Router de IA falló, usando respaldo por palabras clave. Error: {e}")
+        # Ni Gemini ni Groq respondieron. NO asumimos "registro" a ciegas: eso
+        # mete preguntas analíticas a la cola de trabajo y el usuario nunca ve
+        # respuesta. Usamos un respaldo por palabras clave como último recurso.
+        print(f"⚠️ Router de IA falló en ambos proveedores, usando respaldo por palabras clave. Error: {e}")
         texto_min = texto_usuario.lower()
         palabras_consulta = (
             "cuánt", "cuant", "cuál", "cual", "quién", "quien", "qué", "que ",
