@@ -834,6 +834,22 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
                 "⚠️ El asistente de IA no está disponible en este momento. "
                 "Intenta de nuevo en unos segundos."
             )
+
+        # Si la IA no está disponible (cuota agotada, saturación, o cualquier
+        # falla), NO descartamos el mensaje. Lo guardamos en la cola para que
+        # se reintente solo cuando la IA vuelva a responder. Si en verdad era
+        # una pregunta (no una acción), el trabajador de la cola simplemente
+        # la marcará como "Error (No clasificable)" sin efecto — inofensivo.
+        señales_no_disponible = ("⏳", "no está disponible", "temporalmente saturado")
+        if any(s in respuesta_analitica for s in señales_no_disponible):
+            cliente_seguro.table("cola_mensajes").insert({
+                "taller_id": taller_id,
+                "texto": texto_usuario,
+                "fecha_hora": tiempo_actual,
+                "estado": "Pendiente"
+            }).execute()
+            respuesta_analitica += "\n\n📥 Tu mensaje quedó guardado y se procesará automáticamente en cuanto la IA esté disponible."
+
         return {
             "status": "éxito_consulta",
             "tipo_detectado": "consulta",
