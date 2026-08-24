@@ -356,6 +356,60 @@ def get_dashboard_metrics(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 # ---------------------------------------------------
+@app.get("/admin/talleres/{taller_id}/ficha-360")
+def obtener_ficha_360(taller_id: str, request: Request):
+    obtener_superadmin(request)
+    
+    try:
+        # 1. Info básica
+        taller_res = supabase.table("talleres").select("*").eq("id", taller_id).execute().data
+        if not taller_res:
+            raise HTTPException(status_code=404, detail="Taller no encontrado")
+        taller = taller_res[0]
+        
+        # 2. Métricas de uso cruzando la tabla 'reparaciones'
+        reparaciones = supabase.table("reparaciones").select("vehiculo, cliente, fecha_hora").eq("taller_id", taller_id).execute().data
+        
+        total_reparaciones = len(reparaciones)
+        # Usamos set() para contar cuántos vehículos y clientes únicos hay
+        vehiculos_unicos = len(set(r.get("vehiculo") for r in reparaciones if r.get("vehiculo")))
+        clientes_unicos = len(set(r.get("cliente") for r in reparaciones if r.get("cliente")))
+        
+        # Última actividad registrada
+        ultima_actividad = "Sin actividad"
+        if reparaciones:
+            fechas = [r.get("fecha_hora") for r in reparaciones if r.get("fecha_hora")]
+            if fechas:
+                ultima_actividad = max(fechas)
+                
+        # 3. Uso de IA (Mensajes) hoy
+        hoy_inicio, hoy_fin = limites_dia_ecuador()
+        mensajes_hoy = supabase.table("cola_mensajes").select("id").eq("taller_id", taller_id).gte("fecha_hora", hoy_inicio).lte("fecha_hora", hoy_fin).execute().data
+        ia_hoy = len(mensajes_hoy)
+
+        return {
+            "taller": {
+                "id": taller.get("id"),
+                "nombre": taller.get("nombre"),
+                "email": taller.get("email"),
+                "plan": taller.get("plan", "N/A"),
+                "estado_pago": taller.get("estado_pago", "N/A"),
+                "fecha_vencimiento": taller.get("fecha_vencimiento") or "No definida",
+                "created_at": taller.get("created_at", "").split("T")[0] if taller.get("created_at") else "Desconocida"
+            },
+            "uso": {
+                "reparaciones": total_reparaciones,
+                "vehiculos": vehiculos_unicos,
+                "clientes": clientes_unicos,
+                "usuarios_admin": 1 # Por defecto mínimo el jefe
+            },
+            "actividad": {
+                "ultima_actividad": ultima_actividad,
+                "ia_hoy": ia_hoy
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==============================================================================
 # ESTRUCTURAS DE DATOS (PYDANTIC)

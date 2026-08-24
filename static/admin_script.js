@@ -137,7 +137,11 @@ async function cargarTalleres() {
                     <span><b>Vence:</b> ${fechaMostrar}</span>
                 </div>
             </div>
+            
             <div class="card-actions">
+                <!-- NUEVO BOTÓN 360 -->
+                <button class="btn-action btn-view" onclick="abrirFicha360('${t.id}')">👁️ Ficha 360°</button>
+                
                 <button class="btn-action btn-pay" onclick="modalActualizarPago('${t.id}')">Renovar Pago</button>
                 <button class="btn-action btn-suspend" onclick="suspender('${t.id}')">Suspender</button>
                 <button class="btn-action btn-user" onclick="modalAgregarUsuario('${t.id}')">+ Usuario</button>
@@ -255,3 +259,97 @@ async function suspender(id) {
 }
 
 const cerrarSesionAdmin = () => { localStorage.removeItem("admin_token"); location.reload(); }
+// --- LÓGICA FICHA 360° ---
+async function abrirFicha360(id) {
+    const token = localStorage.getItem("admin_token");
+    try {
+        // Transición de vistas
+        document.getElementById("vista-principal").style.display = "none";
+        document.getElementById("vista-360-taller").style.display = "block";
+        document.getElementById("contenido-360").innerHTML = "<p style='padding:30px; color:#aaa;'>Cargando radiografía del taller...</p>";
+        
+        const res = await fetch(`/admin/talleres/${id}/ficha-360`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) throw new Error("Error al obtener datos");
+        const data = await res.json();
+        
+        renderizarFicha360(data);
+    } catch (error) {
+        showToast("Error al cargar la ficha 360°", "error");
+        cerrarVista360();
+    }
+}
+
+function cerrarVista360() {
+    document.getElementById("vista-360-taller").style.display = "none";
+    document.getElementById("vista-principal").style.display = "block";
+}
+
+function renderizarFicha360(data) {
+    const t = data.taller;
+    const u = data.uso;
+    const a = data.actividad;
+    
+    const esActivo = t.estado_pago === 'activo';
+    const badgeEstado = esActivo 
+        ? `<span class="pill-badge pill-activo">🟢 Activo</span>` 
+        : `<span class="pill-badge pill-suspendido">🔴 Suspendido</span>`;
+
+    const html = `
+    <div class="ficha-360-container">
+        <div class="ficha-360-header">
+            <h2>${t.nombre}</h2>
+            <div class="ficha-360-badges">
+                ${badgeEstado}
+                <span class="pill-badge pill-plan">Plan ${t.plan}</span>
+                <span style="color:var(--text-muted); font-size:13px; margin-left:10px;">Cliente desde: ${t.created_at}</span>
+                <span style="color:var(--text-muted); font-size:13px; margin-left:10px;">| ID: ${t.id}</span>
+            </div>
+        </div>
+        
+        <div class="ficha-360-body">
+            <!-- Bloque Uso -->
+            <div class="ficha-seccion">
+                <h4>📊 Volúmen de Uso</h4>
+                <ul class="ficha-lista-datos">
+                    <li><span>Clientes Registrados</span> <span>${u.clientes}</span></li>
+                    <li><span>Vehículos Atendidos</span> <span>${u.vehiculos}</span></li>
+                    <li><span>Total Reparaciones</span> <span>${u.reparaciones}</span></li>
+                    <li><span>Usuarios Admin</span> <span>${u.usuarios_admin}</span></li>
+                </ul>
+            </div>
+            
+            <!-- Bloque Suscripción -->
+            <div class="ficha-seccion">
+                <h4>💳 Suscripción</h4>
+                <ul class="ficha-lista-datos">
+                    <li><span>Próximo Pago</span> <span>${t.fecha_vencimiento}</span></li>
+                    <li><span>Estado Actual</span> <span>${t.estado_pago.toUpperCase()}</span></li>
+                    <li><span>Email Contacto</span> <span style="font-size:12px;">${t.email}</span></li>
+                </ul>
+            </div>
+            
+            <!-- Bloque Actividad -->
+            <div class="ficha-seccion">
+                <h4>⚡ Actividad Reciente</h4>
+                <ul class="ficha-lista-datos">
+                    <li><span>Último acceso/registro</span> <span>${a.ultima_actividad}</span></li>
+                    <li><span>Peticiones IA (Hoy)</span> <span>${a.ia_hoy}</span></li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="ficha-360-footer">
+            <button class="btn-primary" onclick="modalActualizarPago('${t.id}')">Renovar Suscripción</button>
+            <button class="btn-ghost" onclick="modalAgregarUsuario('${t.id}')">Agregar Usuario</button>
+            <button class="btn-action btn-suspend" onclick="suspender('${t.id}')">Suspender Servicio</button>
+            
+            <!-- Preparado para la futura función 'Impersonar' -->
+            <button class="btn-action btn-user" style="margin-left:auto;" onclick="showToast('Función Entrar como Taller en desarrollo', 'info')">👤 Entrar como este Taller</button>
+        </div>
+    </div>`;
+    
+    document.getElementById("contenido-360").innerHTML = html;
+}
