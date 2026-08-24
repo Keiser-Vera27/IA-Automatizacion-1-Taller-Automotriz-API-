@@ -101,7 +101,24 @@ async function cargarDashboard() {
             document.getElementById("dash-ai-today").innerHTML = `${data.system.ai_today} <span style="font-size: 14px; font-weight:normal; color: var(--text-muted);">usos IA hoy</span>`;
             document.getElementById("dash-errors").innerText = data.system.errors;
             
-            // Mostrar la sección
+            // Renderizar Alertas Preventivas
+            if (data.alertas && data.alertas.length > 0) {
+                let htmlAlertas = "";
+                data.alertas.forEach(alerta => {
+                    let clase = "alerta-riesgo"; // Naranja por defecto
+                    if (alerta.tipo === "critico") clase = "alerta-critico"; // Rojo
+                    else if (alerta.tipo === "advertencia") clase = "alerta-advertencia"; // Amarillo
+                    
+                    htmlAlertas += `<div class="alerta-card ${clase}">${alerta.mensaje}</div>`;
+                });
+                document.getElementById("lista-alertas").innerHTML = htmlAlertas;
+            } else {
+                // Si no hay alertas, mostramos un mensaje verde tranquilizador
+                document.getElementById("lista-alertas").innerHTML = `<div class="alerta-card alerta-ok">🟢 Todo en orden. Todos los talleres están al día y activos.</div>`;
+            }
+            document.getElementById("dashboard-alertas").style.display = "block";
+            
+            // Mostrar la sección del dashboard
             document.getElementById("dashboard-section").style.display = "block";
         }
     } catch (error) {

@@ -522,3 +522,39 @@ button {
     font-size: 12px;
     color: var(--text-muted);
 }
+/* =========================================
+   ESTILOS ALERTAS PREVENTIVAS
+========================================= */
+.alerta-card {
+    padding: 14px 18px;
+    border-radius: var(--radius-btn);
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-left: 4px solid transparent;
+    background: var(--bg-input);
+    color: var(--text-main);
+}
+
+.alerta-critico {
+    border-left-color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.alerta-advertencia {
+    border-left-color: #eab308;
+    background: rgba(234, 179, 8, 0.1);
+}
+
+.alerta-riesgo {
+    border-left-color: var(--accent-orange);
+    background: rgba(255, 115, 0, 0.1);
+}
+
+.alerta-ok {
+    border-left-color: var(--accent-green);
+    color: var(--accent-green);
+    background: rgba(16, 185, 129, 0.05);
+}

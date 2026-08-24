@@ -310,33 +310,65 @@ def agregar_usuario_taller(taller_id: str, datos: NuevoUsuarioTallerRequest, req
         raise HTTPException(status_code=400, detail=f"No se pudo crear el usuario: {e}")
 
     return {"status": "éxito", "mensaje": f"Usuario agregado."}
-# ---- PEGAR AQUÍ EL NUEVO ENDPOINT DEL DASHBOARD ----
+from datetime import timedelta
+
 @app.get("/admin/dashboard-metrics")
 def get_dashboard_metrics(request: Request):
-    # Usamos tu función de seguridad existente para validar al superadmin
     obtener_superadmin(request)
     
     try:
         # 1. Consultar talleres
-        talleres = supabase.table("talleres").select("id, estado_pago, plan").execute().data
+        talleres = supabase.table("talleres").select("id, nombre, estado_pago, plan, fecha_vencimiento").execute().data
         
         total = len(talleres)
-        activos = sum(1 for t in talleres if t.get("estado_pago") == "activo")
+        activos_lista = [t for t in talleres if t.get("estado_pago") == "activo"]
+        activos = len(activos_lista)
         suspendidos = sum(1 for t in talleres if t.get("estado_pago") == "suspendido")
 
-        # 2. Consultar MRR (Asignamos valores base según el plan que tengas registrado)
-        # Esto es un ejemplo, ajusta los valores de tus planes reales
+        # 2. Consultar MRR
         precios_planes = {"mensual": 29.99, "trimestral": 79.99, "anual": 299.99}
-        mrr = sum(precios_planes.get(t.get("plan", "mensual"), 0) for t in talleres if t.get("estado_pago") == "activo")
+        mrr = sum(precios_planes.get(t.get("plan", "mensual"), 0) for t in activos_lista)
         
         # 3. Consultar uso de sistema de hoy
-        hoy_inicio, hoy_fin = limites_dia_ecuador() # Reutilizamos tu función de fechas
-        
+        hoy_inicio, hoy_fin = limites_dia_ecuador() 
         cola_hoy = supabase.table("cola_mensajes").select("id, estado").gte("fecha_hora", hoy_inicio).lte("fecha_hora", hoy_fin).execute().data
         ai_today = len(cola_hoy)
-        
-        # Contamos cuántos mensajes están en estado de error (los que empiezan con "Error")
         errors = sum(1 for msj in cola_hoy if str(msj.get("estado")).startswith("Error"))
+
+        # =========================================================
+        # 4. LÓGICA DE ALERTAS PREVENTIVAS
+        # =========================================================
+        hoy_obj = datetime.now(ZONA_ECUADOR).date()
+        limite_inactividad_obj = hoy_obj - timedelta(days=3) # 3 días sin uso = Riesgo
+        limite_inactividad_str = limite_inactividad_obj.strftime("%Y-%m-%d 00:00:00")
+
+        # Buscar talleres con actividad reciente
+        reparaciones_recientes = supabase.table("reparaciones").select("taller_id").gte("fecha_hora", limite_inactividad_str).execute().data
+        talleres_con_actividad = set(r["taller_id"] for r in reparaciones_recientes)
+
+        alertas = []
+        
+        for t in activos_lista:
+            nombre = t.get("nombre", "Taller Desconocido")
+            vencimiento_str = t.get("fecha_vencimiento")
+
+            # A. Riesgo de abandono (Churn)
+            if t["id"] not in talleres_con_actividad:
+                alertas.append({"tipo": "riesgo", "mensaje": f"⚠️ <b>{nombre}</b> lleva más de 3 días sin registrar actividad."})
+
+            # B. Pagos vencidos o próximos a vencer
+            if vencimiento_str:
+                vencimiento_obj = datetime.strptime(vencimiento_str, "%Y-%m-%d").date()
+                dias_restantes = (vencimiento_obj - hoy_obj).days
+
+                if dias_restantes < 0:
+                    alertas.append({"tipo": "critico", "mensaje": f"🔴 <b>{nombre}</b> tiene el pago vencido ({vencimiento_str})."})
+                elif 0 <= dias_restantes <= 5:
+                    alertas.append({"tipo": "advertencia", "mensaje": f"🟡 <b>{nombre}</b> vence en {dias_restantes} días ({vencimiento_str})."})
+
+        # C. Alerta del sistema
+        if errors > 0:
+            alertas.insert(0, {"tipo": "critico", "mensaje": f"🔴 Hay <b>{errors} mensajes fallidos</b> en la cola de IA que requieren tu atención."})
 
         return {
             "workshops": {
@@ -351,7 +383,8 @@ def get_dashboard_metrics(request: Request):
             "system": {
                 "ai_today": ai_today,
                 "errors": errors
-            }
+            },
+            "alertas": alertas # Nuevo nodo enviado al panel
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
