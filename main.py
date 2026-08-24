@@ -592,19 +592,38 @@ async def trabajador_silencioso():
 
         Clasificalo correctamente y extrae los datos correspondientes. Si faltan datos en el mensaje, déjalos vacíos o en 0 según corresponda.
 
-        Responde en JSON con esta forma exacta:
+        Responde en JSON con esta estructura EXACTA. Separa las características del vehículo en sus campos correspondientes:
         {{
           "tipo": "reparacion" | "gasto" | "inventario" | "devolucion",
-          "reparacion": {{...}} | null,
-          "gasto": {{...}} | null,
-          "inventario": {{...}} | null,
-          "devolucion": {{...}} | null
+          "reparacion": {{
+              "vehiculo": "EXTRAE SOLO LA PLACA AQUÍ (sin guiones, ej. ABB3322)",
+              "modelo": "Marca y modelo (ej. Chevrolet Sail)",
+              "color": "Color del auto (ej. negro)",
+              "anio": "Año (ej. 2023)",
+              "cilindraje": "Cilindraje (ej. 1.4)",
+              "cliente": "Nombre del cliente",
+              "cobro": 0.0,
+              "trabajo_realizado": "Descripción del trabajo",
+              "repuestos_usados": [
+                  {{"codigo": "codigo_repuesto", "cantidad": 1}}
+              ]
+          }} | null,
+          "gasto": {{
+              "monto": 0.0,
+              "motivo": "",
+              "vehiculo": "placa o N/A",
+              "responsable": ""
+          }} | null,
+          "inventario": {{
+              "codigo": "", "nombre": "", "marca": "", "cantidad": 0, "costo": 0.0, "precio_venta": 0.0, "proveedor": ""
+          }} | null,
+          "devolucion": {{
+              "codigo": "", "cantidad": 0, "motivo": ""
+          }} | null
         }}
-        Solo llena el objeto que corresponda a "tipo"; los demás van en null.
 
         Mensaje: "{texto_msj}"
         """
-
         try:
             resultado, proveedor_usado = await asyncio.to_thread(generar_json_con_respaldo, prompt)
             resultado = ClasificacionMensaje.model_validate(resultado).model_dump()
