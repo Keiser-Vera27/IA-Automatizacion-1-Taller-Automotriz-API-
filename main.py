@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from openai import OpenAI as ClienteOpenAICompatible
 import pandas as pd
 from supabase import create_client, Client
+import re # Asegúrate de que esto esté al inicio de tu archivo main.py
 
 
 def normalizar_placa(texto: str) -> str:
@@ -483,12 +484,14 @@ class RepuestoUsado(BaseModel):
     codigo: str = Field(description="Código exacto del repuesto usado (ej: vss005)")
     cantidad: int = Field(description="Cantidad de unidades utilizadas")
 
+
+
 class TrabajoTaller(BaseModel):
-    vehiculo: str = Field(description="OBLIGATORIO: Extrae ÚNICAMENTE la placa del vehículo (letras y números sin espacios, ej: PXY9876, ABB777). No incluyas marca ni color. Si no hay placa, extrae solo el modelo principal.")
-    modelo: str = Field(default="", description="Marca y modelo del vehículo si se menciona, ej: 'Toyota Corolla', 'Kia Sportage'. Vacío si no se menciona.")
-    color: str = Field(default="", description="Color del vehículo si se menciona, ej: 'blanco', 'gris plata'. Vacío si no se menciona.")
-    anio: str = Field(default="", description="Año del vehículo si se menciona, ej: '2019'. Vacío si no se menciona.")
-    cilindraje: str = Field(default="", description="Cilindraje del motor si se menciona, ej: '1.6', '2000cc'. Vacío si no se menciona.")
+    vehiculo: str = Field(description="OBLIGATORIO: Extrae ÚNICAMENTE la placa del vehículo (ej: PXY9876, GPU340). NUNCA incluyas la marca o color aquí.")
+    modelo: str = Field(default="", description="Marca y modelo del vehículo, ej: 'Toyota Corolla'. Vacío si no se menciona.")
+    color: str = Field(default="", description="Color, ej: 'blanco'. Vacío si no se menciona.")
+    anio: str = Field(default="")
+    cilindraje: str = Field(default="")
     cliente: str = ""
     cedula: str = ""
     telefono: str = ""
@@ -498,12 +501,42 @@ class TrabajoTaller(BaseModel):
     cobro: float = 0.0
     metodo_pago: str = ""
     banco: str = ""
-    repuestos_usados: list[RepuestoUsado] = Field(default=[], description="Lista de repuestos del inventario usados en esta reparación")
+    repuestos_usados: list[RepuestoUsado] = Field(default=[])
 
-    @field_validator("vehiculo")
+    @field_validator("vehiculo", mode="before")
     @classmethod
-    def _normalizar_placa_capturada(cls, v):
-        return normalizar_placa(v)
+    def _limpiar_placa_inteligente(cls, v):
+        if not v or str(v).lower() in ["s/c", "n/a", "no especificado", "ninguna", "---"]:
+            return ""
+        
+        # 1. Buscar patrón exacto de placa Ecuatoriana (ej: ABC-1234, GPU340, AB-123)
+        patron = re.search(r'[a-zA-Z]{2,3}[-\s]?\d{3,4}[a-zA-Z]?', str(v))
+        if patron:
+            return normalizar_placa(patron.group(0))
+            
+        # 2. Si no es una placa estándar pero es corto (menos de 9 caracteres), lo aceptamos
+        if len(str(v)) <= 9:
+            return normalizar_placa(str(v))
+            
+        # 3. Si la IA mandó un texto gigante y no hay placa visible, se descarta para no corromper la BD
+        return ""
+
+    @field_validator("cobro", mode="before")
+    @classmethod
+    def _asegurar_numero(cls, v):
+        if not v or v == "": 
+            return 0.0
+        # Limpiar símbolos de dólar o comas si la IA los envía por error
+        if isinstance(v, str):
+            v = v.replace("$", "").replace(",", ".").strip()
+            # Extraer solo los números
+            numeros = re.findall(r"[-+]?\d*\.\d+|\d+", v)
+            if numeros:
+                return float(numeros[0])
+        try:
+            return float(v)
+        except:
+            return 0.0
 
 class GastoTaller(BaseModel):
     monto: float = Field(description="Cantidad de dinero gastada en números decimales")
@@ -535,18 +568,12 @@ class ClasificacionMensaje(BaseModel):
 
 class SolicitudUnificada(BaseModel):
     texto: str
-
 # ==============================================================================
 # TRABAJADOR SILENCIOSO
 # ==============================================================================
 
 async def trabajador_silencioso():
-    # Reclama mensajes de forma ATÓMICA vía la función SQL reclamar_mensajes_pendientes:
-    # marca cada mensaje como "Procesando" en el mismo paso en que lo selecciona
-    # (SELECT ... FOR UPDATE SKIP LOCKED). Esto evita que, si en el futuro corres
-    # más de una instancia del servidor, dos procesos agarren y procesen el
-    # mismo mensaje dos veces. También rescata mensajes que quedaron
-    # "Procesando" por más de 10 minutos (servidor caído a medias).
+    # Reclama mensajes de forma ATÓMICA vía la función SQL reclamar_mensajes_pendientes
     response = supabase.rpc("reclamar_mensajes_pendientes", {"cantidad": 20}).execute()
     pendientes = response.data
 
@@ -584,13 +611,18 @@ async def trabajador_silencioso():
             tipo = resultado.get("tipo")
 
         except Exception as e:
-            # Antes esto detenía TODA la cola con un 'break', dejando mensajes
-            # sanos sin procesar hasta que llegara un mensaje nuevo que la
-            # reactivara (de ahí los retrasos de horas). Ahora marcamos SOLO
-            # este mensaje como error y seguimos con el resto de la cola.
-            # Y ahora también intentamos Groq antes de rendirnos del todo.
-            print(f"⚠️ Error de IA (Gemini y Groq) procesando mensaje {id_msj}: {e}")
-            supabase.table("cola_mensajes").update({"estado": "Error (IA no disponible, se reintentará)"}).eq("id", id_msj).execute()
+            # NUEVO BLOQUE: Clasificación inteligente de errores
+            tipo_error = str(type(e))
+            
+            if "ValidationError" in tipo_error:
+                estado_error = "Error de Formato. IA envió un dato incompleto o inválido."
+            elif "JSONDecodeError" in tipo_error or "Expecting value" in str(e):
+                estado_error = "Error. La respuesta de la IA fue ilegible."
+            else:
+                estado_error = "Error (IA no disponible o tiempo agotado)."
+                
+            print(f"⚠️ Error procesando mensaje {id_msj}: {e}")
+            supabase.table("cola_mensajes").update({"estado": estado_error}).eq("id", id_msj).execute()
             await asyncio.sleep(2)
             continue
 
@@ -713,7 +745,6 @@ async def trabajador_silencioso():
 
         supabase.table("cola_mensajes").update({"estado": "Procesado"}).eq("id", id_msj).execute()
         await asyncio.sleep(3)
-
 
 # ==============================================================================
 # AUTO-RECUPERACIÓN DE LA COLA (sin depender de que llegue un mensaje nuevo)
