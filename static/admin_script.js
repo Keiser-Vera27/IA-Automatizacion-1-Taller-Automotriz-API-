@@ -137,7 +137,7 @@ async function cargarTalleres() {
                     <span><b>Vence:</b> ${fechaMostrar}</span>
                 </div>
             </div>
-            
+
             <div class="card-actions">
                 <!-- NUEVO BOTÓN 360 -->
                 <button class="btn-action btn-view" onclick="abrirFicha360('${t.id}')">👁️ Ficha 360°</button>
@@ -352,4 +352,95 @@ function renderizarFicha360(data) {
     </div>`;
     
     document.getElementById("contenido-360").innerHTML = html;
+}
+// ==========================================================================
+//   LÓGICA DEL MONITOR DE IA
+// ==========================================================================
+
+function abrirMonitorIA() {
+    document.getElementById("vista-principal").style.display = "none";
+    document.getElementById("vista-360-taller").style.display = "none";
+    document.getElementById("vista-monitor-ia").style.display = "block";
+    cargarColaIA();
+}
+
+function cerrarMonitorIA() {
+    document.getElementById("vista-monitor-ia").style.display = "none";
+    document.getElementById("vista-principal").style.display = "block";
+    cargarDashboard(); // Actualizar el conteo de errores por si reprocesamos
+}
+
+async function cargarColaIA() {
+    const token = localStorage.getItem("admin_token");
+    const contenedor = document.getElementById("lista-cola-ia");
+    contenedor.innerHTML = "<p style='color:#aaa;'>Cargando cola...</p>";
+    
+    try {
+        const res = await fetch("/admin/cola", {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) throw new Error("Error al obtener la cola");
+        const data = await res.json();
+        
+        if (data.mensajes.length === 0) {
+            contenedor.innerHTML = "<p style='color:var(--accent-green);'>🎉 La cola está limpia. No hay mensajes recientes.</p>";
+            return;
+        }
+
+        let html = "";
+        data.mensajes.forEach(m => {
+            // Determinar color del badge según estado
+            let badgeClass = "pill-plan"; // gris
+            let mostrarBoton = false;
+            
+            if (m.estado === "Pendiente" || m.estado === "Procesando") {
+                badgeClass = "pill-plan"; 
+            } else if (m.estado === "Procesado") {
+                badgeClass = "pill-activo"; // verde
+            } else {
+                badgeClass = "pill-suspendido"; // rojo para errores o bloqueos
+                mostrarBoton = true; // Solo reprocesamos si hubo error/bloqueo
+            }
+            
+            const nombreTaller = m.talleres ? m.talleres.nombre : 'Taller Desconocido';
+            
+            html += `
+            <div class="cola-card">
+                <div class="cola-info">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span class="pill-badge ${badgeClass}">${m.estado}</span>
+                        <span class="cola-meta"><b>${nombreTaller}</b> • ${m.fecha_hora}</span>
+                    </div>
+                    <div class="cola-texto">"${m.texto}"</div>
+                </div>
+                ${mostrarBoton ? `<button class="btn-action btn-pay" onclick="reprocesarMensaje('${m.id}')">🔄 Reprocesar</button>` : ''}
+            </div>`;
+        });
+        
+        contenedor.innerHTML = html;
+        
+    } catch (error) {
+        showToast("Error al cargar la cola de IA", "error");
+        contenedor.innerHTML = "<p style='color:var(--accent-red);'>Error cargando datos.</p>";
+    }
+}
+
+async function reprocesarMensaje(id) {
+    const token = localStorage.getItem("admin_token");
+    try {
+        showToast("Enviando a reprocesar...", "info");
+        
+        const res = await fetch(`/admin/cola/${id}/reprocesar`, {
+            method: "POST",
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) throw new Error("Error al reprocesar");
+        
+        showToast("¡Mensaje reencolado con éxito!", "success");
+        cargarColaIA(); // Refrescar la lista al instante
+    } catch (error) {
+        showToast("Error al intentar reprocesar", "error");
+    }
 }

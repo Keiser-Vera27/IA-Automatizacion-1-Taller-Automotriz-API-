@@ -410,6 +410,37 @@ def obtener_ficha_360(taller_id: str, request: Request):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    # ==============================================================================
+# MONITOR DE IA Y COLA DE PROCESAMIENTO
+# ==============================================================================
+@app.get("/admin/cola")
+def obtener_cola_ia(request: Request, limite: int = 50):
+    obtener_superadmin(request)
+    try:
+        # Obtenemos los últimos mensajes, trayendo también el nombre del taller
+        res = supabase.table("cola_mensajes") \
+            .select("id, texto, estado, fecha_hora, talleres(nombre)") \
+            .order("id", desc=True) \
+            .limit(limite) \
+            .execute()
+        
+        return {"mensajes": res.data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al leer la cola: {str(e)}")
+
+@app.post("/admin/cola/{mensaje_id}/reprocesar")
+def reprocesar_mensaje(mensaje_id: str, background_tasks: BackgroundTasks, request: Request):
+    obtener_superadmin(request)
+    try:
+        # 1. Regresamos el estado a "Pendiente"
+        supabase.table("cola_mensajes").update({"estado": "Pendiente"}).eq("id", mensaje_id).execute()
+        
+        # 2. ¡Despertamos al trabajador silencioso inmediatamente!
+        background_tasks.add_task(trabajador_silencioso)
+        
+        return {"status": "éxito", "mensaje": "Mensaje enviado a reprocesamiento"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==============================================================================
 # ESTRUCTURAS DE DATOS (PYDANTIC)

@@ -487,3 +487,38 @@ button {
     background: var(--accent-blue);
     color: #fff;
 }
+/* =========================================
+   ESTILOS MONITOR COLA IA
+========================================= */
+.cola-card {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-btn);
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+}
+
+.cola-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+}
+
+.cola-texto {
+    color: var(--text-main);
+    font-size: 14px;
+    font-style: italic;
+    background: rgba(255,255,255,0.03);
+    padding: 8px 12px;
+    border-radius: 6px;
+    border-left: 3px solid var(--text-muted);
+}
+
+.cola-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+}

@@ -64,11 +64,13 @@
                         </div>
                     </div>
                     <div class="metric-card">
-                        <h4>Ingresos (MRR)</h4>
-                        <div class="metric-main-value" style="color: var(--accent-green);" id="dash-mrr">$0</div>
+                        <h4>Estado del Sistema</h4>
+                        <div class="metric-main-value" id="dash-ai-today">-- <span style="font-size: 14px; font-weight:normal; color: var(--text-muted);">usos IA hoy</span></div>
                         <div class="metric-sub-stats">
-                            <span class="pill-badge pill-plan">Activas: <b id="dash-active-subs">-</b></span>
+                            <span class="pill-badge pill-suspendido">Errores: <b id="dash-errors">-</b></span>
                         </div>
+                        <!-- NUEVO BOTÓN -->
+                        <button class="btn-ghost" onclick="abrirMonitorIA()" style="width: 100%; margin-top: 15px; font-size: 12px;">Abrir Monitor de IA</button>
                     </div>
                     <div class="metric-card">
                         <h4>Estado del Sistema</h4>
@@ -106,6 +108,20 @@
             <button class="btn-ghost" onclick="cerrarVista360()" style="margin-bottom: 25px;">← Volver al panel principal</button>
             <div id="contenido-360">
                 <!-- Cargado dinámicamente por JS -->
+            </div>
+        </div>
+        <!-- CONTENEDOR NUEVO: VISTA MONITOR IA -->
+        <div id="vista-monitor-ia" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                <button class="btn-ghost" onclick="cerrarMonitorIA()">← Volver al panel</button>
+                <button class="btn-primary" onclick="cargarColaIA()" style="padding: 8px 15px; font-size: 12px;">🔄 Actualizar</button>
+            </div>
+            
+            <div class="panel-box">
+                <h3 class="section-title">Monitor de Cola de Procesamiento</h3>
+                <div id="lista-cola-ia" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Se carga por JS -->
+                </div>
             </div>
         </div>
     </div>
