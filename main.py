@@ -641,10 +641,14 @@ HERRAMIENTAS_REPORTES = [
         "type": "function",
         "function": {
             "name": "info_repuesto",
-            "description": "Busca precio de venta, costo y proveedor de un repuesto por nombre o código.",
+            "description": (
+                "Busca repuestos en el inventario por nombre, código, marca o descripción libre "
+                "de compatibilidad (ej: 'sensor CKP Sail 1.4 2013'). No hace falta el código exacto: "
+                "la búsqueda es flexible y puede devolver varios resultados de distintas marcas."
+            ),
             "parameters": {
                 "type": "object",
-                "properties": {"nombre_o_codigo": {"type": "string", "description": "Nombre o código del repuesto"}},
+                "properties": {"nombre_o_codigo": {"type": "string", "description": "Descripción, nombre, marca o código del repuesto, tal como lo dijo el usuario"}},
                 "required": ["nombre_o_codigo"],
             },
         },
@@ -687,13 +691,15 @@ def ejecutar_funcion_reporte(cliente_seguro, nombre_funcion: str, args: dict) ->
 
     if nombre_funcion == "info_repuesto":
         termino = args.get("nombre_o_codigo", "")
-        data = (
-            cliente_seguro.table("inventario")
-            .select("codigo, nombre, marca, proveedor, aplicacion, cantidad, costo, precio_venta")
-            .or_(f"nombre.ilike.%{termino}%,codigo.ilike.%{termino}%")
-            .limit(5)
-            .execute()
-        ).data
+        # Búsqueda de texto completo (no ILIKE literal): encuentra coincidencias
+        # aunque el usuario no sepa el código exacto ni el orden de las palabras
+        # ("sensor CKP Sail 1.4 2013" en vez de "CKP001"). El campo "aplicacion"
+        # es el que guarda la compatibilidad de vehículo — nunca lo infiere la IA.
+        taller_id = args.get("_taller_id")
+        data = cliente_seguro.rpc(
+            "buscar_repuestos_flexible",
+            {"p_taller_id": taller_id, "p_termino": termino, "p_limite": 15},
+        ).execute().data
         return {"resultados": data}
 
     return {"error": f"Función '{nombre_funcion}' no reconocida"}
@@ -702,12 +708,13 @@ def formatear_resultado_sin_ia(nombre_funcion: str, resultado: dict) -> str:
     if nombre_funcion == "info_repuesto":
         items = resultado.get("resultados", [])
         if not items:
-            return "No encontré ningún repuesto con ese nombre o código."
-        lineas = ["**Repuestos encontrados:**"]
+            return "No encontré ningún repuesto que coincida con esa descripción."
+        lineas = [f"**Encontrado{'s' if len(items) > 1 else ''} ({len(items)}):**"]
         for r in items:
             lineas.append(
-                f"- **{r.get('nombre', '?')}** ({r.get('codigo', 'S/C')}) — "
-                f"Precio venta: ${r.get('precio_venta', 0)} · Stock: {r.get('cantidad', 0)} · "
+                f"- **{r.get('nombre', '?')}** — Marca: {r.get('marca', 'N/A')} · "
+                f"Código: {r.get('codigo', 'S/C')} · Aplicación: {r.get('aplicacion', 'N/A')} · "
+                f"Precio: ${r.get('precio_venta', 0)} · Stock: {r.get('cantidad', 0)} · "
                 f"Proveedor: {r.get('proveedor', 'N/A')}"
             )
         return "\n".join(lineas)
@@ -741,7 +748,7 @@ def formatear_resultado_sin_ia(nombre_funcion: str, resultado: dict) -> str:
 
     return f"Resultado: {resultado}"
 
-def responder_consulta_analitica(cliente_seguro, texto_usuario: str) -> str:
+def responder_consulta_analitica(cliente_seguro, texto_usuario: str, taller_id) -> str:
     """
     Motor analítico de dos turnos: el modelo decide qué función llamar,
     nosotros la ejecutamos contra Supabase, y el modelo redacta la
@@ -792,12 +799,17 @@ def responder_consulta_analitica(cliente_seguro, texto_usuario: str) -> str:
     if texto_directo is not None:
         return texto_directo
 
-    resultado_funcion = ejecutar_funcion_reporte(cliente_seguro, llamada_nombre, args)
+    resultado_funcion = ejecutar_funcion_reporte(cliente_seguro, llamada_nombre, {**args, "_taller_id": taller_id})
 
     # --- Segundo turno: redactar la respuesta final con el resultado real ---
     instruccion_redaccion = (
         "Redacta la respuesta final en español, clara y con formato Markdown. "
-        "Si el resultado viene vacío, dilo explícitamente en vez de inventar datos."
+        "Si el resultado viene vacío, dilo explícitamente en vez de inventar datos. "
+        "Si el resultado trae varios repuestos (distintas marcas, códigos o aplicaciones), "
+        "MUÉSTRALOS TODOS por separado con su marca, precio y stock — nunca elijas uno solo "
+        "ni afirmes cuál es el correcto para el vehículo del cliente; esa decisión es del taller, "
+        "no tuya. Nunca afirmes que un repuesto es compatible con un vehículo salvo que el campo "
+        "'aplicación' del resultado lo confirme explícitamente."
     )
     mensajes_redaccion = [
         {"role": "system", "content": instruccion_redaccion},
@@ -896,7 +908,7 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
     # --- CONSULTA ANALÍTICA ---
     if accion == "consulta":
         try:
-            respuesta_analitica = responder_consulta_analitica(cliente_seguro, texto_usuario)
+            respuesta_analitica = responder_consulta_analitica(cliente_seguro, texto_usuario, taller_id)
         except Exception as e:
             print(f"⚠️ Falló la consulta analítica: {e}")
             respuesta_analitica = (
