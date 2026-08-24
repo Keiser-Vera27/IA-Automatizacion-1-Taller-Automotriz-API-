@@ -55,6 +55,8 @@
             <div id="dashboard-section" class="panel-box" style="display: none;">
                 <h3 class="section-title">Resumen Operativo</h3>
                 <div class="metrics-grid">
+                    
+                    <!-- Tarjeta 1: Talleres -->
                     <div class="metric-card">
                         <h4>Talleres</h4>
                         <div class="metric-main-value" id="dash-total-workshops">--</div>
@@ -63,25 +65,30 @@
                             <span class="pill-badge pill-suspendido">Suspendidos: <b id="dash-suspended-workshops">-</b></span>
                         </div>
                     </div>
+                    
+                    <!-- Tarjeta 2: Ingresos -->
+                    <div class="metric-card">
+                        <h4>Ingresos (MRR)</h4>
+                        <div class="metric-main-value" style="color: var(--accent-green);" id="dash-mrr">$0</div>
+                        <div class="metric-sub-stats">
+                            <span class="pill-badge pill-plan">Activas: <b id="dash-active-subs">-</b></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Tarjeta 3: Sistema y Monitor IA -->
                     <div class="metric-card">
                         <h4>Estado del Sistema</h4>
                         <div class="metric-main-value" id="dash-ai-today">-- <span style="font-size: 14px; font-weight:normal; color: var(--text-muted);">usos IA hoy</span></div>
                         <div class="metric-sub-stats">
                             <span class="pill-badge pill-suspendido">Errores: <b id="dash-errors">-</b></span>
                         </div>
-                        <!-- NUEVO BOTÓN -->
                         <button class="btn-ghost" onclick="abrirMonitorIA()" style="width: 100%; margin-top: 15px; font-size: 12px;">Abrir Monitor de IA</button>
                     </div>
-                    <div class="metric-card">
-                        <h4>Estado del Sistema</h4>
-                        <div class="metric-main-value" id="dash-ai-today">-- <span style="font-size: 14px; font-weight:normal; color: var(--text-muted);">usos IA hoy</span></div>
-                        <div class="metric-sub-stats">
-                            <span class="pill-badge pill-suspendido">Errores: <b id="dash-errors">-</b></span>
-                        </div>
-                    </div>
+
                 </div>
             </div>
 
+            <!-- CREAR TALLER -->
             <div class="panel-box">
                 <h3 class="section-title">Registrar Nuevo Taller Cliente</h3>
                 <div class="form-alta-taller">
@@ -103,13 +110,14 @@
             </div>
         </div>
 
-        <!-- CONTENEDOR NUEVO: VISTA 360° (Oculto por defecto) -->
+        <!-- CONTENEDOR VISTA 360° -->
         <div id="vista-360-taller" style="display: none;">
             <button class="btn-ghost" onclick="cerrarVista360()" style="margin-bottom: 25px;">← Volver al panel principal</button>
             <div id="contenido-360">
                 <!-- Cargado dinámicamente por JS -->
             </div>
         </div>
+
         <!-- CONTENEDOR NUEVO: VISTA MONITOR IA -->
         <div id="vista-monitor-ia" style="display: none;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
