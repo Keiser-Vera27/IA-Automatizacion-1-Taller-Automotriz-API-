@@ -8,10 +8,10 @@
 </head>
 <body>
 
-    <!-- NOTIFICACIONES TOAST (Reemplaza los alerts con IP) -->
+    <!-- NOTIFICACIONES TOAST -->
     <div id="toast-container"></div>
 
-    <!-- MODAL DE ACCIONES (Reemplaza los prompts con IP) -->
+    <!-- MODAL DE ACCIONES -->
     <div id="modal-overlay" class="modal-overlay">
         <div class="modal-box">
             <h3 id="modal-titulo" class="section-title">Acción</h3>
@@ -48,34 +48,67 @@
             <button class="btn-ghost" onclick="cerrarSesionAdmin()">Cerrar Sesión</button>
         </div>
 
-        <div class="panel-box">
-            <h3 class="section-title">Registrar Nuevo Taller Cliente</h3>
-            <div class="form-alta-taller">
-                <input type="text" id="nuevo_nombre" placeholder="Nombre Taller">
-                <input type="email" id="nuevo_email" placeholder="Email Jefe">
-                <input type="password" id="nuevo_pass" placeholder="Password Jefe">
-                <select id="nuevo_plan">
-                    <option value="mensual">Plan Mensual</option>
-                    <option value="trimestral">Plan Trimestral</option>
-                    <option value="anual">Plan Anual</option>
-                </select>
-                <button class="btn-primary" onclick="crearTaller()">Crear Taller</button>
+        <!-- CONTENEDOR VISTA PRINCIPAL (Dashboard y Listado) -->
+        <div id="vista-principal">
+            
+            <!-- DASHBOARD -->
+            <div id="dashboard-section" class="panel-box" style="display: none;">
+                <h3 class="section-title">Resumen Operativo</h3>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <h4>Talleres</h4>
+                        <div class="metric-main-value" id="dash-total-workshops">--</div>
+                        <div class="metric-sub-stats">
+                            <span class="pill-badge pill-activo">Activos: <b id="dash-active-workshops">-</b></span>
+                            <span class="pill-badge pill-suspendido">Suspendidos: <b id="dash-suspended-workshops">-</b></span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Ingresos (MRR)</h4>
+                        <div class="metric-main-value" style="color: var(--accent-green);" id="dash-mrr">$0</div>
+                        <div class="metric-sub-stats">
+                            <span class="pill-badge pill-plan">Activas: <b id="dash-active-subs">-</b></span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Estado del Sistema</h4>
+                        <div class="metric-main-value" id="dash-ai-today">-- <span style="font-size: 14px; font-weight:normal; color: var(--text-muted);">usos IA hoy</span></div>
+                        <div class="metric-sub-stats">
+                            <span class="pill-badge pill-suspendido">Errores: <b id="dash-errors">-</b></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-box">
+                <h3 class="section-title">Registrar Nuevo Taller Cliente</h3>
+                <div class="form-alta-taller">
+                    <input type="text" id="nuevo_nombre" placeholder="Nombre Taller">
+                    <input type="email" id="nuevo_email" placeholder="Email Jefe">
+                    <input type="password" id="nuevo_pass" placeholder="Password Jefe">
+                    <select id="nuevo_plan">
+                        <option value="mensual">Plan Mensual</option>
+                        <option value="trimestral">Plan Trimestral</option>
+                        <option value="anual">Plan Anual</option>
+                    </select>
+                    <button class="btn-primary" onclick="crearTaller()">Crear Taller</button>
+                </div>
+            </div>
+
+            <h3 class="section-title">Talleres Registrados</h3>
+            <div id="lista-talleres" class="talleres-grid">
+                <!-- Cargado por JS -->
             </div>
         </div>
 
-        <h3 class="section-title">Talleres Registrados</h3>
-        <div id="lista-talleres" class="talleres-grid">
-            <!-- Cargado por JS -->
+        <!-- CONTENEDOR NUEVO: VISTA 360° (Oculto por defecto) -->
+        <div id="vista-360-taller" style="display: none;">
+            <button class="btn-ghost" onclick="cerrarVista360()" style="margin-bottom: 25px;">← Volver al panel principal</button>
+            <div id="contenido-360">
+                <!-- Cargado dinámicamente por JS -->
+            </div>
         </div>
     </div>
-    <!-- CONTENEDOR NUEVO: VISTA 360° (Oculto por defecto) -->
-    <div id="vista-360-taller" style="display: none;">
-        <button class="btn-ghost" onclick="cerrarVista360()" style="margin-bottom: 25px;">← Volver al panel principal</button>
-        <div id="contenido-360">
-            <!-- Cargado dinámicamente por JS -->
-        </div>
-    </div>
-</div>
 
     <script src="admin_script.js"></script>
 </body>
