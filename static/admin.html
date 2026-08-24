@@ -84,8 +84,10 @@
                         </div>
                         <button class="btn-ghost" onclick="abrirMonitorIA()" style="width: 100%; margin-top: 15px; font-size: 12px;">Abrir Monitor de IA</button>
                     </div>
-                <div>
-                    <!-- NUEVO: SECCIÓN DE ALERTAS PREVENTIVAS -->
+
+                </div> <!-- AQUI SE CIERRA LA CUADRÍCULA -->
+
+                <!-- SECCIÓN DE ALERTAS PREVENTIVAS -->
                 <div id="dashboard-alertas" style="margin-top: 30px; display: none;">
                     <h4 style="color: var(--text-muted); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;">🚨 Requieren tu Atención</h4>
                     <div id="lista-alertas" style="display: flex; flex-direction: column; gap: 10px;">
@@ -93,7 +95,7 @@
                     </div>
                 </div>
                 
-            </div>
+            </div> <!-- AQUI SE CIERRA EL DASHBOARD -->
 
             <!-- CREAR TALLER -->
             <div class="panel-box">
@@ -115,7 +117,8 @@
             <div id="lista-talleres" class="talleres-grid">
                 <!-- Cargado por JS -->
             </div>
-        </div>
+            
+        </div> <!-- AQUI SE CIERRA LA VISTA PRINCIPAL -->
 
         <!-- CONTENEDOR VISTA 360° -->
         <div id="vista-360-taller" style="display: none;">
@@ -139,7 +142,8 @@
                 </div>
             </div>
         </div>
-    </div>
+        
+    </div> <!-- AQUI SE CIERRA EL PANEL COMPLETO -->
 
     <script src="admin_script.js"></script>
 </body>
