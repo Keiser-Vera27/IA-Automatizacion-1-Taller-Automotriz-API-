@@ -265,6 +265,13 @@ hr {
    APP PRINCIPAL & CONTENEDORES
    ============================================================================== */
 /* Banner de Bienvenida: Estilo corporativo sólido, diferenciado del botón y sin emoji */
+.contenedor {
+    max-width: 1100px;
+    margin: 40px auto;
+    padding: 0 20px;
+    width: 100%;
+    box-sizing: border-box;
+}
 .banner-bienvenida {
     font-family: var(--fuente-display); 
     font-weight: 600; 
