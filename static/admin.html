@@ -8,10 +8,10 @@
 </head>
 <body>
 
-    <!-- NOTIFICACIONES TOAST (Reemplaza los alerts con IP) -->
+    <!-- NOTIFICACIONES TOAST -->
     <div id="toast-container"></div>
 
-    <!-- MODAL DE ACCIONES (Reemplaza los prompts con IP) -->
+    <!-- MODAL DE ACCIONES -->
     <div id="modal-overlay" class="modal-overlay">
         <div class="modal-box">
             <h3 id="modal-titulo" class="section-title">Acción</h3>
@@ -47,6 +47,43 @@
             </div>
             <button class="btn-ghost" onclick="cerrarSesionAdmin()">Cerrar Sesión</button>
         </div>
+
+        <!-- ================= DASHBOARD ================= -->
+        <div id="dashboard-section" class="panel-box" style="display: none;">
+            <h3 class="section-title">Resumen Operativo</h3>
+            <div class="metrics-grid">
+                
+                <!-- Tarjeta Talleres -->
+                <div class="metric-card">
+                    <h4>Talleres</h4>
+                    <div class="metric-main-value" id="dash-total-workshops">--</div>
+                    <div class="metric-sub-stats">
+                        <span class="pill-badge pill-activo">Activos: <b id="dash-active-workshops">-</b></span>
+                        <span class="pill-badge pill-suspendido">Suspendidos: <b id="dash-suspended-workshops">-</b></span>
+                    </div>
+                </div>
+
+                <!-- Tarjeta Ingresos -->
+                <div class="metric-card">
+                    <h4>Ingresos (MRR)</h4>
+                    <div class="metric-main-value" style="color: var(--accent-green);" id="dash-mrr">$0</div>
+                    <div class="metric-sub-stats">
+                        <span class="pill-badge pill-plan">Activas: <b id="dash-active-subs">-</b></span>
+                    </div>
+                </div>
+
+                <!-- Tarjeta Sistema -->
+                <div class="metric-card">
+                    <h4>Estado del Sistema</h4>
+                    <div class="metric-main-value" id="dash-ai-today">-- <span style="font-size: 14px; font-weight:normal; color: var(--text-muted);">usos IA hoy</span></div>
+                    <div class="metric-sub-stats">
+                        <span class="pill-badge pill-suspendido">Errores: <b id="dash-errors">-</b></span>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+        <!-- ====================================================== -->
 
         <div class="panel-box">
             <h3 class="section-title">Registrar Nuevo Taller Cliente</h3>

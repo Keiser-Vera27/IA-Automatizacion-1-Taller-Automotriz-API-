@@ -66,11 +66,46 @@ async function verificarAcceso(token) {
     if (res.ok) {
         document.getElementById("login-admin").style.display = "none";
         document.getElementById("panel-admin").style.display = "block";
+        
         cargarTalleres();
+        cargarDashboard(); // Carga de métricas operacionales
+        
         showToast("Sesión iniciada correctamente", "success");
     } else {
         localStorage.removeItem("admin_token");
         showToast("Acceso denegado: Privilegios insuficientes.", "error");
+    }
+}
+
+// --- CARGAR DASHBOARD ---
+async function cargarDashboard() {
+    const token = localStorage.getItem("admin_token");
+    try {
+        const res = await fetch("/admin/dashboard-metrics", { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            
+            // Renderizar Talleres
+            document.getElementById("dash-total-workshops").innerText = data.workshops.total;
+            document.getElementById("dash-active-workshops").innerText = data.workshops.active;
+            document.getElementById("dash-suspended-workshops").innerText = data.workshops.suspended;
+            
+            // Renderizar Suscripciones
+            document.getElementById("dash-mrr").innerText = "$" + data.subscriptions.mrr;
+            document.getElementById("dash-active-subs").innerText = data.subscriptions.active;
+            
+            // Renderizar Sistema
+            document.getElementById("dash-ai-today").innerHTML = `${data.system.ai_today} <span style="font-size: 14px; font-weight:normal; color: var(--text-muted);">usos IA hoy</span>`;
+            document.getElementById("dash-errors").innerText = data.system.errors;
+            
+            // Mostrar la sección
+            document.getElementById("dashboard-section").style.display = "block";
+        }
+    } catch (error) {
+        showToast("Error al cargar las métricas del dashboard.", "error");
     }
 }
 
@@ -141,6 +176,7 @@ async function crearTaller() {
             document.getElementById("nuevo_email").value = "";
             document.getElementById("nuevo_pass").value = "";
             cargarTalleres();
+            cargarDashboard(); // Actualizar dashboard
         } else {
             const detalle = data.detail ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : data.mensaje;
             showToast("Error: " + detalle, "error");
@@ -150,7 +186,7 @@ async function crearTaller() {
     }
 }
 
-// --- ACCIONES CON MODAL PROPIO (Sustituye prompt) ---
+// --- ACCIONES CON MODAL PROPIO ---
 function modalActualizarPago(id) {
     const inputs = `<label style="font-size:13px; color:#aaa;">Nueva Fecha de Vencimiento:</label>
                     <input type="date" id="modal_fecha" style="width:100%;">`;
@@ -172,6 +208,7 @@ function modalActualizarPago(id) {
         cerrarModal();
         showToast("Suscripción renovada correctamente", "success");
         cargarTalleres();
+        cargarDashboard(); // Actualizar dashboard
     });
 }
 
@@ -214,6 +251,7 @@ async function suspender(id) {
     });
     showToast("Taller suspendido", "info");
     cargarTalleres();
+    cargarDashboard(); // Actualizar dashboard
 }
 
 const cerrarSesionAdmin = () => { localStorage.removeItem("admin_token"); location.reload(); }

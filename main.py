@@ -310,6 +310,52 @@ def agregar_usuario_taller(taller_id: str, datos: NuevoUsuarioTallerRequest, req
         raise HTTPException(status_code=400, detail=f"No se pudo crear el usuario: {e}")
 
     return {"status": "éxito", "mensaje": f"Usuario agregado."}
+# ---- PEGAR AQUÍ EL NUEVO ENDPOINT DEL DASHBOARD ----
+@app.get("/admin/dashboard-metrics")
+def get_dashboard_metrics(request: Request):
+    # Usamos tu función de seguridad existente para validar al superadmin
+    obtener_superadmin(request)
+    
+    try:
+        # 1. Consultar talleres
+        talleres = supabase.table("talleres").select("id, estado_pago, plan").execute().data
+        
+        total = len(talleres)
+        activos = sum(1 for t in talleres if t.get("estado_pago") == "activo")
+        suspendidos = sum(1 for t in talleres if t.get("estado_pago") == "suspendido")
+
+        # 2. Consultar MRR (Asignamos valores base según el plan que tengas registrado)
+        # Esto es un ejemplo, ajusta los valores de tus planes reales
+        precios_planes = {"mensual": 29.99, "trimestral": 79.99, "anual": 299.99}
+        mrr = sum(precios_planes.get(t.get("plan", "mensual"), 0) for t in talleres if t.get("estado_pago") == "activo")
+        
+        # 3. Consultar uso de sistema de hoy
+        hoy_inicio, hoy_fin = limites_dia_ecuador() # Reutilizamos tu función de fechas
+        
+        cola_hoy = supabase.table("cola_mensajes").select("id, estado").gte("fecha_hora", hoy_inicio).lte("fecha_hora", hoy_fin).execute().data
+        ai_today = len(cola_hoy)
+        
+        # Contamos cuántos mensajes están en estado de error (los que empiezan con "Error")
+        errors = sum(1 for msj in cola_hoy if str(msj.get("estado")).startswith("Error"))
+
+        return {
+            "workshops": {
+                "total": total,
+                "active": activos,
+                "suspended": suspendidos
+            },
+            "subscriptions": {
+                "mrr": round(mrr, 2),
+                "active": activos
+            },
+            "system": {
+                "ai_today": ai_today,
+                "errors": errors
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+# ---------------------------------------------------
 
 # ==============================================================================
 # ESTRUCTURAS DE DATOS (PYDANTIC)

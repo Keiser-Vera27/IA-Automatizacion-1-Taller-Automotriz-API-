@@ -30,7 +30,7 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-/* --- TOAST NOTIFICATIONS (Reemplazo de los alert con IP) --- */
+/* --- TOAST NOTIFICATIONS --- */
 #toast-container {
     position: fixed;
     top: 25px;
@@ -66,7 +66,7 @@ body {
     to { transform: translateX(0) scale(1); opacity: 1; }
 }
 
-/* --- MODAL PERSONALIZADO (Reemplazo de los prompt con IP) --- */
+/* --- MODAL PERSONALIZADO --- */
 .modal-overlay {
     position: fixed;
     top: 0; left: 0; width: 100%; height: 100%;
@@ -207,7 +207,7 @@ button {
     color: var(--text-main);
 }
 
-/* --- TARJETAS TALLERES (ESTILO REFERENCIA) --- */
+/* --- TARJETAS TALLERES --- */
 .talleres-grid {
     display: flex;
     flex-direction: column;
@@ -250,7 +250,7 @@ button {
     margin: 0;
 }
 
-/* Insignias estilo Pill (Referencia) */
+/* Insignias estilo Pill */
 .pill-badge {
     padding: 4px 12px;
     border-radius: 20px;
@@ -332,19 +332,18 @@ button {
 .btn-user:hover {
     background: rgba(255, 255, 255, 0.15);
 }
+
 /* =========================================
    RESPONSIVE PARA TARJETAS DE TALLERES
 ========================================= */
 @media (max-width: 768px) {
-    /* Asumiendo que esta es la clase de tu tarjeta, ajusta el nombre si es distinto */
-    .tarjeta-taller { 
+    .taller-card { 
         flex-direction: column !important;
         align-items: flex-start !important;
         padding: 15px !important;
     }
 
-    /* El contenedor donde están los botones */
-    .contenedor-botones {
+    .card-actions {
         width: 100%;
         display: flex;
         flex-wrap: wrap;
@@ -353,9 +352,56 @@ button {
         justify-content: stretch;
     }
 
-    /* Hace que los botones ocupen el ancho disponible de manera uniforme */
-    .contenedor-botones button {
+    .card-actions button {
         flex: 1;
         min-width: 120px;
     }
+}
+
+/* =========================================
+   ESTILOS DASHBOARD METRICS
+========================================= */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+}
+
+.metric-card {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-card);
+    padding: 24px;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.metric-card:hover {
+    border-color: var(--accent-orange);
+    background: var(--bg-card-hover);
+    box-shadow: 0 8px 25px var(--accent-orange-glow);
+    transform: translateY(-2px);
+}
+
+.metric-card h4 {
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.metric-main-value {
+    font-size: 34px;
+    font-weight: 800;
+    color: var(--text-main);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.metric-sub-stats {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
 }
