@@ -329,7 +329,7 @@ function renderizarFicha360(data) {
         <div class="ficha-360-body">
             <!-- Bloque Uso -->
             <div class="ficha-seccion">
-                <h4>📊 Volúmen de Uso</h4>
+                <h4>Volúmen de Uso</h4>
                 <ul class="ficha-lista-datos">
                     <li><span>Clientes Registrados</span> <span>${u.clientes}</span></li>
                     <li><span>Vehículos Atendidos</span> <span>${u.vehiculos}</span></li>
@@ -340,7 +340,7 @@ function renderizarFicha360(data) {
             
             <!-- Bloque Suscripción -->
             <div class="ficha-seccion">
-                <h4>💳 Suscripción</h4>
+                <h4>Suscripción</h4>
                 <ul class="ficha-lista-datos">
                     <li><span>Próximo Pago</span> <span>${t.fecha_vencimiento}</span></li>
                     <li><span>Estado Actual</span> <span>${t.estado_pago.toUpperCase()}</span></li>
@@ -350,7 +350,7 @@ function renderizarFicha360(data) {
             
             <!-- Bloque Actividad -->
             <div class="ficha-seccion">
-                <h4>⚡ Actividad Reciente</h4>
+                <h4>Actividad Reciente</h4>
                 <ul class="ficha-lista-datos">
                     <li><span>Último acceso/registro</span> <span>${a.ultima_actividad}</span></li>
                     <li><span>Peticiones IA (Hoy)</span> <span>${a.ia_hoy}</span></li>
@@ -401,7 +401,7 @@ async function cargarColaIA() {
         const data = await res.json();
         
         if (data.mensajes.length === 0) {
-            contenedor.innerHTML = "<p style='color:var(--accent-green);'>🎉 La cola está limpia. No hay mensajes recientes.</p>";
+            contenedor.innerHTML = "<p style='color:var(--accent-green);'>La cola está limpia. No hay mensajes recientes.</p>";
             return;
         }
 
@@ -415,6 +415,7 @@ async function cargarColaIA() {
                 badgeClass = "pill-plan"; 
             } else if (m.estado === "Procesado") {
                 badgeClass = "pill-activo"; // verde
+                mostrarBoton = true;
             } else {
                 badgeClass = "pill-suspendido"; // rojo para errores o bloqueos
                 mostrarBoton = true; // Solo reprocesamos si hubo error/bloqueo
