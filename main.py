@@ -573,7 +573,6 @@ class SolicitudUnificada(BaseModel):
 # ==============================================================================
 
 async def trabajador_silencioso():
-    # Reclama mensajes de forma ATÓMICA vía la función SQL reclamar_mensajes_pendientes
     response = supabase.rpc("reclamar_mensajes_pendientes", {"cantidad": 20}).execute()
     pendientes = response.data
 
@@ -586,13 +585,14 @@ async def trabajador_silencioso():
         taller_id = msj["taller_id"]
         tiempo_actual = ahora_utc_str()
 
+        # 1. PROMPT ACTUALIZADO (Con método de pago, banco y descripciones más claras)
         prompt = f"""
         Eres un asistente contable inteligente de un taller mecánico.
         Analiza el siguiente mensaje y determina si se trata de un trabajo de reparación (ingreso), un gasto operativo (salida de dinero), un registro de INVENTARIO (ingreso de repuestos, extrayendo el proveedor si se menciona), o una DEVOLUCION.
 
         Clasificalo correctamente y extrae los datos correspondientes. Si faltan datos en el mensaje, déjalos vacíos o en 0 según corresponda.
 
-        Responde en JSON con esta estructura EXACTA. Separa las características del vehículo en sus campos correspondientes:
+        Responde en JSON con esta estructura EXACTA:
         {{
           "tipo": "reparacion" | "gasto" | "inventario" | "devolucion",
           "reparacion": {{
@@ -602,25 +602,39 @@ async def trabajador_silencioso():
               "anio": "Año (ej. 2023)",
               "cilindraje": "Cilindraje (ej. 1.4)",
               "cliente": "Nombre del cliente",
+              "motivo": "Razón de ingreso o fallo reportado (ej. 'fallo de cilindro')",
+              "trabajo_realizado": "Describe el trabajo hecho o pieza vendida (ej. 'se le vendió una ECU Kefico'). Si recién ingresa, déjalo vacío.",
               "cobro": 0.0,
-              "motivo": "Síntoma o razón de ingreso (ej. 'le falla un cilindro').",
-              "trabajo_realizado": "SOLO llénalo si se reporta una reparación, cambio o arreglo realizado. Si el auto RECIÉN ENTRA o solo se reporta un fallo, déjalo estrictamente VACÍO (\"\").",
+              "metodo_pago": "efectivo, transferencia, tarjeta, etc.",
+              "banco": "Nombre del banco si es transferencia (ej. Pichincha)",
               "repuestos_usados": [
                   {{"codigo": "codigo_repuesto", "cantidad": 1}}
               ]
-          }}
+          }} | null,
+          "gasto": {{
+              "monto": 0.0,
+              "motivo": "",
+              "vehiculo": "placa o N/A",
+              "responsable": ""
+          }} | null,
+          "inventario": {{
+              "codigo": "", "nombre": "", "marca": "", "cantidad": 0, "costo": 0.0, "precio_venta": 0.0, "proveedor": ""
+          }} | null,
+          "devolucion": {{
+              "codigo": "", "cantidad": 0, "motivo": ""
+          }} | null
+        }}
 
         Mensaje: "{texto_msj}"
         """
+
         try:
             resultado, proveedor_usado = await asyncio.to_thread(generar_json_con_respaldo, prompt)
             resultado = ClasificacionMensaje.model_validate(resultado).model_dump()
             tipo = resultado.get("tipo")
 
         except Exception as e:
-            # NUEVO BLOQUE: Clasificación inteligente de errores
             tipo_error = str(type(e))
-            
             if "ValidationError" in tipo_error:
                 estado_error = "Error de Formato. IA envió un dato incompleto o inválido."
             elif "JSONDecodeError" in tipo_error or "Expecting value" in str(e):
@@ -628,14 +642,16 @@ async def trabajador_silencioso():
             else:
                 estado_error = "Error (IA no disponible o tiempo agotado)."
                 
-            print(f" Error procesando mensaje {id_msj}: {e}")
+            print(f"⚠️ Error procesando mensaje {id_msj}: {e}")
             supabase.table("cola_mensajes").update({"estado": estado_error}).eq("id", id_msj).execute()
             await asyncio.sleep(2)
             continue
 
         if tipo == "reparacion" and resultado.get("reparacion"):
             d = resultado["reparacion"]
-            res_rep = supabase.table("reparaciones").select("id, estado, fecha_hora, modelo, color, anio, cilindraje").eq("vehiculo", d.get("vehiculo", "S/C")).eq("taller_id", taller_id).order("id", desc=True).limit(1).execute()
+            
+            # 2. CONSULTA CORREGIDA: Traer TODO (*) para no perder historial
+            res_rep = supabase.table("reparaciones").select("*").eq("vehiculo", d.get("vehiculo", "S/C")).eq("taller_id", taller_id).order("id", desc=True).limit(1).execute()
             ultima_orden = res_rep.data[0] if res_rep.data else None
 
             if ultima_orden and ultima_orden["estado"] == 'Terminado' and (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != ""):
@@ -655,8 +671,19 @@ async def trabajador_silencioso():
 
             if ultima_orden and ultima_orden["estado"] == 'Pendiente':
                 if d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "":
+                    
+                    # 3. FUSIONADOR DE TEXTOS: Si ya había motivo, sumamos el nuevo
+                    motivo_bd = ultima_orden.get("motivo", "")
+                    motivo_ia = d.get("motivo", "")
+                    motivo_final = f"{motivo_bd} | {motivo_ia}".strip(" |") if motivo_bd and motivo_ia and motivo_ia not in motivo_bd else (motivo_ia or motivo_bd)
+
+                    trabajo_bd = ultima_orden.get("trabajo_realizado", "")
+                    trabajo_ia = d.get("trabajo_realizado", "")
+                    trabajo_final = f"{trabajo_bd} | {trabajo_ia}".strip(" |") if trabajo_bd and trabajo_ia and trabajo_ia not in trabajo_bd else (trabajo_ia or trabajo_bd)
+
                     supabase.table("reparaciones").update({
-                        "trabajo_realizado": d.get("trabajo_realizado", ""),
+                        "motivo": motivo_final,
+                        "trabajo_realizado": trabajo_final,
                         "cobro": d.get("cobro", 0.0),
                         "metodo_pago": d.get("metodo_pago", ""),
                         "banco": d.get("banco", ""),
