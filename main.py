@@ -603,24 +603,12 @@ async def trabajador_silencioso():
               "cilindraje": "Cilindraje (ej. 1.4)",
               "cliente": "Nombre del cliente",
               "cobro": 0.0,
-              "trabajo_realizado": "Descripción del trabajo",
+              "motivo": "Síntoma o razón de ingreso (ej. 'le falla un cilindro').",
+              "trabajo_realizado": "SOLO llénalo si se reporta una reparación, cambio o arreglo realizado. Si el auto RECIÉN ENTRA o solo se reporta un fallo, déjalo estrictamente VACÍO (\"\").",
               "repuestos_usados": [
                   {{"codigo": "codigo_repuesto", "cantidad": 1}}
               ]
-          }} | null,
-          "gasto": {{
-              "monto": 0.0,
-              "motivo": "",
-              "vehiculo": "placa o N/A",
-              "responsable": ""
-          }} | null,
-          "inventario": {{
-              "codigo": "", "nombre": "", "marca": "", "cantidad": 0, "costo": 0.0, "precio_venta": 0.0, "proveedor": ""
-          }} | null,
-          "devolucion": {{
-              "codigo": "", "cantidad": 0, "motivo": ""
-          }} | null
-        }}
+          }}
 
         Mensaje: "{texto_msj}"
         """
@@ -640,7 +628,7 @@ async def trabajador_silencioso():
             else:
                 estado_error = "Error (IA no disponible o tiempo agotado)."
                 
-            print(f"⚠️ Error procesando mensaje {id_msj}: {e}")
+            print(f" Error procesando mensaje {id_msj}: {e}")
             supabase.table("cola_mensajes").update({"estado": estado_error}).eq("id", id_msj).execute()
             await asyncio.sleep(2)
             continue
@@ -781,7 +769,7 @@ async def iniciar_vigilancia_de_cola():
             try:
                 await trabajador_silencioso()
             except Exception as e:
-                print(f"⚠️ Error en el ciclo de auto-recuperación de la cola: {e}")
+                print(f" Error en el ciclo de auto-recuperación de la cola: {e}")
 
     asyncio.create_task(ciclo_de_vigilancia())
 
@@ -796,7 +784,8 @@ HERRAMIENTAS_REPORTES = [
             "name": "historial_vehiculo",
             "description": (
                 "Busca el historial de reparaciones de un vehículo por su placa. "
-                "Úsala cuando pregunten quién trabajó un vehículo, cuándo vino la última vez, "
+                "cuándo vino la última vez,"
+                "por qué motivo o daño llegó,  "
                 "qué se le hizo, cuánto se cobró, método de pago o técnico responsable."
             ),
             "parameters": {
@@ -874,7 +863,7 @@ def ejecutar_funcion_reporte(cliente_seguro, nombre_funcion: str, args: dict) ->
         placa = normalizar_placa(args.get("placa", ""))
         data = (
             cliente_seguro.table("reparaciones")
-            .select("vehiculo, cliente, fecha_hora, oficial, trabajo_realizado, cobro, metodo_pago, banco, estado")
+            .select("*")
             .ilike("vehiculo", f"%{placa}%")
             .order("fecha_hora", desc=True)
             .limit(10)

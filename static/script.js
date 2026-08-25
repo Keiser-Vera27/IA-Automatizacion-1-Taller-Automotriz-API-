@@ -33,6 +33,10 @@ async function cargarBienvenidaTaller() {
         if (!res.ok) return;
 
         const data = await res.json();
+        
+        // ¡NUEVA LÍNEA! Guardamos el nombre para usarlo en la factura
+        localStorage.setItem("nombre_taller_actual", data.nombre_taller); 
+        
         banner.innerHTML = `¡Bienvenido, <span class="nombre-taller-destacado">${data.nombre_taller}</span>! Empecemos a trabajar`;
     } catch (e) {
         console.error("No se pudo cargar el nombre del taller:", e);
@@ -459,6 +463,18 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                     ? `<div class="info-taller-item"><strong>Tel:</strong> <a href="tel:${v.telefono}" class="link-telefono" onclick="event.stopPropagation()">${v.telefono}</a></div>`
                     : '';
 
+                // INYECCIÓN DEL BOTÓN DE DESCARGA PARA ORDENES TERMINADAS
+                let botonDescarga = "";
+                if (v.estado === "Terminado") {
+                    const datosVehiculoStr = JSON.stringify(v).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+                    botonDescarga = `
+                        <button class="btn-filtro activo" style="margin-top: 15px; width: 100%; border:none; padding: 8px; border-radius: 8px; font-weight: 600; cursor: pointer;" 
+                        onclick="event.stopPropagation(); generarComprobantePNG('${datosVehiculoStr}')">
+                            📥 Descargar Orden
+                        </button>
+                    `;
+                }
+
                 html += `
                     <div class="tarjeta-vehiculo-pendiente" onclick="usarPlaca('${v.vehiculo}')" title="Haz clic para usar esta placa">
                         <div class="tarjeta-header">
@@ -469,6 +485,7 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                         ${infoVehiculo}
                         ${infoTelefono}
                         ${detalleExtra}
+                        ${botonDescarga}
                     </div>
                 `;
             });
@@ -532,6 +549,11 @@ function mostrarNotificacion(mensaje, tipo) {
 // GENERADOR DE IMÁGENES (FICHAS DE SERVICIO)
 // ==========================================================================
 async function generarImagenFactura(orden) {
+    // Inyectar el nombre del taller en el título
+    const nombreTaller = localStorage.getItem("nombre_taller_actual") || "Orden de Servicio";
+    const elTitulo = document.getElementById('orden-nombre-taller');
+    if (elTitulo) elTitulo.innerText = nombreTaller;
+
     document.getElementById('orden-placa').innerText = orden.vehiculo || '---';
     document.getElementById('orden-cliente').innerText = orden.cliente || '---';
     
@@ -590,5 +612,63 @@ async function generarImagenFactura(orden) {
     } finally {
         plantilla.style.display = 'none';
         plantilla.style.position = 'static';
+    }
+}
+
+// ==============================================================================
+// GENERADOR DE COMPROBANTES PNG
+// ==============================================================================
+async function generarComprobantePNG(vehiculoJson) {
+    try {
+        // Parsear si viene como string
+        const reparacion = typeof vehiculoJson === 'string' ? JSON.parse(vehiculoJson) : vehiculoJson;
+
+        // Inyectar el nombre del taller en el título
+        const nombreTaller = localStorage.getItem("nombre_taller_actual") || "Orden de Servicio";
+        const elTitulo = document.getElementById('orden-nombre-taller');
+        if (elTitulo) elTitulo.innerText = nombreTaller;
+
+        // 1. Llenar los datos en la plantilla HTML
+        document.getElementById('orden-placa').innerText = reparacion.vehiculo || '---';
+        document.getElementById('orden-cliente').innerText = reparacion.cliente || '---';
+        
+        // Formatear la fecha para que se vea limpia
+        let fechaLimpia = reparacion.fecha_hora ? reparacion.fecha_hora.split('.')[0] : '---';
+        document.getElementById('orden-fecha').innerText = fechaLimpia;
+        
+        document.getElementById('orden-tecnico').innerText = reparacion.oficial || 'No asignado';
+        document.getElementById('orden-motivo').innerText = reparacion.motivo || 'No especificado';
+        document.getElementById('orden-trabajo').innerText = reparacion.trabajo_realizado || 'No especificado';
+        document.getElementById('orden-total').innerText = reparacion.cobro || '0.00';
+
+        // 2. Preparar el contenedor para la foto (debe estar visible pero fuera de pantalla)
+        const plantilla = document.getElementById('plantilla-orden');
+        plantilla.style.display = 'block';
+        plantilla.style.position = 'absolute';
+        plantilla.style.top = '-9999px'; 
+        plantilla.style.left = '-9999px';
+
+        // 3. Tomar la "foto" con html2canvas
+        const canvas = await html2canvas(plantilla, { 
+            scale: 2, // Escala 2x para que el texto se vea nítido al hacer zoom
+            backgroundColor: "#ffffff"
+        });
+        
+        const imgData = canvas.toDataURL('image/png');
+
+        // 4. Forzar la descarga
+        const enlace = document.createElement('a');
+        enlace.href = imgData;
+        enlace.download = `Orden_Trabajo_${reparacion.vehiculo}.png`;
+        document.body.appendChild(enlace);
+        enlace.click();
+        document.body.removeChild(enlace);
+
+    } catch (error) {
+        console.error("Error generando la orden:", error);
+        alert("Hubo un error al generar la imagen del comprobante.");
+    } finally {
+        // 5. Volver a ocultar la plantilla para no dañar el diseño
+        document.getElementById('plantilla-orden').style.display = 'none';
     }
 }
