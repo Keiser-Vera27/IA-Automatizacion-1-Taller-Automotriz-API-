@@ -674,3 +674,78 @@ async function generarComprobantePNG(vehiculoJson) {
         document.getElementById('plantilla-orden').style.display = 'none';
     }
 }
+// ==============================================================================
+// REPORTE DE LIQUIDACIÓN QUINCENAL / PERSONALIZADA
+// ==============================================================================
+async function cargarLiquidacionFechas() {
+    const token = localStorage.getItem("taller_token");
+    const fechaInicio = document.getElementById('fechaInicioLiq').value;
+    const fechaFin = document.getElementById('fechaFinLiq').value;
+    const contenedorResultado = document.getElementById('resultado-liquidacion');
+
+    if (!fechaInicio || !fechaFin) {
+        mostrarNotificacion("Por favor selecciona ambas fechas para el corte de liquidación.", "warning");
+        return;
+    }
+
+    if (fechaInicio > fechaFin) {
+        mostrarNotificacion("La fecha de inicio no puede ser posterior a la fecha final.", "warning");
+        return;
+    }
+
+    contenedorResultado.innerHTML = `<p style="color: #a0a0a0; text-align: center; margin: 20px 0;">Calculando liquidación del periodo...</p>`;
+
+    try {
+        const response = await fetch(`/reporte-liquidacion?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            contenedorResultado.innerHTML = "";
+            mostrarNotificacion(errData.detail || "Error al calcular la liquidación.", "warning");
+            return;
+        }
+
+        const data = await response.json();
+        renderizarLiquidacion(data);
+
+    } catch (error) {
+        contenedorResultado.innerHTML = "";
+        mostrarNotificacion("Error de conexión al generar la liquidación.", "error");
+    }
+}
+
+function renderizarLiquidacion(data) {
+    const contenedor = document.getElementById('resultado-liquidacion');
+    if (!contenedor) return;
+
+    let filas = data.liquidacion_tecnicos.length > 0
+        ? data.liquidacion_tecnicos.map(t => `
+            <tr>
+                <td>${t.tecnico}</td>
+                <td class="centro">${t.trabajos_realizados}</td>
+                <td class="num">$${t.facturacion_total.toFixed(2)}</td>
+                <td class="num">$${t.mano_de_obra_acumulada.toFixed(2)}</td>
+                <td class="num" style="color: #4CAF50; font-weight: bold;">$${t.comision_a_pagar.toFixed(2)}</td>
+            </tr>`).join('')
+        : `<tr><td colspan="5" class="vacio">No hay registros en este periodo.</td></tr>`;
+
+    contenedor.innerHTML = `
+        <h4 style="margin-top: 15px; margin-bottom: 10px;">Resultado: ${data.periodo}</h4>
+        <div class="tabla-scroll">
+            <table class="tabla-caja">
+                <thead>
+                    <tr>
+                        <th>Técnico</th>
+                        <th style="text-align: center;">Trabajos</th>
+                        <th style="text-align: right;">Facturación Total</th>
+                        <th style="text-align: right;">Mano de Obra (Neto)</th>
+                        <th style="text-align: right;">Comisión a Pagar</th>
+                    </tr>
+                </thead>
+                <tbody>${filas}</tbody>
+            </table>
+        </div>
+    `;
+}

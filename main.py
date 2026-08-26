@@ -1294,6 +1294,142 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
     }
 
 # ==============================================================================
+# RANKING ANUAL Y LEADERBOARD DE TÉCNICOS 
+# ==============================================================================
+
+@app.get("/ranking-anual")
+def ranking_anual(request: Request, anio: int | None = None):
+    """
+    Devuelve el acumulado histórico de todo el año (restando repuestos) 
+    para mostrar un dashboard de posiciones en vivo ordenado del que más genera.
+    """
+    cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    
+    if not anio:
+        anio = datetime.now(ZONA_ECUADOR).year
+
+    inicio_ano = f"{anio}-01-01 00:00:00"
+    fin_ano = f"{anio}-12-31 23:59:59"
+
+    # Consultamos las órdenes terminadas del año trayendo los repuestos
+    ordenes = (
+        cliente_seguro.table("reparaciones")
+        .select("oficial, cobro, reparacion_detalles(cantidad, precio_unitario)")
+        .eq("taller_id", taller_id)
+        .eq("estado", "Terminado")
+        .gte("fecha_salida", inicio_ano)
+        .lte("fecha_salida", fin_ano)
+        .execute()
+    ).data
+
+    tecnicos_bd = cliente_seguro.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data
+    mapa_comisiones = {t["nombre"]: float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
+
+    acumulado: dict[str, dict] = {}
+    for o in ordenes:
+        tecnico = o.get("oficial") or "Sin asignar"
+        reg = acumulado.setdefault(tecnico, {"trabajos": 0, "total_generado": 0.0, "mano_de_obra_total": 0.0, "comision_acumulada": 0.0})
+        
+        cobro = o.get("cobro", 0) or 0
+        detalles = o.get("reparacion_detalles", [])
+        total_repuestos = sum((r.get("cantidad", 0) * r.get("precio_unitario", 0)) for r in detalles)
+        
+        # Restamos los repuestos para calcular la mano de obra real
+        mano_de_obra = max(0.0, cobro - total_repuestos)
+
+        reg["trabajos"] += 1
+        reg["total_generado"] += cobro
+        reg["mano_de_obra_total"] += mano_de_obra
+        
+        porcentaje = mapa_comisiones.get(tecnico, 0)
+        reg["comision_acumulada"] += mano_de_obra * (porcentaje / 100.0)
+
+    ranking = [
+        {
+            "posicion": i + 1,
+            "tecnico": nombre,
+            "trabajos_totales": datos["trabajos"],
+            "facturacion_anual": round(datos["total_generado"], 2),
+            "mano_de_obra_acumulada": round(datos["mano_de_obra_total"], 2),
+            "comision_acumulada": round(datos["comision_acumulada"], 2)
+        }
+        for i, (nombre, datos) in enumerate(sorted(
+            acumulado.items(), key=lambda x: x[1]["mano_de_obra_total"], reverse=True
+        ))
+    ]
+
+    return {
+        "anio": anio,
+        "leaderboard": ranking
+    }
+
+# ==============================================================================
+# REPORTE DE LIQUIDACIÓN / QUINCENA POR RANGO DE FECHAS PERSONALIZADO
+# ==============================================================================
+
+@app.get("/reporte-liquidacion")
+def reporte_liquidacion(request: Request, fecha_inicio: str, fecha_fin: str):
+    """
+    Calcula el consolidado de trabajos, mano de obra y comisiones por técnico 
+    en un rango de fechas totalmente personalizado (ej. cortes quincenales por feriados).
+    Formato esperado de fechas: YYYY-MM-DD
+    """
+    cliente_seguro, taller_id = obtener_cliente_seguro(request)
+
+    # Usar los límites del día en Ecuador para asegurar precisión exacta de horario
+    inicio_utc, _ = limites_dia_ecuador(fecha_inicio)
+    _, fin_utc = limites_dia_ecuador(fecha_fin)
+
+    # Consultar las órdenes terminadas dentro del rango de corte seleccionado
+    ordenes = (
+        cliente_seguro.table("reparaciones")
+        .select("vehiculo, cliente, modelo, oficial, trabajo_realizado, cobro, fecha_salida, reparacion_detalles(cantidad, precio_unitario)")
+        .eq("taller_id", taller_id)
+        .eq("estado", "Terminado")
+        .gte("fecha_salida", inicio_utc)
+        .lte("fecha_salida", fin_utc)
+        .execute()
+    ).data
+
+    # Descargar los porcentajes actuales de comisión de los técnicos
+    tecnicos_bd = cliente_seguro.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data
+    mapa_comisiones = {t["nombre"]: float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
+
+    liquidacion: dict[str, dict] = {}
+    for o in ordenes:
+        tecnico = o.get("oficial") or "Sin asignar"
+        reg = liquidacion.setdefault(tecnico, {"trabajos": 0, "total_generado": 0.0, "mano_de_obra_total": 0.0, "comision_total": 0.0})
+        
+        cobro = o.get("cobro", 0) or 0
+        detalles = o.get("reparacion_detalles", [])
+        total_repuestos = sum((r.get("cantidad", 0) * r.get("precio_unitario", 0)) for r in detalles)
+        
+        # Restamos los repuestos para calcular la mano de obra real del periodo
+        mano_de_obra = max(0.0, cobro - total_repuestos)
+
+        reg["trabajos"] += 1
+        reg["total_generado"] += cobro
+        reg["mano_de_obra_total"] += mano_de_obra
+        
+        porcentaje = mapa_comisiones.get(tecnico, 0)
+        reg["comision_total"] += mano_de_obra * (porcentaje / 100.0)
+
+    resultado = [
+        {
+            "tecnico": nombre,
+            "trabajos_realizados": datos["trabajos"],
+            "facturacion_total": round(datos["total_generado"], 2),
+            "mano_de_obra_acumulada": round(datos["mano_de_obra_total"], 2),
+            "comision_a_pagar": round(datos["comision_total"], 2)
+        }
+        for nombre, datos in sorted(liquidacion.items(), key=lambda x: x[1]["comision_total"], reverse=True)
+    ]
+
+    return {
+        "periodo": f"Desde {fecha_inicio} hasta {fecha_fin}",
+        "liquidacion_tecnicos": resultado
+    }
+# ==============================================================================
 # EXPORTACIONES E INVENTARIOS
 # ==============================================================================
 
