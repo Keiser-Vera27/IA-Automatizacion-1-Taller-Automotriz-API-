@@ -828,3 +828,38 @@ function renderizarRankingAnual(data) {
         </div>
     `;
 }
+// ==============================================================================
+// ACTUALIZACIÓN AUTOMÁTICA AL RETOMAR LA PESTAÑA (WAKE UP)
+// ==============================================================================
+document.addEventListener("visibilitychange", function() {
+    // Si el usuario vuelve a poner la pestaña en primer plano (estado visible)
+    if (document.visibilityState === "visible") {
+        const token = localStorage.getItem("taller_token");
+        
+        // Si hay una sesión activa, refrescamos los datos críticos automáticamente
+        if (token) {
+            console.log("🔄 Pestaña reactivada: actualizando datos en vivo...");
+            
+            // 1. Refrescar vehículos pendientes/terminados
+            if (typeof cargarVehiculosPendientes === "function") {
+                cargarVehiculosPendientes(typeof filtroEstadoActual !== 'undefined' ? filtroEstadoActual : 'Pendiente');
+            }
+            
+            // 2. Refrescar el ranking anual en vivo
+            if (typeof cargarRankingAnual === "function") {
+                cargarRankingAnual();
+            }
+        }
+    }
+});
+
+// Respaldo adicional para dispositivos móviles (iOS/Android) al salir de la caché de navegación
+window.addEventListener("pageshow", function(event) {
+    if (event.persisted) {
+        const token = localStorage.getItem("taller_token");
+        if (token) {
+            cargarVehiculosPendientes();
+            if (typeof cargarRankingAnual === "function") cargarRankingAnual();
+        }
+    }
+});
