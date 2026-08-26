@@ -636,7 +636,7 @@ async function generarImagenFactura(orden) {
     }
 }
 
-// ==============================================================================
+// // ==============================================================================
 // GENERADOR DE COMPROBANTES PNG
 // ==============================================================================
 async function generarComprobantePNG(vehiculoJson) {
@@ -649,8 +649,8 @@ async function generarComprobantePNG(vehiculoJson) {
         const elTitulo = document.getElementById('orden-nombre-taller');
         if (elTitulo) elTitulo.innerText = nombreTaller;
 
-        // 1. Llenar los datos en la plantilla HTML
-        document.getElementById('orden-id').innerText = reparacion.id || reparacion.id_orden || orden.id || '---';
+        // 1. Llenar los datos en la plantilla HTML (¡Corregido aquí!)
+        document.getElementById('orden-id').innerText = reparacion.id || '---';
         document.getElementById('orden-placa').innerText = reparacion.vehiculo || '---';
         document.getElementById('orden-cliente').innerText = reparacion.cliente || '---';
         
