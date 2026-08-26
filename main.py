@@ -642,7 +642,7 @@ async def trabajador_silencioso():
             else:
                 estado_error = "Error (IA no disponible o tiempo agotado)."
                 
-            print(f"⚠️ Error procesando mensaje {id_msj}: {e}")
+            print(f"Error procesando mensaje {id_msj}: {e}")
             supabase.table("cola_mensajes").update({"estado": estado_error}).eq("id", id_msj).execute()
             await asyncio.sleep(2)
             continue
@@ -688,12 +688,14 @@ async def trabajador_silencioso():
                         "metodo_pago": d.get("metodo_pago", ""),
                         "banco": d.get("banco", ""),
                         "estado": "Terminado"
+                        "fecha_salida": tiempo_actual
                     }).eq("id", ultima_orden["id"]).execute()
                 else:
                     supabase.table("cola_mensajes").update({"estado": "Bloqueado (Ya pendiente)"}).eq("id", id_msj).execute()
                     continue
             else:
                 estado_nuevo = 'Terminado' if (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") else 'Pendiente'
+                fecha_sal = tiempo_actual if estado_nuevo == 'Terminado' else None
 
                 def _heredar(campo):
                     valor_nuevo = d.get(campo, "")
@@ -718,6 +720,7 @@ async def trabajador_silencioso():
                     "metodo_pago": d.get("metodo_pago", ""),
                     "banco": d.get("banco", ""),
                     "fecha_hora": tiempo_actual,
+                    "fecha_salida": fecha_sal,
                     "estado": estado_nuevo
                 }).execute()
 
@@ -1212,12 +1215,15 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
 
     ordenes_cerradas = (
         cliente_seguro.table("reparaciones")
-        .select("vehiculo, cliente, modelo, oficial, trabajo_realizado, cobro, metodo_pago, fecha_hora")
+        # Añadimos fecha_salida al select
+        .select("vehiculo, cliente, modelo, oficial, trabajo_realizado, cobro, metodo_pago, fecha_hora, fecha_salida")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
-        .gte("fecha_hora", inicio_utc)
-        .lte("fecha_hora", fin_utc)
-        .order("fecha_hora", desc=True)
+        # Filtramos por el momento en que se entregó el vehículo y se cobró
+        .gte("fecha_salida", inicio_utc)
+        .lte("fecha_salida", fin_utc)
+        # Opcional pero recomendado: ordenar de la entrega más reciente a la más antigua
+        .order("fecha_salida", desc=True)
         .execute()
     ).data
 
@@ -1315,7 +1321,8 @@ def listar_pendientes(request: Request):
 
     pendientes = (
         cliente_seguro.table("reparaciones")
-        .select("vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
+        # Añadimos fecha_salida al select por si necesitas mostrarla luego en el frontend
+        .select("vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida")
         .eq("taller_id", taller_id)
         .eq("estado", "Pendiente")
         .execute()
@@ -1323,11 +1330,13 @@ def listar_pendientes(request: Request):
 
     terminados_hoy = (
         cliente_seguro.table("reparaciones")
-        .select("vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado")
+        # Añadimos fecha_salida al select
+        .select("vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
-        .gte("fecha_hora", hoy_inicio)
-        .lte("fecha_hora", hoy_fin)
+        # ¡EL CAMBIO CLAVE!: Filtramos usando la nueva columna fecha_salida
+        .gte("fecha_salida", hoy_inicio)
+        .lte("fecha_salida", hoy_fin)
         .execute()
     ).data
 
