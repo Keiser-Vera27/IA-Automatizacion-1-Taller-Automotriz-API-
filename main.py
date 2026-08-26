@@ -1487,8 +1487,8 @@ def listar_pendientes(request: Request):
 
     pendientes = (
         cliente_seguro.table("reparaciones")
-        # Añadimos fecha_salida al select por si necesitas mostrarla luego en el frontend
-        .select("vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida")
+        # ¡AÑADIMOS EL CAMPO 'id' AQUÍ!
+        .select("id, vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida")
         .eq("taller_id", taller_id)
         .eq("estado", "Pendiente")
         .execute()
@@ -1496,18 +1496,16 @@ def listar_pendientes(request: Request):
 
     terminados_hoy = (
         cliente_seguro.table("reparaciones")
-        # Añadimos fecha_salida al select
-        .select("vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida")
+        # ¡AÑADIMOS EL CAMPO 'id' AQUÍ TAMBIÉN!
+        .select("id, vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
-        # ¡EL CAMBIO CLAVE!: Filtramos usando la nueva columna fecha_salida
         .gte("fecha_salida", hoy_inicio)
         .lte("fecha_salida", hoy_fin)
         .execute()
     ).data
 
     return {"vehiculos": pendientes + terminados_hoy}
-
 @app.get("/exportar-inventario")
 def exportar_inventario(request: Request):
     try:

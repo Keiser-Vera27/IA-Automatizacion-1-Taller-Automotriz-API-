@@ -497,3 +497,14 @@ hr {
     .grupo-botones-reportes { flex-direction: column; }
     .theme-toggle span.etiqueta { display: none; }
 }
+.badge-orden-esquina {
+    font-family: var(--fuente-datos);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--texto-tenue);
+    background: var(--bg-alterno);
+    padding: 2px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--borde);
+    letter-spacing: 0.02em;
+}

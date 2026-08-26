@@ -490,10 +490,16 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                     `;
                 }
 
+                // Extraer el ID de la base de datos para mostrarlo como Número de Orden
+                let numOrden = v.id || v.id_orden || '---';
+
                 html += `
                     <div class="tarjeta-vehiculo-pendiente" onclick="usarPlaca('${v.vehiculo}')" title="Haz clic para usar esta placa">
                         <div class="tarjeta-header">
                             <span class="placa-badge">${v.vehiculo}</span>
+                            <span class="badge-orden-esquina">N° ${numOrden}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                             <span class="badge-estado ${claseEstado}">${v.estado}</span>
                         </div>
                         <div class="info-taller-item"><strong>Cliente:</strong> ${v.cliente || 'N/A'}</div>
@@ -644,6 +650,7 @@ async function generarComprobantePNG(vehiculoJson) {
         if (elTitulo) elTitulo.innerText = nombreTaller;
 
         // 1. Llenar los datos en la plantilla HTML
+        document.getElementById('orden-id').innerText = reparacion.id || reparacion.id_orden || orden.id || '---';
         document.getElementById('orden-placa').innerText = reparacion.vehiculo || '---';
         document.getElementById('orden-cliente').innerText = reparacion.cliente || '---';
         
