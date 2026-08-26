@@ -687,8 +687,8 @@ async def trabajador_silencioso():
                         "cobro": d.get("cobro", 0.0),
                         "metodo_pago": d.get("metodo_pago", ""),
                         "banco": d.get("banco", ""),
-                        "estado": "Terminado"
-                        "fecha_salida": tiempo_actual
+                        "estado": "Terminado",
+                        "fecha_salida": tiempo_actual,
                     }).eq("id", ultima_orden["id"]).execute()
                 else:
                     supabase.table("cola_mensajes").update({"estado": "Bloqueado (Ya pendiente)"}).eq("id", id_msj).execute()
