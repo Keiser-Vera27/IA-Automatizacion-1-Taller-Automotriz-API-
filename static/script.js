@@ -327,14 +327,15 @@ function renderizarCuadreDeCaja(data) {
             </tr>`).join('')
         : `<tr><td colspan="3" class="vacio">Sin egresos registrados hoy.</td></tr>`;
 
-    let filasTecnicos = data.rendimiento_tecnicos.length > 0
+   let filasTecnicos = data.rendimiento_tecnicos.length > 0
         ? data.rendimiento_tecnicos.map(t => `
             <tr>
                 <td>${t.tecnico}</td>
                 <td class="centro">${t.trabajos}</td>
                 <td class="num">$${t.total_generado.toFixed(2)}</td>
+                <td class="num" style="color: #4CAF50; font-weight: bold;">$${(t.comision_a_pagar || 0).toFixed(2)}</td>
             </tr>`).join('')
-        : `<tr><td colspan="3" class="vacio">Sin datos de técnicos hoy.</td></tr>`;
+        : `<tr><td colspan="4" class="vacio">Sin datos de técnicos hoy.</td></tr>`;
 
     panel.innerHTML = `
         <div class="panel-caja">
@@ -392,6 +393,7 @@ function renderizarCuadreDeCaja(data) {
                             <th>Técnico</th>
                             <th style="text-align: center;">Trabajos</th>
                             <th style="text-align: right;">Generado</th>
+                            <th style="text-align: right;">Comisión</th>
                         </tr>
                     </thead>
                     <tbody>${filasTecnicos}</tbody>

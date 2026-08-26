@@ -65,7 +65,6 @@ def limites_dia_ecuador(fecha_str: str | None = None) -> tuple[str, str]:
     fin_utc = fin_local.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     return inicio_utc, fin_utc
 
-
 # ==============================================================================
 # CONFIGURACIÓN DE SUPABASE Y CLIENTE DE IA
 # ==============================================================================
@@ -584,7 +583,10 @@ async def trabajador_silencioso():
         texto_msj = msj["texto"]
         taller_id = msj["taller_id"]
         tiempo_actual = ahora_utc_str()
-
+        # 1. Consultar técnicos válidos del taller
+        tecnicos_res = supabase.table("tecnicos").select("nombre").eq("taller_id", taller_id).execute()
+        nombres_tecnicos = [t["nombre"] for t in tecnicos_res.data] if tecnicos_res.data else []
+        lista_tecnicos_str = ", ".join(nombres_tecnicos) if nombres_tecnicos else "Ninguno registrado"
         # 1. PROMPT ACTUALIZADO (Con método de pago, banco y descripciones más claras)
         prompt = f"""
         Eres un asistente contable inteligente de un taller mecánico.
@@ -604,6 +606,7 @@ async def trabajador_silencioso():
               "cliente": "Nombre del cliente",
               "motivo": "Razón de ingreso o fallo reportado (ej. 'fallo de cilindro')",
               "trabajo_realizado": "Describe el trabajo hecho o pieza vendida (ej. 'se le vendió una ECU Kefico'). Si recién ingresa, déjalo vacío.",
+              "oficial": "DEBES elegir estrictamente uno de esta lista: [{lista_tecnicos_str}]. Si el texto tiene errores tipográficos (ej. Willian en vez de William), corrígelo y usa el de la lista. Si no coincide con ninguno, déjalo vacío.",
               "cobro": 0.0,
               "metodo_pago": "efectivo, transferencia, tarjeta, etc.",
               "banco": "Nombre del banco si es transferencia (ej. Pichincha)",
@@ -672,7 +675,7 @@ async def trabajador_silencioso():
             if ultima_orden and ultima_orden["estado"] == 'Pendiente':
                 if d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "":
                     
-                    # 3. FUSIONADOR DE TEXTOS: Si ya había motivo, sumamos el nuevo
+                   # 3. FUSIONADOR DE TEXTOS: Si ya había motivo, sumamos el nuevo
                     motivo_bd = ultima_orden.get("motivo", "")
                     motivo_ia = d.get("motivo", "")
                     motivo_final = f"{motivo_bd} | {motivo_ia}".strip(" |") if motivo_bd and motivo_ia and motivo_ia not in motivo_bd else (motivo_ia or motivo_bd)
@@ -680,6 +683,11 @@ async def trabajador_silencioso():
                     trabajo_bd = ultima_orden.get("trabajo_realizado", "")
                     trabajo_ia = d.get("trabajo_realizado", "")
                     trabajo_final = f"{trabajo_bd} | {trabajo_ia}".strip(" |") if trabajo_bd and trabajo_ia and trabajo_ia not in trabajo_bd else (trabajo_ia or trabajo_bd)
+
+                    # Heredar el oficial si la IA no lo detectó en este nuevo mensaje
+                    oficial_bd = ultima_orden.get("oficial", "")
+                    oficial_ia = d.get("oficial", "")
+                    oficial_final = oficial_ia if oficial_ia else oficial_bd
 
                     supabase.table("reparaciones").update({
                         "motivo": motivo_final,
@@ -689,6 +697,7 @@ async def trabajador_silencioso():
                         "banco": d.get("banco", ""),
                         "estado": "Terminado",
                         "fecha_salida": tiempo_actual,
+                        "oficial": oficial_final 
                     }).eq("id", ultima_orden["id"]).execute()
                 else:
                     supabase.table("cola_mensajes").update({"estado": "Bloqueado (Ya pendiente)"}).eq("id", id_msj).execute()
@@ -1215,14 +1224,12 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
 
     ordenes_cerradas = (
         cliente_seguro.table("reparaciones")
-        # Añadimos fecha_salida al select
-        .select("vehiculo, cliente, modelo, oficial, trabajo_realizado, cobro, metodo_pago, fecha_hora, fecha_salida")
+        # 1. Añadimos reparacion_detalles para poder restar los repuestos después
+        .select("vehiculo, cliente, modelo, oficial, trabajo_realizado, cobro, metodo_pago, fecha_hora, fecha_salida, reparacion_detalles(cantidad, precio_unitario)")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
-        # Filtramos por el momento en que se entregó el vehículo y se cobró
         .gte("fecha_salida", inicio_utc)
         .lte("fecha_salida", fin_utc)
-        # Opcional pero recomendado: ordenar de la entrega más reciente a la más antigua
         .order("fecha_salida", desc=True)
         .execute()
     ).data
@@ -1237,18 +1244,40 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
         .execute()
     ).data
 
+    # Descargar los porcentajes de comisión de la base de datos
+    tecnicos_bd = cliente_seguro.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data
+    mapa_comisiones = {t["nombre"]: float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
+
     total_ingresos = sum(o.get("cobro", 0) or 0 for o in ordenes_cerradas)
     total_egresos = sum(g.get("monto", 0) or 0 for g in egresos)
 
     rendimiento: dict[str, dict] = {}
     for o in ordenes_cerradas:
         tecnico = o.get("oficial") or "Sin asignar"
-        registro = rendimiento.setdefault(tecnico, {"trabajos": 0, "total_generado": 0.0})
+        registro = rendimiento.setdefault(tecnico, {"trabajos": 0, "total_generado": 0.0, "comision_a_pagar": 0.0})
+        
+        cobro = o.get("cobro", 0) or 0
         registro["trabajos"] += 1
-        registro["total_generado"] += o.get("cobro", 0) or 0
+        registro["total_generado"] += cobro
+        
+        # 2. Calcular el total de repuestos usados en esta orden para excluirlos de la comisión
+        detalles_repuestos = o.get("reparacion_detalles", [])
+        total_repuestos = sum((r.get("cantidad", 0) * r.get("precio_unitario", 0)) for r in detalles_repuestos)
+        
+        # 3. La mano de obra real es el cobro total menos los repuestos
+        mano_de_obra = max(0.0, cobro - total_repuestos)
+        
+        # 4. Calcular la comisión exclusivamente sobre la mano de obra
+        porcentaje = mapa_comisiones.get(tecnico, 0)
+        registro["comision_a_pagar"] += mano_de_obra * (porcentaje / 100.0)
 
     ranking_tecnicos = [
-        {"tecnico": nombre, **datos}
+        {
+            "tecnico": nombre, 
+            "trabajos": datos["trabajos"],
+            "total_generado": round(datos["total_generado"], 2),
+            "comision_a_pagar": round(datos["comision_a_pagar"], 2)
+        }
         for nombre, datos in sorted(
             rendimiento.items(), key=lambda item: item[1]["total_generado"], reverse=True
         )
