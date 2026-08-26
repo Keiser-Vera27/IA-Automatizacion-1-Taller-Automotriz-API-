@@ -335,13 +335,34 @@ hr {
 .btn-inventario { background: var(--bg-alterno); color: var(--texto); }
 .btn-inventario:hover { border-color: var(--magenta); box-shadow: 0 6px 16px var(--sombra-marca); transform: translateY(-2px); }
 
-.btn-cerrar-sesion {
-    width: auto !important; background: rgba(224, 57, 122, 0.08); border: 1px solid #E0397A;
-    color: #E0397A; padding: 6px 15px; border-radius: 8px; cursor: pointer;
-    font-size: 12.5px; font-family: var(--fuente-datos); font-weight: 600; transition: all 0.2s ease-in-out;
+.barra-superior-app {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
 }
-.btn-cerrar-sesion:hover { background: #E0397A; color: #fff; box-shadow: 0 0 15px rgba(224, 57, 122, 0.4); }
 
+.btn-cerrar-sesion {
+    width: auto !important;
+    background: rgba(224, 57, 122, 0.08);
+    border: 1px solid #E0397A;
+    color: #E0397A;
+    padding: 10px 18px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--fuente-datos);
+    font-weight: 600;
+    transition: all 0.2s ease-in-out;
+    white-space: nowrap;
+}
+.btn-cerrar-sesion:hover { 
+    background: #E0397A; 
+    color: #fff; 
+    box-shadow: 0 0 15px rgba(224, 57, 122, 0.4); 
+}
 /* ==============================================================================
    PANEL DE VEHÍCULOS (GRID RESPONSIVE Y FILTROS COMPLEMENTARIOS)
    ============================================================================== */
