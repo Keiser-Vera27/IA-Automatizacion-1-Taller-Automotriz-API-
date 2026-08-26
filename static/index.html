@@ -124,31 +124,54 @@
             <hr>
 
             <div class="seccion-contabilidad">
-                <h2>Panel de Control y Reportes</h2>
+                <h2>Panel de Control y Finanzas</h2>
+                
+                <!-- BOTONES DE ACCIÓN RÁPIDA -->
                 <div class="grupo-botones-reportes">
                     <button class="btn-excel" onclick="verCuadreDeCaja()">
-                        Ver Cuadre de Caja del Día
+                        📊 Ver Cuadre de Caja del Día
                     </button>
                     <button class="btn-excel" onclick="descargarReporteDiario()">
-                        Descargar Reporte Diario
+                        📥 Descargar Reporte Diario
                     </button>
                     <button class="btn-inventario" onclick="descargarInventario()">
-                        Descargar Auditoria de Inventario
+                        📦 Descargar Auditoria de Inventario
                     </button>
                 </div>
+
+                <!-- CONTENEDOR DINÁMICO DEL CUADRE DIARIO (Aparece y desaparece al hacer clic) -->
                 <div id="panel-cuadre-caja"></div>
-                <!-- NUEVO APARTADO: LIQUIDACIÓN QUINCENAL / PERSONALIZADA -->
-                <div class="panel-caja" style="margin-top: 30px;">
-                    <h3>Liquidación de Técnicos por Rango de Fechas</h3>
-                    <p style="color: var(--texto-tenue); font-size: 0.9rem; margin-bottom: 15px;">
-                        Selecciona el periodo de corte para calcular comisiones netas (excluyendo repuestos).
+
+                <!-- SECCIÓN 1: LEADERBOARD / RANKING ANUAL EN VIVO -->
+                <div class="panel-caja" style="margin-top: 30px; border-left: 4px solid var(--magenta);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <h3 style="margin: 0;">🏆 Ranking Anual de Técnicos (En Vivo)</h3>
+                            <p style="color: var(--texto-tenue); font-size: 0.85rem; margin: 4px 0 0 0;">
+                                Acumulado del año en curso descontando repuestos. Se actualiza automáticamente.
+                            </p>
+                        </div>
+                        <button class="btn-filtro activo" onclick="cargarRankingAnual()" style="padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer;">
+                            🔄 Actualizar Podio
+                        </button>
+                    </div>
+                    <div id="resultado-ranking-anual">
+                        <p style="color: var(--texto-tenue); text-align: center; font-size: 0.9rem; margin: 15px 0;">Haz clic en "Actualizar Podio" para ver las posiciones.</p>
+                    </div>
+                </div>
+
+                <!-- SECCIÓN 2: LIQUIDACIÓN QUINCENAL / PERSONALIZADA -->
+                <div class="panel-caja" style="margin-top: 20px; border-left: 4px solid var(--morado);">
+                    <h3>💵 Liquidación de Nómina (Corte por Fechas)</h3>
+                    <p style="color: var(--texto-tenue); font-size: 0.85rem; margin-bottom: 15px;">
+                        Calcula comisiones netas por mano de obra para pagos quincenales o mensuales ajustados a feriados.
                     </p>
                     
                     <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; margin-bottom: 15px;">
-                        <label style="font-size: 0.9rem;">Desde: <input type="date" id="fechaInicioLiq" style="padding: 6px; border-radius: 6px; border: 1px solid var(--borde-input, #ccc); background: var(--fondo-input, #fff); color: inherit;"></label>
-                        <label style="font-size: 0.9rem;">Hasta: <input type="date" id="fechaFinLiq" style="padding: 6px; border-radius: 6px; border: 1px solid var(--borde-input, #ccc); background: var(--fondo-input, #fff); color: inherit;"></label>
+                        <label style="font-size: 0.85rem;">Desde: <input type="date" id="fechaInicioLiq" style="padding: 6px; border-radius: 6px; border: 1px solid var(--borde); background: var(--bg-alterno); color: inherit;"></label>
+                        <label style="font-size: 0.85rem;">Hasta: <input type="date" id="fechaFinLiq" style="padding: 6px; border-radius: 6px; border: 1px solid var(--borde); background: var(--bg-alterno); color: inherit;"></label>
                         <button class="btn-filtro activo" onclick="cargarLiquidacionFechas()" style="padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;">
-                            Calcular Liquidación
+                            Generar Liquidación
                         </button>
                     </div>
 

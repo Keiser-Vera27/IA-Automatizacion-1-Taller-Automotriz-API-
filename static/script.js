@@ -44,6 +44,7 @@ async function cargarBienvenidaTaller() {
 }
 
 // Validar sesión activa al cargar
+// Validar sesión activa al cargar
 window.onload = function() {
     actualizarIconoTema(document.documentElement.getAttribute("data-theme") || "dark");
 
@@ -53,6 +54,7 @@ window.onload = function() {
         document.getElementById("app-container").style.display = "block";
         cargarVehiculosPendientes();
         cargarBienvenidaTaller();
+        cargarRankingAnual(); // <-- ¡AQUÍ ESTÁ LA MAGIA! Se carga el podio automáticamente al iniciar sesión
     }
 
     const emailInput = document.getElementById("email_login");
@@ -742,6 +744,72 @@ function renderizarLiquidacion(data) {
                         <th style="text-align: right;">Facturación Total</th>
                         <th style="text-align: right;">Mano de Obra (Neto)</th>
                         <th style="text-align: right;">Comisión a Pagar</th>
+                    </tr>
+                </thead>
+                <tbody>${filas}</tbody>
+            </table>
+        </div>
+    `;
+}
+// ==============================================================================
+// LEADERBOARD / RANKING ANUAL EN VIVO
+// ==============================================================================
+async function cargarRankingAnual() {
+    const token = localStorage.getItem("taller_token");
+    const contenedor = document.getElementById('resultado-ranking-anual');
+    if (!contenedor) return;
+
+    contenedor.innerHTML = `<p style="color: var(--texto-tenue); text-align: center; font-size: 0.9rem; margin: 15px 0;">Cargando posiciones del año...</p>`;
+
+    try {
+        const response = await fetch('/ranking-anual', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            contenedor.innerHTML = `<p style="color: #E0397A; text-align: center; font-size: 0.9rem;">Error al cargar el ranking anual.</p>`;
+            return;
+        }
+
+        const data = await response.json();
+        renderizarRankingAnual(data);
+
+    } catch (error) {
+        console.error("Error:", error);
+        contenedor.innerHTML = `<p style="color: #E0397A; text-align: center; font-size: 0.9rem;">Error de conexión con el servidor.</p>`;
+    }
+}
+
+function renderizarRankingAnual(data) {
+    const contenedor = document.getElementById('resultado-ranking-anual');
+    if (!contenedor) return;
+
+    let filas = data.leaderboard && data.leaderboard.length > 0
+        ? data.leaderboard.map(t => {
+            let medalla = t.posicion === 1 ? '🥇 ' : (t.posicion === 2 ? '🥈 ' : (t.posicion === 3 ? '🥉 ' : ''));
+            return `
+                <tr>
+                    <td style="font-weight: bold;">${medalla}#${t.posicion}</td>
+                    <td>${t.tecnico}</td>
+                    <td class="centro">${t.trabajos_totales}</td>
+                    <td class="num">$${t.facturacion_anual.toFixed(2)}</td>
+                    <td class="num">$${t.mano_de_obra_acumulada.toFixed(2)}</td>
+                    <td class="num" style="color: var(--magenta); font-weight: bold;">$${t.comision_acumulada.toFixed(2)}</td>
+                </tr>`;
+        }).join('')
+        : `<tr><td colspan="6" class="vacio">Aún no hay registros de técnicos este año.</td></tr>`;
+
+    contenedor.innerHTML = `
+        <div class="tabla-scroll">
+            <table class="tabla-caja">
+                <thead>
+                    <tr>
+                        <th>Pos</th>
+                        <th>Técnico</th>
+                        <th style="text-align: center;">Trabajos</th>
+                        <th style="text-align: right;">Facturado (Total)</th>
+                        <th style="text-align: right;">Mano de Obra (Neto)</th>
+                        <th style="text-align: right;">Comisión Acumulada</th>
                     </tr>
                 </thead>
                 <tbody>${filas}</tbody>

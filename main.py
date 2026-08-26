@@ -903,6 +903,7 @@ def ejecutar_funcion_reporte(cliente_seguro, nombre_funcion: str, args: dict) ->
         data = (
             cliente_seguro.table("reparaciones")
             .select("*")
+            .eq("taller_id", args.get("_taller_id"))
             .ilike("vehiculo", f"%{placa}%")
             .order("fecha_hora", desc=True)
             .limit(10)
@@ -912,11 +913,11 @@ def ejecutar_funcion_reporte(cliente_seguro, nombre_funcion: str, args: dict) ->
 
     if nombre_funcion == "cliente_top_visitas":
         anio = args.get("anio")
-        data = cliente_seguro.rpc("cliente_top_visitas", {"p_anio": anio}).execute().data
+        data = cliente_seguro.rpc("cliente_top_visitas", {"p_taller_id": args.get("_taller_id"), "p_anio": anio}).execute().data
         return {"resultado": data[0] if data else None}
 
     if nombre_funcion == "cliente_top_gasto":
-        params = {}
+        params = {"p_taller_id": args.get("_taller_id")}
         if args.get("fecha_inicio"):
             params["p_fecha_inicio"] = args["fecha_inicio"]
         if args.get("fecha_fin"):
@@ -925,7 +926,7 @@ def ejecutar_funcion_reporte(cliente_seguro, nombre_funcion: str, args: dict) ->
         return {"resultado": data[0] if data else None}
 
     if nombre_funcion == "rendimiento_tecnico":
-        params = {"p_mes": args.get("mes"), "p_anio": args.get("anio")}
+        params = {"p_taller_id": args.get("_taller_id"), "p_mes": args.get("mes"), "p_anio": args.get("anio")}
         if args.get("tecnico"):
             params["p_tecnico"] = args["tecnico"]
         data = cliente_seguro.rpc("rendimiento_tecnico", params).execute().data
