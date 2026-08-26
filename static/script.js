@@ -54,7 +54,11 @@ window.onload = function() {
         document.getElementById("app-container").style.display = "block";
         cargarVehiculosPendientes();
         cargarBienvenidaTaller();
-        cargarRankingAnual(); // <-- ¡AQUÍ ESTÁ LA MAGIA! Se carga el podio automáticamente al iniciar sesión
+        
+        // Carga segura del ranking para móviles
+        setTimeout(() => {
+            cargarRankingAnual();
+        }, 300);
     }
 
     const emailInput = document.getElementById("email_login");
@@ -424,14 +428,21 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
         if (!response.ok) return;
         const data = await response.json();
         
-        let container = document.getElementById('panel-vehiculos-pendientes');
+        let container = document.getElementById('panel-vehiculos-pendientes-container') || document.getElementById('panel-vehiculos-pendientes');
         
-        if (!container) {
+        if (!container || container.id === 'panel-vehiculos-pendientes') {
             container = document.createElement('div');
             container.id = 'panel-vehiculos-pendientes';
             container.className = 'panel-pendientes';
-            const app = document.getElementById('app-container');
-            if (app) app.appendChild(container);
+            
+            // Lo insertamos en el espacio dedicado entre las líneas divisorias
+            const contenedorDestino = document.getElementById('panel-vehiculos-pendientes-container');
+            if (contenedorDestino) {
+                contenedorDestino.appendChild(container);
+            } else {
+                const app = document.getElementById('app-container');
+                if (app) app.appendChild(container);
+            }
         }
 
         const listaVehiculos = data.vehiculos || [];

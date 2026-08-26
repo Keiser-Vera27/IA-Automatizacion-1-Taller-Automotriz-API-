@@ -1437,11 +1437,11 @@ def reporte_liquidacion(request: Request, fecha_inicio: str, fecha_fin: str):
 @app.get("/exportar-excel")
 def exportar_excel(request: Request):
     try:
-        cliente_seguro, _ = obtener_cliente_seguro(request)
+        cliente_seguro, taller_id = obtener_cliente_seguro(request)
 
-        reps = cliente_seguro.table("reparaciones").select("*").execute().data
-        gasts = cliente_seguro.table("gastos").select("*").execute().data
-        inv = cliente_seguro.table("inventario").select("*").execute().data
+        reps = cliente_seguro.table("reparaciones").select("*").eq("taller_id", taller_id).execute().data
+        gasts = cliente_seguro.table("gastos").select("*").eq("taller_id", taller_id).execute().data
+        inv = cliente_seguro.table("inventario").select("*").eq("taller_id", taller_id).execute().data
 
         df_reparaciones = pd.DataFrame(reps)
         df_gastos = pd.DataFrame(gasts)
@@ -1511,9 +1511,9 @@ def listar_pendientes(request: Request):
 @app.get("/exportar-inventario")
 def exportar_inventario(request: Request):
     try:
-        cliente_seguro, _ = obtener_cliente_seguro(request)
+        cliente_seguro, taller_id = obtener_cliente_seguro(request)
 
-        inv = cliente_seguro.table("inventario").select("*").execute().data
+        inv = cliente_seguro.table("inventario").select("*").eq("taller_id", taller_id).execute().data
         df_inventario = pd.DataFrame(inv)
 
         if df_inventario.empty:

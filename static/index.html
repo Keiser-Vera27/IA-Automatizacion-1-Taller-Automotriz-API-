@@ -123,7 +123,13 @@
 
             <hr>
 
-            <div class="seccion-contabilidad">
+            <!-- 1. LO MÁS IMPORTANTE DIARIO: CONTROL DE VEHÍCULOS -->
+            <div id="panel-vehiculos-pendientes-container"></div>
+
+            <hr>
+
+            <!-- 2. APARTADO FINAL: PANEL DE CONTROL, FINANZAS, RANKING Y LIQUIDACIONES -->
+            <div class="seccion-contabilidad" style="margin-top: 40px;">
                 <h2>Panel de Control y Finanzas</h2>
                 
                 <!-- BOTONES DE ACCIÓN RÁPIDA -->
@@ -139,10 +145,10 @@
                     </button>
                 </div>
 
-                <!-- CONTENEDOR DINÁMICO DEL CUADRE DIARIO (Aparece y desaparece al hacer clic) -->
+                <!-- CONTENEDOR DINÁMICO DEL CUADRE DIARIO -->
                 <div id="panel-cuadre-caja"></div>
 
-                <!-- SECCIÓN 1: LEADERBOARD / RANKING ANUAL EN VIVO -->
+                <!-- RANKING ANUAL DE TÉCNICOS (AL FINAL) -->
                 <div class="panel-caja" style="margin-top: 30px; border-left: 4px solid var(--magenta);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
                         <div>
@@ -156,11 +162,11 @@
                         </button>
                     </div>
                     <div id="resultado-ranking-anual">
-                        <p style="color: var(--texto-tenue); text-align: center; font-size: 0.9rem; margin: 15px 0;">Haz clic en "Actualizar Podio" para ver las posiciones.</p>
+                        <p style="color: var(--texto-tenue); text-align: center; font-size: 0.9rem; margin: 15px 0;">Cargando posiciones...</p>
                     </div>
                 </div>
 
-                <!-- SECCIÓN 2: LIQUIDACIÓN QUINCENAL / PERSONALIZADA -->
+                <!-- LIQUIDACIÓN QUINCENAL / PERSONALIZADA (AL FINAL) -->
                 <div class="panel-caja" style="margin-top: 20px; border-left: 4px solid var(--morado);">
                     <h3>💵 Liquidación de Nómina (Corte por Fechas)</h3>
                     <p style="color: var(--texto-tenue); font-size: 0.85rem; margin-bottom: 15px;">
@@ -178,8 +184,9 @@
                     <div id="resultado-liquidacion"></div>
                 </div>
             </div>
-        </div>
-    </div>
+
+        </div> <!-- Cierra .contenedor -->
+    </div> <!-- Cierra #app-container -->
 
 <!-- Plantilla oculta para la Ficha de Servicio -->
 <div id="plantilla-orden" style="display: none; padding: 40px; background: white; color: black; width: 800px; font-family: Arial, sans-serif; position: relative;">
