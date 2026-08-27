@@ -673,35 +673,47 @@ async def trabajador_silencioso():
                         supabase.table("inventario").update({"cantidad": nueva_cant}).eq("id", inv_item["id"]).execute()
 
             if ultima_orden and ultima_orden["estado"] == 'Pendiente':
-                if d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "":
-                    
-                   # 3. FUSIONADOR DE TEXTOS: Si ya había motivo, sumamos el nuevo
-                    motivo_bd = ultima_orden.get("motivo", "")
-                    motivo_ia = d.get("motivo", "")
-                    motivo_final = f"{motivo_bd} | {motivo_ia}".strip(" |") if motivo_bd and motivo_ia and motivo_ia not in motivo_bd else (motivo_ia or motivo_bd)
+                # 1. Determinamos si se está cerrando la orden o si es una actualización silenciosa
+                se_cierra = d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != ""
 
-                    trabajo_bd = ultima_orden.get("trabajo_realizado", "")
-                    trabajo_ia = d.get("trabajo_realizado", "")
-                    trabajo_final = f"{trabajo_bd} | {trabajo_ia}".strip(" |") if trabajo_bd and trabajo_ia and trabajo_ia not in trabajo_bd else (trabajo_ia or trabajo_bd)
+                # 2. FUSIONADOR DE TEXTOS: Mantiene lo anterior y suma lo nuevo
+                motivo_bd = ultima_orden.get("motivo", "")
+                motivo_ia = d.get("motivo", "")
+                motivo_final = f"{motivo_bd} | {motivo_ia}".strip(" |") if motivo_bd and motivo_ia and motivo_ia not in motivo_bd else (motivo_ia or motivo_bd)
 
-                    # Heredar el oficial si la IA no lo detectó en este nuevo mensaje
-                    oficial_bd = ultima_orden.get("oficial", "")
-                    oficial_ia = d.get("oficial", "")
-                    oficial_final = oficial_ia if oficial_ia else oficial_bd
+                trabajo_bd = ultima_orden.get("trabajo_realizado", "")
+                trabajo_ia = d.get("trabajo_realizado", "")
+                trabajo_final = f"{trabajo_bd} | {trabajo_ia}".strip(" |") if trabajo_bd and trabajo_ia and trabajo_ia not in trabajo_bd else (trabajo_ia or trabajo_bd)
 
-                    supabase.table("reparaciones").update({
-                        "motivo": motivo_final,
-                        "trabajo_realizado": trabajo_final,
-                        "cobro": d.get("cobro", 0.0),
-                        "metodo_pago": d.get("metodo_pago", ""),
-                        "banco": d.get("banco", ""),
-                        "estado": "Terminado",
-                        "fecha_salida": tiempo_actual,
-                        "oficial": oficial_final 
-                    }).eq("id", ultima_orden["id"]).execute()
+                # 3. FUNCIÓN DE HERENCIA
+                def _heredar_o_actualizar(campo):
+                    valor_nuevo = d.get(campo, "")
+                    return valor_nuevo if valor_nuevo else ultima_orden.get(campo, "")
+
+                datos_actualizar = {
+                    "motivo": motivo_final,
+                    "trabajo_realizado": trabajo_final,
+                    "cliente": _heredar_o_actualizar("cliente"),
+                    "cedula": _heredar_o_actualizar("cedula"),
+                    "telefono": _heredar_o_actualizar("telefono"),
+                    "oficial": _heredar_o_actualizar("oficial"),
+                    "modelo": _heredar_o_actualizar("modelo"),
+                    "color": _heredar_o_actualizar("color"),
+                    "anio": _heredar_o_actualizar("anio"),
+                    "cilindraje": _heredar_o_actualizar("cilindraje"),
+                    "cobro": d.get("cobro", 0.0) if d.get("cobro", 0) > 0 else ultima_orden.get("cobro", 0.0),
+                    "metodo_pago": _heredar_o_actualizar("metodo_pago"),
+                    "banco": _heredar_o_actualizar("banco")
+                }
+
+                # 4. Asignamos el estado correcto
+                if se_cierra:
+                    datos_actualizar["estado"] = "Terminado"
+                    datos_actualizar["fecha_salida"] = tiempo_actual
                 else:
-                    supabase.table("cola_mensajes").update({"estado": "Bloqueado (Ya pendiente)"}).eq("id", id_msj).execute()
-                    continue
+                    datos_actualizar["estado"] = "Pendiente"
+                
+                supabase.table("reparaciones").update(datos_actualizar).eq("id", ultima_orden["id"]).execute()
             else:
                 estado_nuevo = 'Terminado' if (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") else 'Pendiente'
                 fecha_sal = tiempo_actual if estado_nuevo == 'Terminado' else None
