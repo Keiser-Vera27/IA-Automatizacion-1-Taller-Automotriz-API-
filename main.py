@@ -588,7 +588,7 @@ async def trabajador_silencioso():
         nombres_tecnicos = [t["nombre"] for t in tecnicos_res.data] if tecnicos_res.data else []
         lista_tecnicos_str = ", ".join(nombres_tecnicos) if nombres_tecnicos else "Ninguno registrado"
         # 1. PROMPT ACTUALIZADO (Con método de pago, banco y descripciones más claras)
-        prompt = f"""
+       prompt = f"""
         Eres un asistente contable inteligente de un taller mecánico.
         Analiza el siguiente mensaje y determina si se trata de un trabajo de reparación (ingreso), un gasto operativo (salida de dinero), un registro de INVENTARIO (ingreso de repuestos, extrayendo el proveedor si se menciona), o una DEVOLUCION.
 
@@ -604,6 +604,8 @@ async def trabajador_silencioso():
               "anio": "Año (ej. 2023)",
               "cilindraje": "Cilindraje (ej. 1.4)",
               "cliente": "Nombre del cliente",
+              "cedula": "Número de cédula o identificación (si se menciona)",
+              "telefono": "Número de teléfono (si se menciona)",
               "motivo": "Razón de ingreso o fallo reportado (ej. 'fallo de cilindro')",
               "trabajo_realizado": "Describe el trabajo hecho o pieza vendida (ej. 'se le vendió una ECU Kefico'). Si recién ingresa, déjalo vacío.",
               "oficial": "DEBES elegir estrictamente uno de esta lista: [{lista_tecnicos_str}]. Si el texto tiene errores tipográficos (ej. Willian en vez de William), corrígelo y usa el de la lista. Si no coincide con ninguno, déjalo vacío.",
@@ -1499,8 +1501,7 @@ def listar_pendientes(request: Request):
 
     pendientes = (
         cliente_seguro.table("reparaciones")
-        # ¡AÑADIMOS EL CAMPO 'id' AQUÍ!
-        .select("id, vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida")
+        .select("id, vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida, oficial")
         .eq("taller_id", taller_id)
         .eq("estado", "Pendiente")
         .execute()
@@ -1508,8 +1509,7 @@ def listar_pendientes(request: Request):
 
     terminados_hoy = (
         cliente_seguro.table("reparaciones")
-        # ¡AÑADIMOS EL CAMPO 'id' AQUÍ TAMBIÉN!
-        .select("id, vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida")
+        .select("id, vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida, oficial")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
         .gte("fecha_salida", hoy_inicio)
