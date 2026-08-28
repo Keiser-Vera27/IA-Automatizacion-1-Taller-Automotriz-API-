@@ -30,6 +30,16 @@ def normalizar_placa(texto: str) -> str:
     return re.sub(r"[\s\-]", "", texto).upper().strip()
 
 
+def normalizar_nombre_tecnico(nombre: str) -> str:
+    """
+    Normaliza el nombre de un técnico para poder cruzarlo entre tablas
+    (reparaciones.oficial vs tecnicos.nombre) sin que un espacio extra,
+    mayúscula distinta o tilde perdida haga que la comisión salga en 0.0
+    aunque el técnico sí exista en la tabla.
+    """
+    return re.sub(r"\s+", " ", str(nombre or "")).strip().casefold()
+
+
 # ==============================================================================
 # MANEJO DE ZONA HORARIA (ECUADOR)
 # ==============================================================================
@@ -1270,8 +1280,8 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
     ).data
 
     # Descargar los porcentajes de comisión de la base de datos
-    tecnicos_bd = cliente_seguro.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data
-    mapa_comisiones = {t["nombre"]: float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
+    tecnicos_bd = supabase.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data  # cliente admin: la tabla tecnicos no tiene politica RLS de SELECT
+    mapa_comisiones = {normalizar_nombre_tecnico(t["nombre"]): float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
 
     total_ingresos = sum(o.get("cobro", 0) or 0 for o in ordenes_cerradas)
     total_egresos = sum(g.get("monto", 0) or 0 for g in egresos)
@@ -1293,7 +1303,7 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
         mano_de_obra = max(0.0, cobro - total_repuestos)
         
         # 4. Calcular la comisión exclusivamente sobre la mano de obra
-        porcentaje = mapa_comisiones.get(tecnico, 0)
+        porcentaje = mapa_comisiones.get(normalizar_nombre_tecnico(tecnico), 0)
         registro["comision_a_pagar"] += mano_de_obra * (porcentaje / 100.0)
 
     ranking_tecnicos = [
@@ -1347,8 +1357,8 @@ def ranking_anual(request: Request, anio: int | None = None):
         .execute()
     ).data
 
-    tecnicos_bd = cliente_seguro.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data
-    mapa_comisiones = {t["nombre"]: float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
+    tecnicos_bd = supabase.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data  # cliente admin: la tabla tecnicos no tiene politica RLS de SELECT
+    mapa_comisiones = {normalizar_nombre_tecnico(t["nombre"]): float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
 
     acumulado: dict[str, dict] = {}
     for o in ordenes:
@@ -1366,7 +1376,7 @@ def ranking_anual(request: Request, anio: int | None = None):
         reg["total_generado"] += cobro
         reg["mano_de_obra_total"] += mano_de_obra
         
-        porcentaje = mapa_comisiones.get(tecnico, 0)
+        porcentaje = mapa_comisiones.get(normalizar_nombre_tecnico(tecnico), 0)
         reg["comision_acumulada"] += mano_de_obra * (porcentaje / 100.0)
 
     ranking = [
@@ -1417,8 +1427,8 @@ def reporte_liquidacion(request: Request, fecha_inicio: str, fecha_fin: str):
     ).data
 
     # Descargar los porcentajes actuales de comisión de los técnicos
-    tecnicos_bd = cliente_seguro.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data
-    mapa_comisiones = {t["nombre"]: float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
+    tecnicos_bd = supabase.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data  # cliente admin: la tabla tecnicos no tiene politica RLS de SELECT
+    mapa_comisiones = {normalizar_nombre_tecnico(t["nombre"]): float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
 
     liquidacion: dict[str, dict] = {}
     for o in ordenes:
@@ -1436,7 +1446,7 @@ def reporte_liquidacion(request: Request, fecha_inicio: str, fecha_fin: str):
         reg["total_generado"] += cobro
         reg["mano_de_obra_total"] += mano_de_obra
         
-        porcentaje = mapa_comisiones.get(tecnico, 0)
+        porcentaje = mapa_comisiones.get(normalizar_nombre_tecnico(tecnico), 0)
         reg["comision_total"] += mano_de_obra * (porcentaje / 100.0)
 
     resultado = [
