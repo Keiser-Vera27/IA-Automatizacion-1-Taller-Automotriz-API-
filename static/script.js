@@ -566,32 +566,45 @@ function mostrarNotificacion(mensaje, tipo) {
     }
 }
 
-// ==========================================================================
-// GENERADOR DE IMÁGENES (FICHAS DE SERVICIO)
-// ==========================================================================
-async function generarImagenFactura(orden) {
-    // Inyectar el nombre del taller en el título
+/// ==============================================================================
+// FUNCIÓN MAESTRA PARA LLENAR LA PLANTILLA (Evita código duplicado)
+// ==============================================================================
+function llenarPlantillaOrden(datos) {
+    // 1. Taller y Número de Orden
     const nombreTaller = localStorage.getItem("nombre_taller_actual") || "Orden de Servicio";
     const elTitulo = document.getElementById('orden-nombre-taller');
     if (elTitulo) elTitulo.innerText = nombreTaller;
+    document.getElementById('orden-id').innerText = datos.id || '---';
 
-    document.getElementById('orden-placa').innerText = orden.vehiculo || '---';
-    document.getElementById('orden-cliente').innerText = orden.cliente || '---';
+    // 2. Vehículo y Cliente
+    document.getElementById('orden-placa').innerText = datos.vehiculo || '---';
+    const modelo = datos.modelo || 'S/M';
+    const color = datos.color || 'S/C';
+    const anio = datos.anio || 'S/A';
+    const cilindraje = datos.cilindraje ? datos.cilindraje + 'L' : 'S/C';
+    document.getElementById('orden-detalles-vehiculo').innerText = `${modelo} | ${color} | ${anio} | ${cilindraje}`;
     
-    const fecha = new Date(orden.fecha_hora);
-    document.getElementById('orden-fecha').innerText = fecha.toLocaleDateString();
-    
-    document.getElementById('orden-tecnico').innerText = orden.oficial || 'No asignado';
-    document.getElementById('orden-motivo').innerText = orden.motivo || '---';
-    document.getElementById('orden-trabajo').innerText = orden.trabajo_realizado || '---';
+    document.getElementById('orden-cliente').innerText = datos.cliente || '---';
+    document.getElementById('orden-cedula').innerText = datos.cedula || 'No registrada';
+    document.getElementById('orden-telefono').innerText = datos.telefono || 'No registrado';
 
+    // 3. Fechas y Equipo
+    let fechaLimpia = datos.fecha_hora ? new Date(datos.fecha_hora).toLocaleDateString() : '---';
+    document.getElementById('orden-fecha').innerText = fechaLimpia;
+    document.getElementById('orden-tecnico').innerText = datos.oficial || 'No asignado';
+
+    // 4. Trabajo Realizado
+    document.getElementById('orden-motivo').innerText = datos.motivo || 'No especificado';
+    document.getElementById('orden-trabajo').innerText = datos.trabajo_realizado || 'No especificado';
+
+    // 5. Tabla de Repuestos (Si los hay)
     const tbody = document.getElementById('orden-repuestos-body');
     tbody.innerHTML = '';
     let totalRepuestos = 0;
 
-    if (orden.reparacion_detalles && orden.reparacion_detalles.length > 0) {
-        orden.reparacion_detalles.forEach(detalle => {
-            const subtotal = detalle.cantidad * detalle.precio_unitario;
+    if (datos.reparacion_detalles && datos.reparacion_detalles.length > 0) {
+        datos.reparacion_detalles.forEach(detalle => {
+            const subtotal = detalle.cantidad * (detalle.precio_unitario || 0);
             totalRepuestos += subtotal;
             
             tbody.innerHTML += `
@@ -599,7 +612,7 @@ async function generarImagenFactura(orden) {
                     <td style="border: 1px solid #ddd; padding: 8px;">${detalle.repuestos?.codigo_producto || 'N/A'}</td>
                     <td style="border: 1px solid #ddd; padding: 8px;">${detalle.repuestos?.nombre_repuesto || 'Genérico'}</td>
                     <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${detalle.cantidad}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">$${detalle.precio_unitario.toFixed(2)}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">$${(detalle.precio_unitario || 0).toFixed(2)}</td>
                     <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">$${subtotal.toFixed(2)}</td>
                 </tr>
             `;
@@ -608,17 +621,43 @@ async function generarImagenFactura(orden) {
         tbody.innerHTML = `<tr><td colspan="5" style="border: 1px solid #ddd; padding: 8px; text-align: center;">No se registraron repuestos (Solo mano de obra)</td></tr>`;
     }
 
-    const cobroManoObra = parseFloat(orden.cobro || 0);
+    // 6. Lógica Dinámica de Cobros y Estados
+    const estado = datos.estado || 'Pendiente';
+    document.getElementById('orden-estado-texto').innerText = estado;
+    
+    const etiquetaTotal = document.getElementById('orden-etiqueta-total');
+    if (etiquetaTotal) {
+        etiquetaTotal.innerText = estado === 'Terminado' ? 'Valor Cancelado:' : 'Valor a Pagar:';
+    }
+
+    // Calcular total final (Repuestos + Mano de Obra)
+    const cobroManoObra = parseFloat(datos.cobro || 0);
     const totalFinal = totalRepuestos + cobroManoObra;
     document.getElementById('orden-total').innerText = totalFinal.toFixed(2);
+
+    // 7. Lógica Dinámica de Método de Pago y Banco
+    let metodo = datos.metodo_pago || 'No especificado';
+    if (datos.banco && datos.banco.trim() !== '') {
+        metodo += ` (${datos.banco})`; // Ej: Transferencia (Pichincha)
+    }
+    // Si la orden está pendiente, no mostramos método de pago aún
+    document.getElementById('orden-metodo-pago').innerText = estado === 'Terminado' ? metodo : 'Aún pendiente';
+}
+
+// ==========================================================================
+// GENERADOR DE IMÁGENES (Chat IA)
+// ==========================================================================
+async function generarImagenFactura(orden) {
+    llenarPlantillaOrden(orden); // <-- Llama a la función maestra
 
     const plantilla = document.getElementById('plantilla-orden');
     plantilla.style.display = 'block'; 
     plantilla.style.position = 'absolute';
+    plantilla.style.top = '-9999px';
     plantilla.style.left = '-9999px';
 
     try {
-        const canvas = await html2canvas(plantilla, { scale: 2 });
+        const canvas = await html2canvas(plantilla, { scale: 2, backgroundColor: "#ffffff" });
         const imgData = canvas.toDataURL('image/png');
         
         const enlaceDescarga = document.createElement('a');
@@ -626,59 +665,32 @@ async function generarImagenFactura(orden) {
         enlaceDescarga.download = `Orden_Trabajo_${orden.vehiculo}.png`;
         enlaceDescarga.click();
         
-        alert("Ficha de servicio descargada con éxito");
     } catch (error) {
         console.error("Error al generar la imagen:", error);
         alert("Hubo un error al crear la imagen");
     } finally {
         plantilla.style.display = 'none';
-        plantilla.style.position = 'static';
     }
 }
 
-// // ==============================================================================
-// GENERADOR DE COMPROBANTES PNG
+// ==============================================================================
+// GENERADOR DE COMPROBANTES PNG (Botón en la Tarjeta)
 // ==============================================================================
 async function generarComprobantePNG(vehiculoJson) {
     try {
-        // Parsear si viene como string
         const reparacion = typeof vehiculoJson === 'string' ? JSON.parse(vehiculoJson) : vehiculoJson;
-
-        // Inyectar el nombre del taller en el título
-        const nombreTaller = localStorage.getItem("nombre_taller_actual") || "Orden de Servicio";
-        const elTitulo = document.getElementById('orden-nombre-taller');
-        if (elTitulo) elTitulo.innerText = nombreTaller;
-
-        // 1. Llenar los datos en la plantilla HTML (¡Corregido aquí!)
-        document.getElementById('orden-id').innerText = reparacion.id || '---';
-        document.getElementById('orden-placa').innerText = reparacion.vehiculo || '---';
-        document.getElementById('orden-cliente').innerText = reparacion.cliente || '---';
         
-        // Formatear la fecha para que se vea limpia
-        let fechaLimpia = reparacion.fecha_hora ? reparacion.fecha_hora.split('.')[0] : '---';
-        document.getElementById('orden-fecha').innerText = fechaLimpia;
-        
-        document.getElementById('orden-tecnico').innerText = reparacion.oficial || 'No asignado';
-        document.getElementById('orden-motivo').innerText = reparacion.motivo || 'No especificado';
-        document.getElementById('orden-trabajo').innerText = reparacion.trabajo_realizado || 'No especificado';
-        document.getElementById('orden-total').innerText = reparacion.cobro || '0.00';
+        llenarPlantillaOrden(reparacion); // <-- Llama a la misma función maestra
 
-        // 2. Preparar el contenedor para la foto (debe estar visible pero fuera de pantalla)
         const plantilla = document.getElementById('plantilla-orden');
         plantilla.style.display = 'block';
         plantilla.style.position = 'absolute';
         plantilla.style.top = '-9999px'; 
         plantilla.style.left = '-9999px';
 
-        // 3. Tomar la "foto" con html2canvas
-        const canvas = await html2canvas(plantilla, { 
-            scale: 2, // Escala 2x para que el texto se vea nítido al hacer zoom
-            backgroundColor: "#ffffff"
-        });
-        
+        const canvas = await html2canvas(plantilla, { scale: 2, backgroundColor: "#ffffff" });
         const imgData = canvas.toDataURL('image/png');
 
-        // 4. Forzar la descarga
         const enlace = document.createElement('a');
         enlace.href = imgData;
         enlace.download = `Orden_Trabajo_${reparacion.vehiculo}.png`;
@@ -690,7 +702,6 @@ async function generarComprobantePNG(vehiculoJson) {
         console.error("Error generando la orden:", error);
         alert("Hubo un error al generar la imagen del comprobante.");
     } finally {
-        // 5. Volver a ocultar la plantilla para no dañar el diseño
         document.getElementById('plantilla-orden').style.display = 'none';
     }
 }

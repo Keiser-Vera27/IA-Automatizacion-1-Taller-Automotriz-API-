@@ -588,7 +588,7 @@ async def trabajador_silencioso():
         nombres_tecnicos = [t["nombre"] for t in tecnicos_res.data] if tecnicos_res.data else []
         lista_tecnicos_str = ", ".join(nombres_tecnicos) if nombres_tecnicos else "Ninguno registrado"
         # 1. PROMPT ACTUALIZADO (Con método de pago, banco y descripciones más claras)
-       prompt = f"""
+        prompt = f"""
         Eres un asistente contable inteligente de un taller mecánico.
         Analiza el siguiente mensaje y determina si se trata de un trabajo de reparación (ingreso), un gasto operativo (salida de dinero), un registro de INVENTARIO (ingreso de repuestos, extrayendo el proveedor si se menciona), o una DEVOLUCION.
 

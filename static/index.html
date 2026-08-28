@@ -191,49 +191,62 @@
 
 <!-- Plantilla oculta para la Ficha de Servicio -->
 <div id="plantilla-orden" style="display: none; padding: 40px; background: white; color: black; width: 800px; font-family: Arial, sans-serif; position: relative;">
-    
-    <!-- CABECERA DINÁMICA -->
-    <!-- CABECERA DINÁMICA -->
-    <div style="text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px;">
-        <h2 id="orden-nombre-taller" style="margin: 0; font-size: 26px; text-transform: uppercase;">ORDEN DE SERVICIO</h2>
-        <p style="margin: 5px 0 0 0; color: #555;">Orden N° <span id="orden-id">---</span> | Ficha de Servicio</p>
+
+    <!-- ENCABEZADO: Taller y Número de Orden -->
+    <div style="text-align: center; border-bottom: 2px solid black; padding-bottom: 10px; margin-bottom: 20px;">
+        <h1 id="orden-nombre-taller" style="margin: 0; font-size: 24px; text-transform: uppercase;">AUTOTRONIC SOLUTIONS</h1>
+        <p style="margin: 5px 0 0; font-size: 14px; color: #555;">Orden N° <span id="orden-id">---</span> | Ficha de Servicio</p>
     </div>
-    
-    <div style="display: flex; justify-content: space-between; margin-bottom: 30px;">
+
+    <!-- SECCIÓN DE DATOS DEL VEHÍCULO Y CLIENTE -->
+    <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; line-height: 1.6;">
+        <!-- Columna Izquierda -->
         <div>
-            <p><strong>Placa:</strong> <span id="orden-placa">---</span></p>
-            <p><strong>Cliente:</strong> <span id="orden-cliente">---</span></p>
+            <p><strong>Placa:</strong> <span id="orden-placa"></span></p>
+            <p><strong>Vehículo:</strong> <span id="orden-detalles-vehiculo"></span></p>
+            <p><strong>Cliente:</strong> <span id="orden-cliente"></span></p>
+            <p><strong>Cédula:</strong> <span id="orden-cedula"></span></p>
+            <p><strong>Teléfono:</strong> <span id="orden-telefono"></span></p>
         </div>
-        <div>
-            <p><strong>Fecha:</strong> <span id="orden-fecha">---</span></p>
-            <p><strong>Técnico:</strong> <span id="orden-tecnico">No asignado</span></p>
+        <!-- Columna Derecha -->
+        <div style="text-align: right;">
+            <p><strong>Fecha:</strong> <span id="orden-fecha"></span></p>
+            <p><strong>Técnico:</strong> <span id="orden-tecnico"></span></p>
+            <p><strong>Estado:</strong> <span id="orden-estado-texto"></span></p>
+            <p><strong>Método de Pago:</strong> <span id="orden-metodo-pago"></span></p>
         </div>
     </div>
 
-    <div style="margin-bottom: 20px;">
-        <h3 style="margin-bottom: 5px;">Motivo de Ingreso:</h3>
-        <p id="orden-motivo" style="margin-top: 0;">---</p>
-        <h3 style="margin-bottom: 5px;">Trabajo Realizado:</h3>
-        <p id="orden-trabajo" style="margin-top: 0;">---</p>
+    <!-- SECCIÓN DE TRABAJOS (Motivo y Trabajo) -->
+    <div style="margin-bottom: 20px; font-size: 14px;">
+        <h3 style="margin-bottom: 5px; font-size: 16px;">Motivo de Ingreso:</h3>
+        <p id="orden-motivo" style="margin-top: 0; margin-bottom: 15px; color: #333;">---</p>
+        
+        <h3 style="margin-bottom: 5px; font-size: 16px;">Trabajo Realizado:</h3>
+        <p id="orden-trabajo" style="margin-top: 0; margin-bottom: 20px; color: #333;">---</p>
     </div>
 
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
-        <thead>
-            <tr style="background-color: #f2f2f2;">
-                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Código</th>
-                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Repuesto</th>
-                <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Cant.</th>
-                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">P. Unitario</th>
-                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Subtotal</th>
+    <!-- TABLA DE REPUESTOS -->
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
+        <thead style="background-color: #f2f2f2;">
+            <tr>
+                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Código</th>
+                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Repuesto</th>
+                <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Cant.</th>
+                <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">P. Unitario</th>
+                <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Subtotal</th>
             </tr>
         </thead>
         <tbody id="orden-repuestos-body">
-            <!-- Se llena dinámicamente con JS -->
+            <tr>
+                <td colspan="5" style="padding: 8px; border: 1px solid #ddd; text-align: center;">No se registraron repuestos (Solo mano de obra)</td>
+            </tr>
         </tbody>
     </table>
 
-    <div style="text-align: right; font-size: 1.2em; margin-bottom: 30px;">
-        <strong>Total a Pagar: $<span id="orden-total">0.00</span></strong>
+    <!-- SECCIÓN DEL TOTAL (Unificada y dinámica) -->
+    <div style="text-align: right; margin-top: 20px; font-size: 18px;">
+        <strong id="orden-etiqueta-total">Valor a Pagar:</strong> $<span id="orden-total">0.00</span>
     </div>
 
     <!-- MARCA DE AGUA / CRÉDITOS -->
@@ -241,6 +254,8 @@
         Generado digitalmente con <strong>Autotronic Solutions IA</strong><br>
         Software Developer: Keiser Vera
     </div>
+
+</div>
 </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="script.js?v=999"></script>
