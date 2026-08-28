@@ -654,10 +654,17 @@ async def trabajador_silencioso():
 
         if tipo == "reparacion" and resultado.get("reparacion"):
             d = resultado["reparacion"]
-            
-            # 2. CONSULTA CORREGIDA: Traer TODO (*) para no perder historial
-            res_rep = supabase.table("reparaciones").select("*").eq("vehiculo", d.get("vehiculo", "S/C")).eq("taller_id", taller_id).order("id", desc=True).limit(1).execute()
-            ultima_orden = res_rep.data[0] if res_rep.data else None
+            placa = str(d.get("vehiculo", "")).strip()
+
+            # 2. Buscar la última orden de ESTA placa (trae "*" para tener también
+            # cliente/cedula/telefono y así poder autocompletarlos más abajo).
+            # OJO: solo se busca si hay placa real. Si se busca con "" o "S/C",
+            # se cruzarían datos de clientes distintos cuyos autos no tuvieron
+            # placa detectada (mismo bug que tenía el código original).
+            ultima_orden = None
+            if placa and placa != "S/C":
+                res_rep = supabase.table("reparaciones").select("*").eq("vehiculo", placa).eq("taller_id", taller_id).order("id", desc=True).limit(1).execute()
+                ultima_orden = res_rep.data[0] if res_rep.data else None
 
             if ultima_orden and ultima_orden["estado"] == 'Terminado' and (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != ""):
                 fecha_ultima = ultima_orden["fecha_hora"].split(" ")[0]
@@ -726,16 +733,19 @@ async def trabajador_silencioso():
                         return valor_nuevo
                     return ultima_orden.get(campo, "") if ultima_orden else ""
 
+                # AUTOCOMPLETADO: si el vehículo ya visitó el taller antes, _heredar()
+                # rellena cliente/cedula/telefono con los del último registro cuando
+                # la IA no los mencionó en este mensaje.
                 supabase.table("reparaciones").insert({
                     "taller_id": taller_id,
-                    "vehiculo": d.get("vehiculo", "S/C"),
+                    "vehiculo": placa if placa else "S/C",
                     "modelo": _heredar("modelo"),
                     "color": _heredar("color"),
                     "anio": _heredar("anio"),
                     "cilindraje": _heredar("cilindraje"),
-                    "cliente": d.get("cliente", ""),
-                    "cedula": d.get("cedula", ""),
-                    "telefono": d.get("telefono", ""),
+                    "cliente": _heredar("cliente"),
+                    "cedula": _heredar("cedula"),
+                    "telefono": _heredar("telefono"),
                     "motivo": d.get("motivo", ""),
                     "trabajo_realizado": d.get("trabajo_realizado", ""),
                     "oficial": d.get("oficial", ""),
@@ -1518,6 +1528,76 @@ def listar_pendientes(request: Request):
     ).data
 
     return {"vehiculos": pendientes + terminados_hoy}
+# --- IMPORTAR INVENTARIO (carga masiva desde Excel) ---------------------
+# Regla de negocio: si el código YA existe, SUMA la cantidad nueva al stock
+# y SOBREESCRIBE costo/precio_venta con los del archivo (igual criterio que
+# el registro individual por IA, líneas ~761-787). Si no existe, lo crea.
+@app.post("/importar-inventario")
+async def importar_inventario(request: Request, archivo: UploadFile = File(...)):
+    cliente_seguro, taller_id = obtener_cliente_seguro(request)
+
+    try:
+        contenido = await archivo.read()
+        df = pd.read_excel(io.BytesIO(contenido))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"No se pudo leer el Excel: {e}")
+
+    df.columns = [str(c).strip().lower() for c in df.columns]
+    columnas_requeridas = {"codigo", "nombre", "cantidad"}
+    faltantes = columnas_requeridas - set(df.columns)
+    if faltantes:
+        raise HTTPException(status_code=400, detail=f"Faltan columnas obligatorias: {', '.join(faltantes)}")
+
+    tiempo_actual = ahora_utc_str()
+    nuevos, actualizados, errores = 0, 0, []
+
+    for idx, fila in df.iterrows():
+        try:
+            codigo = str(fila.get("codigo", "")).strip()
+            if not codigo or codigo.lower() == "nan":
+                errores.append(f"Fila {idx + 2}: sin código, omitida")
+                continue
+
+            cantidad = int(fila.get("cantidad", 0) or 0)
+            costo = float(fila.get("costo", 0) or 0)
+            precio_venta = float(fila.get("precio_venta", 0) or 0)
+            nombre = str(fila.get("nombre", "")).strip()
+            marca = "" if pd.isna(fila.get("marca")) else str(fila.get("marca")).strip()
+            proveedor = "General" if pd.isna(fila.get("proveedor")) else str(fila.get("proveedor")).strip()
+            aplicacion = "General" if pd.isna(fila.get("aplicacion")) else str(fila.get("aplicacion")).strip()
+
+            inv_res = cliente_seguro.table("inventario").select("id, cantidad").eq("codigo", codigo).eq("taller_id", taller_id).execute()
+
+            if inv_res.data:
+                item_existente = inv_res.data[0]
+                nueva_cantidad = item_existente["cantidad"] + cantidad
+                cliente_seguro.table("inventario").update({
+                    "cantidad": nueva_cantidad,
+                    "costo": costo,
+                    "precio_venta": precio_venta,
+                    "fecha_actualizacion": tiempo_actual
+                }).eq("id", item_existente["id"]).execute()
+                actualizados += 1
+            else:
+                cliente_seguro.table("inventario").insert({
+                    "taller_id": taller_id,
+                    "codigo": codigo,
+                    "nombre": nombre,
+                    "marca": marca,
+                    "proveedor": proveedor,
+                    "aplicacion": aplicacion,
+                    "cantidad": cantidad,
+                    "costo": costo,
+                    "precio_venta": precio_venta,
+                    "fecha_actualizacion": tiempo_actual
+                }).execute()
+                nuevos += 1
+        except Exception as e_fila:
+            errores.append(f"Fila {idx + 2}: {e_fila}")
+
+    return {"status": "ok", "nuevos": nuevos, "actualizados": actualizados, "errores": errores}
+
+
 @app.get("/exportar-inventario")
 def exportar_inventario(request: Request):
     try:
