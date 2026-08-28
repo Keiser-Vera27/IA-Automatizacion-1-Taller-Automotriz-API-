@@ -4,22 +4,22 @@
 # ==============================================================================
 
 import os
+import io
 import re
 import json
 import asyncio
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from fastapi import FastAPI, BackgroundTasks, Request, HTTPException
+
+import pandas as pd
+from fastapi import FastAPI, BackgroundTasks, Request, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator, EmailStr
 from dotenv import load_dotenv
 from openai import OpenAI as ClienteOpenAICompatible
-import pandas as pd
 from supabase import create_client, Client
-import re # Asegúrate de que esto esté al inicio de tu archivo main.py
-
 
 def normalizar_placa(texto: str) -> str:
     """

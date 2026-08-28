@@ -251,6 +251,47 @@ async function descargarInventario() {
     }
 }
 
+// Importación masiva de inventario (abre el selector de archivo)
+function abrirSelectorInventario() {
+    document.getElementById('input-excel-inventario').click();
+}
+
+// Importación masiva de inventario (sube el Excel al backend)
+async function subirInventarioExcel(event) {
+    const archivo = event.target.files[0];
+    if (!archivo) return;
+
+    const token = localStorage.getItem("taller_token");
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+
+    try {
+        mostrarNotificacion("Importando inventario, espera un momento...", "info");
+
+        const response = await fetch('/importar-inventario', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            let mensaje = `Importación lista: ${data.nuevos} repuestos nuevos, ${data.actualizados} actualizados.`;
+            if (data.errores && data.errores.length > 0) {
+                mensaje += ` (${data.errores.length} fila(s) con problemas)`;
+            }
+            mostrarNotificacion(mensaje, "success");
+        } else {
+            mostrarNotificacion(data.detail || "Error al importar el inventario.", "warning");
+        }
+    } catch (error) {
+        mostrarNotificacion("Error de conexion al importar el inventario.", "error");
+    } finally {
+        event.target.value = "";
+    }
+}
+
 // Descarga reporte diario
 async function descargarReporteDiario() {
     const token = localStorage.getItem("taller_token");

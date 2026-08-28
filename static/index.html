@@ -144,6 +144,11 @@
                     <button class="btn-inventario" onclick="descargarInventario()">
                         📦 Descargar Auditoria de Inventario
                     </button>
+                    <!-- Importación masiva de inventario: botón visible + input file oculto -->
+                    <button class="btn-inventario" onclick="abrirSelectorInventario()">
+                        📤 Importar Inventario (Excel)
+                    </button>
+                    <input type="file" id="input-excel-inventario" accept=".xlsx,.xls" style="display: none;" onchange="subirInventarioExcel(event)">
                 </div>
 
                 <!-- CONTENEDOR DINÁMICO DEL CUADRE DIARIO -->
