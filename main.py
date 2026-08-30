@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, field_validator, EmailStr
 from dotenv import load_dotenv
 from openai import OpenAI as ClienteOpenAICompatible
 from supabase import create_client, Client
+from postgrest.exceptions import APIError
 
 def normalizar_placa(texto: str) -> str:
     """
@@ -746,37 +747,51 @@ async def trabajador_silencioso():
                 # AUTOCOMPLETADO: si el vehículo ya visitó el taller antes, _heredar()
                 # rellena cliente/cedula/telefono con los del último registro cuando
                 # la IA no los mencionó en este mensaje.
-                supabase.table("reparaciones").insert({
-                    "taller_id": taller_id,
-                    "vehiculo": placa if placa else "S/C",
-                    "modelo": _heredar("modelo"),
-                    "color": _heredar("color"),
-                    "anio": _heredar("anio"),
-                    "cilindraje": _heredar("cilindraje"),
-                    "cliente": _heredar("cliente"),
-                    "cedula": _heredar("cedula"),
-                    "telefono": _heredar("telefono"),
-                    "motivo": d.get("motivo", ""),
-                    "trabajo_realizado": d.get("trabajo_realizado", ""),
-                    "oficial": d.get("oficial", ""),
-                    "cobro": d.get("cobro", 0.0),
-                    "metodo_pago": d.get("metodo_pago", ""),
-                    "banco": d.get("banco", ""),
-                    "fecha_hora": tiempo_actual,
-                    "fecha_salida": fecha_sal,
-                    "estado": estado_nuevo
-                }).execute()
+                try:
+                    supabase.table("reparaciones").insert({
+                        "taller_id": taller_id,
+                        "vehiculo": placa if placa else "S/C",
+                        "modelo": _heredar("modelo"),
+                        "color": _heredar("color"),
+                        "anio": _heredar("anio"),
+                        "cilindraje": _heredar("cilindraje"),
+                        "cliente": _heredar("cliente"),
+                        "cedula": _heredar("cedula"),
+                        "telefono": _heredar("telefono"),
+                        "motivo": d.get("motivo", ""),
+                        "trabajo_realizado": d.get("trabajo_realizado", ""),
+                        "oficial": d.get("oficial", ""),
+                        "cobro": d.get("cobro", 0.0),
+                        "metodo_pago": d.get("metodo_pago", ""),
+                        "banco": d.get("banco", ""),
+                        "fecha_hora": tiempo_actual,
+                        "fecha_salida": fecha_sal,
+                        "estado": estado_nuevo,
+                        "mensaje_id": id_msj
+                    }).execute()
+                except APIError as e:
+                    if e.code == "23505":  # ya se había insertado en un intento anterior (idempotencia)
+                        print(f"↩️ Mensaje {id_msj} ya había creado esta reparación antes, no se duplica.")
+                    else:
+                        raise
 
         elif tipo == "gasto" and resultado.get("gasto"):
             d = resultado["gasto"]
-            supabase.table("gastos").insert({
-                "taller_id": taller_id,
-                "monto": d.get("monto", 0.0),
-                "motivo": d.get("motivo", ""),
-                "vehiculo": d.get("vehiculo", "N/A"),
-                "responsable": d.get("responsable", ""),
-                "fecha_hora": tiempo_actual
-            }).execute()
+            try:
+                supabase.table("gastos").insert({
+                    "taller_id": taller_id,
+                    "monto": d.get("monto", 0.0),
+                    "motivo": d.get("motivo", ""),
+                    "vehiculo": d.get("vehiculo", "N/A"),
+                    "responsable": d.get("responsable", ""),
+                    "fecha_hora": tiempo_actual,
+                    "mensaje_id": id_msj
+                }).execute()
+            except APIError as e:
+                if e.code == "23505":
+                    print(f"↩️ Mensaje {id_msj} ya había creado este gasto antes, no se duplica.")
+                else:
+                    raise
 
         elif tipo == "inventario" and resultado.get("inventario"):
             d = resultado["inventario"]
@@ -793,18 +808,25 @@ async def trabajador_silencioso():
                     "fecha_actualizacion": tiempo_actual
                 }).eq("id", rep_existente["id"]).execute()
             else:
-                supabase.table("inventario").insert({
-                    "taller_id": taller_id,
-                    "codigo": d.get("codigo", "S/C"),
-                    "nombre": d.get("nombre", ""),
-                    "marca": d.get("marca", ""),
-                    "proveedor": d.get("proveedor", "General"),
-                    "aplicacion": d.get("aplicacion", "General"),
-                    "cantidad": d.get("cantidad", 0),
-                    "costo": d.get("costo", 0.0),
-                    "precio_venta": d.get("precio_venta", 0.0),
-                    "fecha_actualizacion": tiempo_actual
-                }).execute()
+                try:
+                    supabase.table("inventario").insert({
+                        "taller_id": taller_id,
+                        "codigo": d.get("codigo", "S/C"),
+                        "nombre": d.get("nombre", ""),
+                        "marca": d.get("marca", ""),
+                        "proveedor": d.get("proveedor", "General"),
+                        "aplicacion": d.get("aplicacion", "General"),
+                        "cantidad": d.get("cantidad", 0),
+                        "costo": d.get("costo", 0.0),
+                        "precio_venta": d.get("precio_venta", 0.0),
+                        "fecha_actualizacion": tiempo_actual,
+                        "mensaje_id": id_msj
+                    }).execute()
+                except APIError as e:
+                    if e.code == "23505":
+                        print(f"↩️ Mensaje {id_msj} ya había creado este repuesto antes, no se duplica.")
+                    else:
+                        raise
 
         elif tipo == "devolucion" and resultado.get("devolucion"):
             d = resultado["devolucion"]
