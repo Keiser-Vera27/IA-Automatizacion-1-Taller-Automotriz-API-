@@ -1701,53 +1701,56 @@ def dashboard_stats(request: Request):
     """
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
     
-    # 1. Traer todas las órdenes terminadas con sus detalles
-    res = (
-        cliente_seguro.table("reparaciones")
-        .select("cliente, cobro, trabajo_realizado, reparacion_detalles(cantidad, repuestos(nombre))")
-        .eq("taller_id", taller_id)
-        .eq("estado", "Terminado")
-        .execute()
-    )
-    ordenes = res.data
+    try:
+        # 1. Traer todas las órdenes terminadas con sus detalles
+        res = (
+            cliente_seguro.table("reparaciones")
+            .select("cliente, cobro, trabajo_realizado, reparacion_detalles(cantidad, repuestos(nombre_repuesto))")
+            .eq("taller_id", taller_id)
+            .eq("estado", "Terminado")
+            .execute()
+        )
+        ordenes = res.data
 
-    dicc_clientes = {}
-    dicc_servicios = {}
-    dicc_repuestos = {}
+        dicc_clientes = {}
+        dicc_servicios = {}
+        dicc_repuestos = {}
 
-    for o in ordenes:
-        # --- Top Clientes ---
-        cli = str(o.get("cliente") or "Cliente Final").strip()
-        dicc_clientes[cli] = dicc_clientes.get(cli, 0.0) + float(o.get("cobro") or 0.0)
+        for o in ordenes:
+            # --- Top Clientes ---
+            cli = str(o.get("cliente") or "Cliente Final").strip()
+            dicc_clientes[cli] = dicc_clientes.get(cli, 0.0) + float(o.get("cobro") or 0.0)
 
-        # --- Top Servicios ---
-        trabajo = str(o.get("trabajo_realizado") or "").strip()
-        if trabajo:
-            # Separamos por "|" por si la IA fusionó varios trabajos en una orden
-            para_servicios = [t.strip() for t in trabajo.split("|") if t.strip()]
-            for s in para_servicios:
-                dicc_servicios[s] = dicc_servicios.get(s, 0) + 1
+            # --- Top Servicios ---
+            trabajo = str(o.get("trabajo_realizado") or "").strip()
+            if trabajo:
+                para_servicios = [t.strip() for t in trabajo.split("|") if t.strip()]
+                for s in para_servicios:
+                    dicc_servicios[s] = dicc_servicios.get(s, 0) + 1
 
-        # --- Top Repuestos ---
-        detalles = o.get("reparacion_detalles") or []
-        for d in detalles:
-            cant = int(d.get("cantidad") or 0)
-            rep_info = d.get("repuestos") or {}
-            # Manejamos "nombre" o "nombre_repuesto" dependiendo de cómo se llame tu columna en bd
-            nombre_rep = str(rep_info.get("nombre") or rep_info.get("nombre_repuesto") or "Repuesto Eliminado").strip()
-            dicc_repuestos[nombre_rep] = dicc_repuestos.get(nombre_rep, 0) + cant
+            # --- Top Repuestos ---
+            detalles = o.get("reparacion_detalles") or []
+            for d in detalles:
+                cant = int(d.get("cantidad") or 0)
+                rep_info = d.get("repuestos") or {}
+                # Buscamos el nombre correcto del repuesto
+                nombre_rep = str(rep_info.get("nombre_repuesto") or "Repuesto Genérico").strip()
+                dicc_repuestos[nombre_rep] = dicc_repuestos.get(nombre_rep, 0) + cant
 
-    # 2. Ordenar de mayor a menor y sacar solo el Top 5
-    top_clientes = [{"nombre": k, "total": round(v, 2)} for k, v in sorted(dicc_clientes.items(), key=lambda x: x[1], reverse=True)[:5]]
-    top_servicios = [{"nombre": k, "cantidad": v} for k, v in sorted(dicc_servicios.items(), key=lambda x: x[1], reverse=True)[:5]]
-    top_repuestos = [{"nombre": k, "cantidad": v} for k, v in sorted(dicc_repuestos.items(), key=lambda x: x[1], reverse=True)[:5]]
+        # 2. Ordenar de mayor a menor y sacar solo el Top 5
+        top_clientes = [{"nombre": k, "total": round(v, 2)} for k, v in sorted(dicc_clientes.items(), key=lambda x: x[1], reverse=True)[:5]]
+        top_servicios = [{"nombre": k, "cantidad": v} for k, v in sorted(dicc_servicios.items(), key=lambda x: x[1], reverse=True)[:5]]
+        top_repuestos = [{"nombre": k, "cantidad": v} for k, v in sorted(dicc_repuestos.items(), key=lambda x: x[1], reverse=True)[:5]]
 
-    return {
-        "top_clientes": top_clientes,
-        "top_servicios": top_servicios,
-        "top_repuestos": top_repuestos
-    }
-
+        return {
+            "top_clientes": top_clientes,
+            "top_servicios": top_servicios,
+            "top_repuestos": top_repuestos
+        }
+    except Exception as e:
+        print(f"Error en dashboard_stats: {e}")
+        # En caso de error, devolvemos listas vacías para que no se rompa la página
+        return {"top_clientes": [], "top_servicios": [], "top_repuestos": []}
 @app.get("/exportar-inventario")
 def exportar_inventario(request: Request):
     try:
