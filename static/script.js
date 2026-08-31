@@ -948,6 +948,8 @@ function cambiarVista(idVista) {
     // Si entramos al dashboard, cargamos los gráficos (lo programaremos luego)
     if (idVista === 'vista-dashboard') {
         cargarDatosDashboard(); 
+    } else if (idVista === 'vista-servicios') {
+        cargarServicios(); // ¡Agrega esta línea!
     }
 }
 // ==========================================================================
@@ -1040,4 +1042,83 @@ function renderChartServicios(datos) {
         },
         options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#888' } } } }
     });
+}
+// ==========================================================================
+// CATÁLOGO DE SERVICIOS
+// ==========================================================================
+async function cargarServicios() {
+    const token = localStorage.getItem("as_token");
+    if (!token) return;
+
+    try {
+        const res = await fetch("/servicios", { headers: { "Authorization": `Bearer ${token}` } });
+        const data = await res.json();
+        
+        const tbody = document.getElementById('tabla-servicios');
+        tbody.innerHTML = '';
+
+        if (!data.servicios || data.servicios.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="padding: 15px; text-align: center; color: var(--texto-tenue);">No hay servicios registrados.</td></tr>';
+            return;
+        }
+
+        data.servicios.forEach(s => {
+            tbody.innerHTML += `
+                <tr>
+                    <td style="padding: 12px; border-bottom: 1px solid var(--borde);">${s.nombre_servicio}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid var(--borde); text-align: right;">$${s.precio_base.toFixed(2)}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid var(--borde); text-align: center;">
+                        <button onclick="eliminarServicio('${s.id}')" style="background: none; border: none; color: #ff5555; cursor: pointer; font-size: 16px;" title="Eliminar">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        });
+    } catch (error) {
+        console.error("Error cargando servicios:", error);
+    }
+}
+
+async function guardarServicio() {
+    const nombre = document.getElementById('nuevo-servicio-nombre').value;
+    const precio = document.getElementById('nuevo-servicio-precio').value;
+    const token = localStorage.getItem("as_token");
+
+    if (!nombre || !precio) {
+        alert("Por favor ingresa un nombre y un precio válido.");
+        return;
+    }
+
+    try {
+        const res = await fetch("/servicios", {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}` 
+            },
+            body: JSON.stringify({ nombre_servicio: nombre, precio_base: parseFloat(precio) })
+        });
+        
+        if (res.ok) {
+            document.getElementById('nuevo-servicio-nombre').value = '';
+            document.getElementById('nuevo-servicio-precio').value = '';
+            cargarServicios(); // Recargar la tabla
+        }
+    } catch (error) {
+        console.error("Error al guardar:", error);
+    }
+}
+
+async function eliminarServicio(id) {
+    if (!confirm("¿Estás seguro de eliminar este servicio?")) return;
+    
+    const token = localStorage.getItem("as_token");
+    try {
+        const res = await fetch(`/servicios/${id}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) cargarServicios();
+    } catch (error) {
+        console.error("Error al eliminar:", error);
+    }
 }

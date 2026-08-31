@@ -238,8 +238,30 @@
             <!-- ========================================== -->
             <div id="vista-servicios" class="vista-app" style="display: none; padding: 20px;">
                 <h2>Gestión de Servicios y Precios Base</h2>
-                <p style="color: var(--texto-tenue);">Aquí agregaremos el formulario para registrar y gestionar el catálogo de servicios.</p>
-                <!-- Próximamente la tabla de servicios se renderizará aquí -->
+                <p style="color: var(--texto-tenue); margin-bottom: 20px;">La IA usará estos precios automáticamente cuando registres un trabajo en el chat.</p>
+                
+                <!-- Formulario para agregar -->
+                <div class="panel-caja" style="max-width: 600px; margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                    <input type="text" id="nuevo-servicio-nombre" placeholder="Ej: Cambio de Aceite" style="flex: 2; min-width: 200px; padding: 10px; border-radius: 5px; border: 1px solid var(--borde); background: var(--bg-alterno); color: var(--texto);">
+                    <input type="number" id="nuevo-servicio-precio" placeholder="Precio ($)" style="flex: 1; min-width: 100px; padding: 10px; border-radius: 5px; border: 1px solid var(--borde); background: var(--bg-alterno); color: var(--texto);">
+                    <button onclick="guardarServicio()" style="padding: 10px 20px; border-radius: 5px; border: none; background: #DB1FFF; color: white; cursor: pointer; font-weight: bold;">
+                        + Agregar
+                    </button>
+                </div>
+
+                <!-- Tabla de servicios -->
+                <table style="width: 100%; max-width: 600px; border-collapse: collapse; background: var(--bg-panel);">
+                    <thead>
+                        <tr style="background: var(--bg-alterno);">
+                            <th style="padding: 12px; text-align: left; border-bottom: 2px solid var(--borde);">Servicio</th>
+                            <th style="padding: 12px; text-align: right; border-bottom: 2px solid var(--borde);">Precio ($)</th>
+                            <th style="padding: 12px; text-align: center; border-bottom: 2px solid var(--borde);">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabla-servicios">
+                        <tr><td colspan="3" style="padding: 15px; text-align: center; color: var(--texto-tenue);">Cargando catálogo...</td></tr>
+                    </tbody>
+                </table>
             </div>
 
         </div> <!-- Cierra .contenedor -->

@@ -1664,6 +1664,34 @@ async def importar_inventario(request: Request, archivo: UploadFile = File(...))
 
     return {"status": "ok", "nuevos": nuevos, "actualizados": actualizados, "errores": errores}
 # ==============================================================================
+# CATÁLOGO DE SERVICIOS
+# ==============================================================================
+class NuevoServicio(BaseModel):
+    nombre_servicio: str
+    precio_base: float
+
+@app.get("/servicios")
+def listar_servicios(request: Request):
+    cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    data = cliente_seguro.table("servicios").select("*").eq("taller_id", taller_id).order("nombre_servicio").execute().data
+    return {"servicios": data}
+
+@app.post("/servicios")
+def agregar_servicio(datos: NuevoServicio, request: Request):
+    cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    cliente_seguro.table("servicios").insert({
+        "taller_id": taller_id,
+        "nombre_servicio": datos.nombre_servicio.strip(),
+        "precio_base": datos.precio_base
+    }).execute()
+    return {"status": "ok", "mensaje": "Servicio agregado exitosamente"}
+
+@app.delete("/servicios/{servicio_id}")
+def eliminar_servicio(servicio_id: str, request: Request):
+    cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    cliente_seguro.table("servicios").delete().eq("id", servicio_id).eq("taller_id", taller_id).execute()
+    return {"status": "ok", "mensaje": "Servicio eliminado"}
+# ==============================================================================
 # DASHBOARD ANALÍTICO (CHART.JS)
 # ==============================================================================
 @app.get("/dashboard-stats")
