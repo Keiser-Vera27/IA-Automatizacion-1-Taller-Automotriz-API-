@@ -922,3 +922,122 @@ window.addEventListener("pageshow", function(event) {
         }
     }
 });
+// ==========================================================================
+// NAVEGACIÓN Y MENÚ HAMBURGUESA
+// ==========================================================================
+function toggleMenu() {
+    const menu = document.getElementById('menu-lateral');
+    if (menu.style.left === '0px') {
+        menu.style.left = '-250px';
+    } else {
+        menu.style.left = '0px';
+    }
+}
+
+function cambiarVista(idVista) {
+    // Ocultar todas las vistas
+    const vistas = document.querySelectorAll('.vista-app');
+    vistas.forEach(vista => vista.style.display = 'none');
+    
+    // Mostrar la vista seleccionada
+    document.getElementById(idVista).style.display = 'block';
+    
+    // Cerrar el menú lateral
+    toggleMenu();
+    
+    // Si entramos al dashboard, cargamos los gráficos (lo programaremos luego)
+    if (idVista === 'vista-dashboard') {
+        cargarDatosDashboard(); 
+    }
+}
+// ==========================================================================
+// DASHBOARD ANALÍTICO (CHART.JS)
+// ==========================================================================
+let chartRepuestos = null;
+let chartClientes = null;
+let chartServicios = null;
+
+async function cargarDatosDashboard() {
+    const token = localStorage.getItem("as_token");
+    if (!token) return;
+
+    try {
+        // Llama a la URL de tu backend
+        const response = await fetch(`${API_URL}/dashboard-stats`, {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        
+        if (!response.ok) throw new Error("Error cargando el dashboard");
+        
+        const data = await response.json();
+
+        renderChartRepuestos(data.top_repuestos);
+        renderChartClientes(data.top_clientes);
+        renderChartServicios(data.top_servicios);
+
+    } catch (error) {
+        console.error("Error en el Dashboard:", error);
+    }
+}
+
+function renderChartRepuestos(datos) {
+    const ctx = document.getElementById('graficoRepuestos').getContext('2d');
+    if (chartRepuestos) chartRepuestos.destroy(); // Limpiar gráfico anterior
+
+    chartRepuestos = new Chart(ctx, {
+        type: 'doughnut', // Gráfico circular (donut)
+        data: {
+            labels: datos.map(d => d.nombre),
+            datasets: [{
+                label: 'Unidades Vendidas',
+                data: datos.map(d => d.cantidad),
+                backgroundColor: ['#DB1FFF', '#7030EF', '#00d2ff', '#3a7bd5', '#ff7b00'],
+                borderWidth: 0
+            }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#888' } } } }
+    });
+}
+
+function renderChartClientes(datos) {
+    const ctx = document.getElementById('graficoClientes').getContext('2d');
+    if (chartClientes) chartClientes.destroy();
+
+    chartClientes = new Chart(ctx, {
+        type: 'bar', // Gráfico de barras horizontales
+        data: {
+            labels: datos.map(d => d.nombre),
+            datasets: [{
+                label: 'Inversión Total ($)',
+                data: datos.map(d => d.total),
+                backgroundColor: '#28a745',
+                borderRadius: 5
+            }]
+        },
+        options: { 
+            indexAxis: 'y', // Lo hace horizontal
+            responsive: true, 
+            plugins: { legend: { display: false } },
+            scales: { x: { grid: { color: '#333' } }, y: { grid: { display: false } } }
+        }
+    });
+}
+
+function renderChartServicios(datos) {
+    const ctx = document.getElementById('graficoServicios').getContext('2d');
+    if (chartServicios) chartServicios.destroy();
+
+    chartServicios = new Chart(ctx, {
+        type: 'pie', // Gráfico tipo pastel
+        data: {
+            labels: datos.map(d => d.nombre),
+            datasets: [{
+                label: 'Veces Realizado',
+                data: datos.map(d => d.cantidad),
+                backgroundColor: ['#ff9900', '#ff5500', '#ff0055', '#9900ff', '#00ccff'],
+                borderWidth: 0
+            }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#888' } } } }
+    });
+}

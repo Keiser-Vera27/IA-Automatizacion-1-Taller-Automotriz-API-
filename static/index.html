@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="style.css?v=3">
     <!-- Librería para renderizar Markdown (negritas y listas de la IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Librería para Gráficos (Dashboard) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
@@ -97,171 +99,220 @@
     <div id="app-container" style="display: none;">
         <div class="contenedor">
 
-            <!-- Barra superior para el botón de salir -->
-            <div class="barra-superior-app">
-                <div id="banner-bienvenida" class="banner-bienvenida"></div>
-                <button class="btn-cerrar-sesion" onclick="cerrarSesion()">
-                    Cerrar Sesión
-                </button>
-            </div>
-
-            
-
-            <div class="cabecera">
-                <h1>Keiser Labs</h1>
-                <p>Geor IA le ayudará con la organización de gastos, ingresos, inventario y consultas analíticas.</p>
-            </div>
-
-            <div class="glass-container" style="padding: 22px;">
-                <div class="grupo-formulario">
-                    <textarea id="texto_reporte" placeholder="Escribe aquí un registro (ej: Entró Toyota PXY9876...) o haz una pregunta analítica (ej: ¿Cuál fue el cliente que gastó más?)"></textarea>
+            <!-- BARRA SUPERIOR Y MENÚ HAMBURGUESA -->
+            <div class="barra-superior-app" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: var(--bg-alterno); border-bottom: 1px solid var(--borde);">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <button onclick="toggleMenu()" style="background: none; border: none; font-size: 24px; color: var(--texto); cursor: pointer;">☰</button>
+                    <div id="banner-bienvenida" class="banner-bienvenida" style="margin: 0; font-weight: bold;"></div>
                 </div>
-
-                <button class="btn-enviar" onclick="enviarReporte()">
-                    Enviar a Keila IA
-                </button>
+                <button class="btn-cerrar-sesion" onclick="cerrarSesion()">Cerrar Sesión</button>
             </div>
 
-            <hr>
-
-            <!-- 1. LO MÁS IMPORTANTE DIARIO: CONTROL DE VEHÍCULOS -->
-            <div id="panel-vehiculos-pendientes-container"></div>
-
-            <hr>
-
-            <!-- 2. APARTADO FINAL: PANEL DE CONTROL, FINANZAS, RANKING Y LIQUIDACIONES -->
-            <div class="seccion-contabilidad" style="margin-top: 40px;">
-                <h2>Panel de Control y Finanzas</h2>
+            <!-- MENÚ LATERAL OCULTO -->
+            <div id="menu-lateral" style="position: fixed; top: 0; left: -250px; width: 250px; height: 100vh; background: var(--bg-panel); box-shadow: 2px 0 5px rgba(0,0,0,0.5); transition: 0.3s; z-index: 1000; padding-top: 60px;">
+                <button onclick="toggleMenu()" style="position: absolute; top: 15px; right: 15px; background: none; border: none; font-size: 20px; color: var(--texto); cursor: pointer;">✖</button>
                 
-                <!-- BOTONES DE ACCIÓN RÁPIDA -->
-                <div class="grupo-botones-reportes">
-                    <button class="btn-excel" onclick="verCuadreDeCaja()">
-                        📊 Ver Cuadre de Caja del Día
-                    </button>
-                    <button class="btn-excel" onclick="descargarReporteDiario()">
-                        📥 Descargar Reporte Diario
-                    </button>
-                    <button class="btn-inventario" onclick="descargarInventario()">
-                        📦 Descargar Auditoria de Inventario
-                    </button>
-                    <!-- Importación masiva de inventario: botón visible + input file oculto -->
-                    <button class="btn-inventario" onclick="abrirSelectorInventario()">
-                        📤 Importar Inventario (Excel)
-                    </button>
-                    <input type="file" id="input-excel-inventario" accept=".xlsx,.xls" style="display: none;" onchange="subirInventarioExcel(event)">
+                <a href="#" onclick="cambiarVista('vista-chat')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">💬 Chat / Operaciones</a>
+                <a href="#" onclick="cambiarVista('vista-dashboard')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">📊 Dashboard Analítico</a>
+                <a href="#" onclick="cambiarVista('vista-servicios')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">🛠️ Catálogo de Servicios</a>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- PANTALLA 1: CHAT Y OPERACIONES (Vista Principal) -->
+            <!-- ========================================== -->
+            <div id="vista-chat" class="vista-app">
+                <div class="cabecera">
+                    <h1>Keiser Labs</h1>
+                    <p>Geor IA le ayudará con la organización de gastos, ingresos, inventario y consultas analíticas.</p>
                 </div>
 
-                <!-- CONTENEDOR DINÁMICO DEL CUADRE DIARIO -->
-                <div id="panel-cuadre-caja"></div>
+                <div class="glass-container" style="padding: 22px;">
+                    <div class="grupo-formulario">
+                        <textarea id="texto_reporte" placeholder="Escribe aquí un registro (ej: Entró Toyota PXY9876...) o haz una pregunta analítica (ej: ¿Cuál fue el cliente que gastó más?)"></textarea>
+                    </div>
 
-                <!-- RANKING ANUAL DE TÉCNICOS (AL FINAL) -->
-                <div class="panel-caja" style="margin-top: 30px; border-left: 4px solid var(--magenta);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
-                        <div>
-                            <h3 style="margin: 0;">🏆 Ranking Anual de Técnicos (En Vivo)</h3>
-                            <p style="color: var(--texto-tenue); font-size: 0.85rem; margin: 4px 0 0 0;">
-                                Acumulado del año en curso descontando repuestos. Se actualiza automáticamente.
-                            </p>
-                        </div>
-                        <button class="btn-filtro activo" onclick="cargarRankingAnual()" style="padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer;">
-                            🔄 Actualizar Podio
-                        </button>
-                    </div>
-                    <div id="resultado-ranking-anual">
-                        <p style="color: var(--texto-tenue); text-align: center; font-size: 0.9rem; margin: 15px 0;">Cargando posiciones...</p>
-                    </div>
+                    <button class="btn-enviar" onclick="enviarReporte()">
+                        Enviar a Keila IA
+                    </button>
                 </div>
 
-                <!-- LIQUIDACIÓN QUINCENAL / PERSONALIZADA (AL FINAL) -->
-                <div class="panel-caja" style="margin-top: 20px; border-left: 4px solid var(--morado);">
-                    <h3>💵 Liquidación de Nómina (Corte por Fechas)</h3>
-                    <p style="color: var(--texto-tenue); font-size: 0.85rem; margin-bottom: 15px;">
-                        Calcula comisiones netas por mano de obra para pagos quincenales o mensuales ajustados a feriados.
-                    </p>
+                <hr>
+
+                <!-- 1. LO MÁS IMPORTANTE DIARIO: CONTROL DE VEHÍCULOS -->
+                <div id="panel-vehiculos-pendientes-container"></div>
+
+                <hr>
+
+                <!-- 2. APARTADO FINAL: PANEL DE CONTROL, FINANZAS, RANKING Y LIQUIDACIONES -->
+                <div class="seccion-contabilidad" style="margin-top: 40px;">
+                    <h2>Panel de Control y Finanzas</h2>
                     
-                    <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; margin-bottom: 15px;">
-                        <label style="font-size: 0.85rem;">Desde: <input type="date" id="fechaInicioLiq" style="padding: 6px; border-radius: 6px; border: 1px solid var(--borde); background: var(--bg-alterno); color: inherit;"></label>
-                        <label style="font-size: 0.85rem;">Hasta: <input type="date" id="fechaFinLiq" style="padding: 6px; border-radius: 6px; border: 1px solid var(--borde); background: var(--bg-alterno); color: inherit;"></label>
-                        <button class="btn-filtro activo" onclick="cargarLiquidacionFechas()" style="padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;">
-                            Generar Liquidación
+                    <!-- BOTONES DE ACCIÓN RÁPIDA -->
+                    <div class="grupo-botones-reportes">
+                        <button class="btn-excel" onclick="verCuadreDeCaja()">
+                            📊 Ver Cuadre de Caja del Día
                         </button>
+                        <button class="btn-excel" onclick="descargarReporteDiario()">
+                            📥 Descargar Reporte Diario
+                        </button>
+                        <button class="btn-inventario" onclick="descargarInventario()">
+                            📦 Descargar Auditoria de Inventario
+                        </button>
+                        <!-- Importación masiva de inventario: botón visible + input file oculto -->
+                        <button class="btn-inventario" onclick="abrirSelectorInventario()">
+                            📤 Importar Inventario (Excel)
+                        </button>
+                        <input type="file" id="input-excel-inventario" accept=".xlsx,.xls" style="display: none;" onchange="subirInventarioExcel(event)">
                     </div>
 
-                    <div id="resultado-liquidacion"></div>
+                    <!-- CONTENEDOR DINÁMICO DEL CUADRE DIARIO -->
+                    <div id="panel-cuadre-caja"></div>
+
+                    <!-- RANKING ANUAL DE TÉCNICOS -->
+                    <div class="panel-caja" style="margin-top: 30px; border-left: 4px solid var(--magenta);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <h3 style="margin: 0;">🏆 Ranking Anual de Técnicos (En Vivo)</h3>
+                                <p style="color: var(--texto-tenue); font-size: 0.85rem; margin: 4px 0 0 0;">
+                                    Acumulado del año en curso descontando repuestos. Se actualiza automáticamente.
+                                </p>
+                            </div>
+                            <button class="btn-filtro activo" onclick="cargarRankingAnual()" style="padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer;">
+                                🔄 Actualizar Podio
+                            </button>
+                        </div>
+                        <div id="resultado-ranking-anual">
+                            <p style="color: var(--texto-tenue); text-align: center; font-size: 0.9rem; margin: 15px 0;">Cargando posiciones...</p>
+                        </div>
+                    </div>
+
+                    <!-- LIQUIDACIÓN QUINCENAL / PERSONALIZADA -->
+                    <div class="panel-caja" style="margin-top: 20px; border-left: 4px solid var(--morado);">
+                        <h3>💵 Liquidación de Nómina (Corte por Fechas)</h3>
+                        <p style="color: var(--texto-tenue); font-size: 0.85rem; margin-bottom: 15px;">
+                            Calcula comisiones netas por mano de obra para pagos quincenales o mensuales ajustados a feriados.
+                        </p>
+                        
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; margin-bottom: 15px;">
+                            <label style="font-size: 0.85rem;">Desde: <input type="date" id="fechaInicioLiq" style="padding: 6px; border-radius: 6px; border: 1px solid var(--borde); background: var(--bg-alterno); color: inherit;"></label>
+                            <label style="font-size: 0.85rem;">Hasta: <input type="date" id="fechaFinLiq" style="padding: 6px; border-radius: 6px; border: 1px solid var(--borde); background: var(--bg-alterno); color: inherit;"></label>
+                            <button class="btn-filtro activo" onclick="cargarLiquidacionFechas()" style="padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;">
+                                Generar Liquidación
+                            </button>
+                        </div>
+
+                        <div id="resultado-liquidacion"></div>
+                    </div>
                 </div>
+            </div> <!-- Cierra #vista-chat -->
+
+            <!-- ========================================== -->
+            <!-- PANTALLA 2: DASHBOARD ANALÍTICO -->
+            <!-- ========================================== -->
+            <div id="vista-dashboard" class="vista-app" style="display: none; padding: 20px;">
+                <h2>Dashboard de Rendimiento</h2>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px;">
+                    <!-- Gráfico 1 -->
+                    <div class="panel-caja" style="background: var(--bg-panel); padding: 20px; border-radius: 12px; border: 1px solid var(--borde);">
+                        <h3>🔝 Top Repuestos (Mayor Salida)</h3>
+                        <canvas id="graficoRepuestos"></canvas>
+                    </div>
+                    
+                    <!-- Gráfico 2 -->
+                    <div class="panel-caja" style="background: var(--bg-panel); padding: 20px; border-radius: 12px; border: 1px solid var(--borde);">
+                        <h3>⭐ Top Clientes (Mayor Inversión)</h3>
+                        <canvas id="graficoClientes"></canvas>
+                    </div>
+                    
+                    <!-- Gráfico 3 -->
+                    <div class="panel-caja" style="background: var(--bg-panel); padding: 20px; border-radius: 12px; border: 1px solid var(--borde);">
+                        <h3>🔧 Servicios Más Pedidos</h3>
+                        <canvas id="graficoServicios"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- PANTALLA 3: CATÁLOGO DE SERVICIOS -->
+            <!-- ========================================== -->
+            <div id="vista-servicios" class="vista-app" style="display: none; padding: 20px;">
+                <h2>Gestión de Servicios y Precios Base</h2>
+                <p style="color: var(--texto-tenue);">Aquí agregaremos el formulario para registrar y gestionar el catálogo de servicios.</p>
+                <!-- Próximamente la tabla de servicios se renderizará aquí -->
             </div>
 
         </div> <!-- Cierra .contenedor -->
     </div> <!-- Cierra #app-container -->
 
-<!-- Plantilla oculta para la Ficha de Servicio -->
-<div id="plantilla-orden" style="display: none; padding: 40px; background: white; color: black; width: 800px; font-family: Arial, sans-serif; position: relative;">
+    <!-- Plantilla oculta para la Ficha de Servicio -->
+    <div id="plantilla-orden" style="display: none; padding: 40px; background: white; color: black; width: 800px; font-family: Arial, sans-serif; position: relative;">
 
-    <!-- ENCABEZADO: Taller y Número de Orden -->
-    <div style="text-align: center; border-bottom: 2px solid black; padding-bottom: 10px; margin-bottom: 20px;">
-        <h1 id="orden-nombre-taller" style="margin: 0; font-size: 24px; text-transform: uppercase;">AUTOTRONIC SOLUTIONS</h1>
-        <p style="margin: 5px 0 0; font-size: 14px; color: #555;">Orden N° <span id="orden-id">---</span> | Ficha de Servicio</p>
-    </div>
-
-    <!-- SECCIÓN DE DATOS DEL VEHÍCULO Y CLIENTE -->
-    <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; line-height: 1.6;">
-        <!-- Columna Izquierda -->
-        <div>
-            <p><strong>Placa:</strong> <span id="orden-placa"></span></p>
-            <p><strong>Vehículo:</strong> <span id="orden-detalles-vehiculo"></span></p>
-            <p><strong>Cliente:</strong> <span id="orden-cliente"></span></p>
-            <p><strong>Cédula:</strong> <span id="orden-cedula"></span></p>
-            <p><strong>Teléfono:</strong> <span id="orden-telefono"></span></p>
+        <!-- ENCABEZADO: Taller y Número de Orden -->
+        <div style="text-align: center; border-bottom: 2px solid black; padding-bottom: 10px; margin-bottom: 20px;">
+            <h1 id="orden-nombre-taller" style="margin: 0; font-size: 24px; text-transform: uppercase;">AUTOTRONIC SOLUTIONS</h1>
+            <p style="margin: 5px 0 0; font-size: 14px; color: #555;">Orden N° <span id="orden-id">---</span> | Ficha de Servicio</p>
         </div>
-        <!-- Columna Derecha -->
-        <div style="text-align: right;">
-            <p><strong>Fecha:</strong> <span id="orden-fecha"></span></p>
-            <p><strong>Técnico:</strong> <span id="orden-tecnico"></span></p>
-            <p><strong>Estado:</strong> <span id="orden-estado-texto"></span></p>
-            <p><strong>Método de Pago:</strong> <span id="orden-metodo-pago"></span></p>
+
+        <!-- SECCIÓN DE DATOS DEL VEHÍCULO Y CLIENTE -->
+        <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; line-height: 1.6;">
+            <!-- Columna Izquierda -->
+            <div>
+                <p><strong>Placa:</strong> <span id="orden-placa"></span></p>
+                <p><strong>Vehículo:</strong> <span id="orden-detalles-vehiculo"></span></p>
+                <p><strong>Cliente:</strong> <span id="orden-cliente"></span></p>
+                <p><strong>Cédula:</strong> <span id="orden-cedula"></span></p>
+                <p><strong>Teléfono:</strong> <span id="orden-telefono"></span></p>
+            </div>
+            <!-- Columna Derecha -->
+            <div style="text-align: right;">
+                <p><strong>Fecha:</strong> <span id="orden-fecha"></span></p>
+                <p><strong>Técnico:</strong> <span id="orden-tecnico"></span></p>
+                <p><strong>Estado:</strong> <span id="orden-estado-texto"></span></p>
+                <p><strong>Método de Pago:</strong> <span id="orden-metodo-pago"></span></p>
+            </div>
         </div>
-    </div>
 
-    <!-- SECCIÓN DE TRABAJOS (Motivo y Trabajo) -->
-    <div style="margin-bottom: 20px; font-size: 14px;">
-        <h3 style="margin-bottom: 5px; font-size: 16px;">Motivo de Ingreso:</h3>
-        <p id="orden-motivo" style="margin-top: 0; margin-bottom: 15px; color: #333;">---</p>
-        
-        <h3 style="margin-bottom: 5px; font-size: 16px;">Trabajo Realizado:</h3>
-        <p id="orden-trabajo" style="margin-top: 0; margin-bottom: 20px; color: #333;">---</p>
-    </div>
+        <!-- SECCIÓN DE TRABAJOS (Motivo y Trabajo) -->
+        <div style="margin-bottom: 20px; font-size: 14px;">
+            <h3 style="margin-bottom: 5px; font-size: 16px;">Motivo de Ingreso:</h3>
+            <p id="orden-motivo" style="margin-top: 0; margin-bottom: 15px; color: #333;">---</p>
+            
+            <h3 style="margin-bottom: 5px; font-size: 16px;">Trabajo Realizado:</h3>
+            <p id="orden-trabajo" style="margin-top: 0; margin-bottom: 20px; color: #333;">---</p>
+        </div>
 
-    <!-- TABLA DE REPUESTOS -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
-        <thead style="background-color: #f2f2f2;">
-            <tr>
-                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Código</th>
-                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Repuesto</th>
-                <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Cant.</th>
-                <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">P. Unitario</th>
-                <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Subtotal</th>
-            </tr>
-        </thead>
-        <tbody id="orden-repuestos-body">
-            <tr>
-                <td colspan="5" style="padding: 8px; border: 1px solid #ddd; text-align: center;">No se registraron repuestos (Solo mano de obra)</td>
-            </tr>
-        </tbody>
-    </table>
+        <!-- TABLA DE REPUESTOS -->
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
+            <thead style="background-color: #f2f2f2;">
+                <tr>
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Código</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Repuesto</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Cant.</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">P. Unitario</th>
+                    <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Subtotal</th>
+                </tr>
+            </thead>
+            <tbody id="orden-repuestos-body">
+                <tr>
+                    <td colspan="5" style="padding: 8px; border: 1px solid #ddd; text-align: center;">No se registraron repuestos (Solo mano de obra)</td>
+                </tr>
+            </tbody>
+        </table>
 
-    <!-- SECCIÓN DEL TOTAL (Unificada y dinámica) -->
-    <div style="text-align: right; margin-top: 20px; font-size: 18px;">
-        <strong id="orden-etiqueta-total">Valor a Pagar:</strong> $<span id="orden-total">0.00</span>
-    </div>
+        <!-- SECCIÓN DEL TOTAL (Unificada y dinámica) -->
+        <div style="text-align: right; margin-top: 20px; font-size: 18px;">
+            <strong id="orden-etiqueta-total">Valor a Pagar:</strong> $<span id="orden-total">0.00</span>
+        </div>
 
-    <!-- MARCA DE AGUA / CRÉDITOS -->
-    <div style="margin-top: 40px; border-top: 1px dashed #ccc; padding-top: 15px; text-align: center; font-size: 11px; color: #888;">
-        Generado digitalmente con <strong>Autotronic Solutions IA</strong><br>
-        Software Developer: Keiser Vera
-    </div>
+        <!-- MARCA DE AGUA / CRÉDITOS -->
+        <div style="margin-top: 40px; border-top: 1px dashed #ccc; padding-top: 15px; text-align: center; font-size: 11px; color: #888;">
+            Generado digitalmente con <strong>Autotronic Solutions IA</strong><br>
+            Software Developer: Keiser Vera
+        </div>
 
-</div>
-</div>
+    </div> <!-- Cierra #plantilla-orden -->
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="script.js?v=999"></script>
 </body>

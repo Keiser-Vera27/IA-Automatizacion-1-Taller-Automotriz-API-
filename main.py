@@ -594,14 +594,36 @@ async def trabajador_silencioso():
         texto_msj = msj["texto"]
         taller_id = msj["taller_id"]
         tiempo_actual = ahora_utc_str()
-        # 1. Consultar técnicos válidos del taller
+    # 1. Consultar técnicos válidos del taller
         tecnicos_res = supabase.table("tecnicos").select("nombre").eq("taller_id", taller_id).execute()
         nombres_tecnicos = [t["nombre"] for t in tecnicos_res.data] if tecnicos_res.data else []
         lista_tecnicos_str = ", ".join(nombres_tecnicos) if nombres_tecnicos else "Ninguno registrado"
-        # 1. PROMPT ACTUALIZADO (Con método de pago, banco y descripciones más claras)
+
+        # =======================================================
+        # NUEVO: EXTRAER EL CATÁLOGO DE SERVICIOS
+        # =======================================================
+        servicios_res = supabase.table("servicios").select("nombre_servicio, precio_base").eq("taller_id", taller_id).execute()
+        
+        lista_servicios_str = "No hay servicios registrados aún."
+        if servicios_res.data:
+            lista_servicios_str = "\n".join([
+                f"- {s['nombre_servicio']}: ${s['precio_base']}" 
+                for s in servicios_res.data
+            ])
+        # =======================================================
+
+        # 2. PROMPT ACTUALIZADO (Con Catálogo y Reglas de Cobro)
         prompt = f"""
         Eres un asistente contable inteligente de un taller mecánico.
         Analiza el siguiente mensaje y determina si se trata de un trabajo de reparación (ingreso), un gasto operativo (salida de dinero), un registro de INVENTARIO (ingreso de repuestos, extrayendo el proveedor si se menciona), o una DEVOLUCION.
+
+        Catálogo oficial de servicios y precios base de este taller:
+        {lista_servicios_str}
+
+        REGLAS DE COBRO PARA REPARACIONES:
+        1. Si el trabajo mencionado coincide con un servicio del catálogo, usa automáticamente su 'precio_base' en el campo 'cobro'.
+        2. EXCEPCIÓN: Si en el mensaje se menciona explícitamente un precio cobrado distinto, un descuento o una rebaja, IGNORA el catálogo y respeta SIEMPRE el precio mencionado en el mensaje.
+        3. Si el trabajo no está en el catálogo y no se menciona precio, pon el cobro en 0.0.
 
         Clasificalo correctamente y extrae los datos correspondientes. Si faltan datos en el mensaje, déjalos vacíos o en 0 según corresponda.
 
@@ -618,7 +640,7 @@ async def trabajador_silencioso():
               "cedula": "Número de cédula o identificación (si se menciona)",
               "telefono": "Número de teléfono (si se menciona)",
               "motivo": "Razón de ingreso o fallo reportado (ej. 'fallo de cilindro')",
-              "trabajo_realizado": "Describe el trabajo hecho o pieza vendida (ej. 'se le vendió una ECU Kefico'). Si recién ingresa, déjalo vacío.",
+              "trabajo_realizado": "Describe el trabajo hecho (usa el nombre del catálogo si coincide). Si recién ingresa, déjalo vacío.",
               "oficial": "DEBES elegir estrictamente uno de esta lista: [{lista_tecnicos_str}]. Si el texto tiene errores tipográficos (ej. Willian en vez de William), corrígelo y usa el de la lista. Si no coincide con ninguno, déjalo vacío.",
               "cobro": 0.0,
               "metodo_pago": "efectivo, transferencia, tarjeta, etc.",
@@ -652,14 +674,27 @@ async def trabajador_silencioso():
         except Exception as e:
             tipo_error = str(type(e))
             if "ValidationError" in tipo_error:
-                estado_error = "Error de Formato. IA envió un dato incompleto o inválido."
+                detalle_error = "Error de Formato. IA envió un dato incompleto o inválido."
             elif "JSONDecodeError" in tipo_error or "Expecting value" in str(e):
-                estado_error = "Error. La respuesta de la IA fue ilegible."
+                detalle_error = "Error. La respuesta de la IA fue ilegible."
             else:
-                estado_error = "Error (IA no disponible o tiempo agotado)."
-                
+                detalle_error = "Error (IA no disponible o tiempo agotado)."
+
             print(f"Error procesando mensaje {id_msj}: {e}")
-            supabase.table("cola_mensajes").update({"estado": estado_error}).eq("id", id_msj).execute()
+
+            # Límite de reintentos: si ya se agotaron los intentos que le dio
+            # el reclamo atómico, esto es definitivo — no lo vuelve a tomar
+            # la función de reclamo (intentos < max_intentos en su WHERE).
+            intentos_usados = msj.get("intentos", 1)
+            if intentos_usados >= 5:
+                estado_final = "Error permanente (máx. reintentos alcanzado)"
+            else:
+                estado_final = "Error"  # reintentable: reclamar_mensajes_pendientes lo vuelve a tomar
+
+            supabase.table("cola_mensajes").update({
+                "estado": estado_final,
+                "ultimo_error": detalle_error
+            }).eq("id", id_msj).execute()
             await asyncio.sleep(2)
             continue
 
@@ -1628,7 +1663,62 @@ async def importar_inventario(request: Request, archivo: UploadFile = File(...))
             errores.append(f"Fila {idx + 2}: {e_fila}")
 
     return {"status": "ok", "nuevos": nuevos, "actualizados": actualizados, "errores": errores}
+# ==============================================================================
+# DASHBOARD ANALÍTICO (CHART.JS)
+# ==============================================================================
+@app.get("/dashboard-stats")
+def dashboard_stats(request: Request):
+    """
+    Calcula los Top 5 para el Dashboard Analítico.
+    """
+    cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    
+    # 1. Traer todas las órdenes terminadas con sus detalles
+    res = (
+        cliente_seguro.table("reparaciones")
+        .select("cliente, cobro, trabajo_realizado, reparacion_detalles(cantidad, repuestos(nombre))")
+        .eq("taller_id", taller_id)
+        .eq("estado", "Terminado")
+        .execute()
+    )
+    ordenes = res.data
 
+    dicc_clientes = {}
+    dicc_servicios = {}
+    dicc_repuestos = {}
+
+    for o in ordenes:
+        # --- Top Clientes ---
+        cli = str(o.get("cliente") or "Cliente Final").strip()
+        dicc_clientes[cli] = dicc_clientes.get(cli, 0.0) + float(o.get("cobro") or 0.0)
+
+        # --- Top Servicios ---
+        trabajo = str(o.get("trabajo_realizado") or "").strip()
+        if trabajo:
+            # Separamos por "|" por si la IA fusionó varios trabajos en una orden
+            para_servicios = [t.strip() for t in trabajo.split("|") if t.strip()]
+            for s in para_servicios:
+                dicc_servicios[s] = dicc_servicios.get(s, 0) + 1
+
+        # --- Top Repuestos ---
+        detalles = o.get("reparacion_detalles") or []
+        for d in detalles:
+            cant = int(d.get("cantidad") or 0)
+            rep_info = d.get("repuestos") or {}
+            # Manejamos "nombre" o "nombre_repuesto" dependiendo de cómo se llame tu columna en bd
+            nombre_rep = str(rep_info.get("nombre") or rep_info.get("nombre_repuesto") or "Repuesto Eliminado").strip()
+            dicc_repuestos[nombre_rep] = dicc_repuestos.get(nombre_rep, 0) + cant
+
+    # 2. Ordenar de mayor a menor y sacar solo el Top 5
+    top_clientes = [{"nombre": k, "total": round(v, 2)} for k, v in sorted(dicc_clientes.items(), key=lambda x: x[1], reverse=True)[:5]]
+    top_servicios = [{"nombre": k, "cantidad": v} for k, v in sorted(dicc_servicios.items(), key=lambda x: x[1], reverse=True)[:5]]
+    top_repuestos = [{"nombre": k, "cantidad": v} for k, v in sorted(dicc_repuestos.items(), key=lambda x: x[1], reverse=True)[:5]]
+
+    return {
+        "top_clientes": top_clientes,
+        "top_servicios": top_servicios,
+        "top_repuestos": top_repuestos
+    }
 
 @app.get("/exportar-inventario")
 def exportar_inventario(request: Request):
