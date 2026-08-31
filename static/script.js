@@ -960,12 +960,12 @@ let chartClientes = null;
 let chartServicios = null;
 
 async function cargarDatosDashboard() {
-    const token = localStorage.getItem("as_token");
+    const token = localStorage.getItem("taller_token"); // ¡Corregido!
     if (!token) return;
 
     try {
-        // Llama a la URL de tu backend
-        const response = await fetch(`${API_URL}/dashboard-stats`, {
+        // Llama a la URL de tu backend correctamente sin API_URL
+        const response = await fetch("/dashboard-stats", {
             headers: { "Authorization": `Bearer ${token}` }
         });
         
@@ -1047,7 +1047,7 @@ function renderChartServicios(datos) {
 // CATÁLOGO DE SERVICIOS
 // ==========================================================================
 async function cargarServicios() {
-    const token = localStorage.getItem("as_token");
+    const token = localStorage.getItem("taller_token"); // ¡Corregido!
     if (!token) return;
 
     try {
@@ -1075,6 +1075,51 @@ async function cargarServicios() {
         });
     } catch (error) {
         console.error("Error cargando servicios:", error);
+    }
+}
+
+async function guardarServicio() {
+    const nombre = document.getElementById('nuevo-servicio-nombre').value;
+    const precio = document.getElementById('nuevo-servicio-precio').value;
+    const token = localStorage.getItem("taller_token"); // ¡Corregido!
+
+    if (!nombre || !precio) {
+        alert("Por favor ingresa un nombre y un precio válido.");
+        return;
+    }
+
+    try {
+        const res = await fetch("/servicios", {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}` 
+            },
+            body: JSON.stringify({ nombre_servicio: nombre, precio_base: parseFloat(precio) })
+        });
+        
+        if (res.ok) {
+            document.getElementById('nuevo-servicio-nombre').value = '';
+            document.getElementById('nuevo-servicio-precio').value = '';
+            cargarServicios(); // Recargar la tabla
+        }
+    } catch (error) {
+        console.error("Error al guardar:", error);
+    }
+}
+
+async function eliminarServicio(id) {
+    if (!confirm("¿Estás seguro de eliminar este servicio?")) return;
+    
+    const token = localStorage.getItem("taller_token"); // ¡Corregido!
+    try {
+        const res = await fetch(`/servicios/${id}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) cargarServicios();
+    } catch (error) {
+        console.error("Error al eliminar:", error);
     }
 }
 
