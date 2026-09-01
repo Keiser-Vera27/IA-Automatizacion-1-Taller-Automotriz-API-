@@ -583,11 +583,26 @@ class SolicitudUnificada(BaseModel):
 # ==============================================================================
 
 async def trabajador_silencioso():
-    response = supabase.rpc("reclamar_mensajes_pendientes", {"cantidad": 20}).execute()
-    pendientes = response.data
+    print("==================================================")
+    print("🤖 EL TRABAJADOR SILENCIOSO SE HA DESPERTADO")
+    
+    try:
+        response = supabase.rpc("reclamar_mensajes_pendientes", {"cantidad": 20}).execute()
+        pendientes = response.data
+        print(f"📦 Mensajes atrapados en la BD: {len(pendientes) if pendientes else 0}")
+    except Exception as e:
+        print(f"❌ ERROR AL HABLAR CON SUPABASE: {e}")
+        return
+
+    print("==================================================")
 
     if not pendientes:
         return
+
+    # Aquí continúa tu código normal del for...
+    for msj in pendientes:
+        id_msj = msj["id"]
+        print(f"⚙️ Procesando mensaje ID: {id_msj}...")
 
     for msj in pendientes:
         id_msj = msj["id"]
