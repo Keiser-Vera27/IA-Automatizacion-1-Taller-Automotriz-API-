@@ -587,7 +587,7 @@ async def trabajador_silencioso():
     print("🤖 EL TRABAJADOR SILENCIOSO SE HA DESPERTADO")
     
     try:
-        response = supabase.rpc("reclamar_mensajes_pendientes", {"cantidad": 20}).execute()
+       response = supabase.rpc("reclamar_mensajes_pendientes", {"cantidad": 20, "max_intentos": 3}).execute()
         pendientes = response.data
         print(f"📦 Mensajes atrapados en la BD: {len(pendientes) if pendientes else 0}")
     except Exception as e:
