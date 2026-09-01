@@ -600,16 +600,23 @@ async def trabajador_silencioso():
         lista_tecnicos_str = ", ".join(nombres_tecnicos) if nombres_tecnicos else "Ninguno registrado"
 
         # =======================================================
-        # NUEVO: EXTRAER EL CATÁLOGO DE SERVICIOS
+        # NUEVO: EXTRAER EL CATÁLOGO DE SERVICIOS (A PRUEBA DE ERRORES)
         # =======================================================
-        servicios_res = supabase.table("servicios").select("nombre_servicio, precio_base").eq("taller_id", taller_id).execute()
-        
-        lista_servicios_str = "No hay servicios registrados aún."
-        if servicios_res.data:
-            lista_servicios_str = "\n".join([
-                f"- {s['nombre_servicio']}: ${s['precio_base']}" 
-                for s in servicios_res.data
-            ])
+        try:
+            # Traemos todo con "*" para evitar que falte una columna
+            servicios_res = supabase.table("servicios").select("*").eq("taller_id", taller_id).execute()
+            
+            lista_servicios_str = "No hay servicios registrados aún."
+            if servicios_res.data:
+                lista_servicios_str = "\n".join([
+                    # Usamos .get() para que si la columna tiene otro nombre, no colapse el sistema
+                    f"- {s.get('nombre_servicio', s.get('nombre', 'Servicio'))}: ${s.get('precio_base', s.get('precio', 0.0))}" 
+                    for s in servicios_res.data
+                ])
+        except Exception as e:
+            print(f"⚠️ Error interno leyendo el catálogo de servicios: {e}")
+            lista_servicios_str = "Catálogo de servicios no disponible."
+        # =======================================================
         # =======================================================
 
         # 2. PROMPT ACTUALIZADO (Con Catálogo y Reglas de Cobro)
@@ -1751,6 +1758,7 @@ def dashboard_stats(request: Request):
         print(f"Error en dashboard_stats: {e}")
         # En caso de error, devolvemos listas vacías para que no se rompa la página
         return {"top_clientes": [], "top_servicios": [], "top_repuestos": []}
+    
 @app.get("/exportar-inventario")
 def exportar_inventario(request: Request):
     try:
