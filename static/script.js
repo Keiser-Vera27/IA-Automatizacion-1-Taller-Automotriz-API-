@@ -30,6 +30,14 @@ async function cargarBienvenidaTaller() {
         const res = await fetch('/mi-taller', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
+        
+        // ¡NUEVA VALIDACIÓN! Si el servidor responde 401 (No autorizado/Caducado)
+        if (res.status === 401) {
+            cerrarSesion();
+            mostrarNotificacion("Tu sesión ha caducado por seguridad. Por favor, inicia sesión nuevamente.", "warning");
+            return;
+        }
+
         if (!res.ok) return;
 
         const data = await res.json();
@@ -44,7 +52,6 @@ async function cargarBienvenidaTaller() {
 }
 
 // Validar sesión activa al cargar
-// Validar sesión activa al cargar
 window.onload = function() {
     actualizarIconoTema(document.documentElement.getAttribute("data-theme") || "dark");
 
@@ -52,6 +59,8 @@ window.onload = function() {
     if (token) {
         document.getElementById("login-container").style.display = "none";
         document.getElementById("app-container").style.display = "block";
+        
+        // Al ejecutarse estas funciones, si el token expiró, la app se cerrará sola
         cargarVehiculosPendientes();
         cargarBienvenidaTaller();
         
@@ -466,6 +475,13 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
+        // ¡NUEVA VALIDACIÓN! Cierre automático si el token expiró
+        if (response.status === 401) {
+            cerrarSesion();
+            mostrarNotificacion("Tu sesión ha caducado por seguridad. Por favor, inicia sesión nuevamente.", "warning");
+            return;
+        }
+        
         if (!response.ok) return;
         const data = await response.json();
         
@@ -606,7 +622,6 @@ function mostrarNotificacion(mensaje, tipo) {
         }, 5000);
     }
 }
-
 /// ==============================================================================
 // FUNCIÓN MAESTRA PARA LLENAR LA PLANTILLA (Evita código duplicado)
 // ==============================================================================

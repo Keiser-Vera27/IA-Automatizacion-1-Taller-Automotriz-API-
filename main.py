@@ -570,8 +570,11 @@ class DevolucionInventario(BaseModel):
     cantidad: int = Field(description="Cantidad de unidades que reingresan al stock.")
     motivo: str = Field(default="Devolución de cliente", description="Motivo de la devolución")
 
+
 class ClasificacionMensaje(BaseModel):
-    tipo: str = Field(description="Debe ser estrictamente 'reparacion', 'gasto', 'inventario' o 'devolucion'")
+    tipo: Literal["reparacion", "gasto", "inventario", "devolucion"] = Field(
+        description="Clasifica estrictamente la acción. Las ventas de repuestos sin servicio mecánico son obligatoriamente 'reparacion'."
+    )
     reparacion: TrabajoTaller | None = Field(default=None)
     gasto: GastoTaller | None = Field(default=None)
     inventario: RepuestoInventario | None = Field(default=None)
@@ -645,10 +648,16 @@ async def trabajador_silencioso():
         # =======================================================
         # =======================================================
 
-        # 2. PROMPT ACTUALIZADO (Con Catálogo y Reglas de Cobro)
+# 2. PROMPT ACTUALIZADO (Con Catálogo, Reglas de Cobro y Ventas Directas)
         prompt = f"""
         Eres un asistente contable inteligente de un taller mecánico.
-        Analiza el siguiente mensaje y determina si se trata de un trabajo de reparación (ingreso), un gasto operativo (salida de dinero), un registro de INVENTARIO (ingreso de repuestos, extrayendo el proveedor si se menciona), o una DEVOLUCION.
+        Analiza el siguiente mensaje y clasifícalo ESTRICTAMENTE en una de estas 4 categorías: 'reparacion', 'gasto', 'inventario' o 'devolucion'.
+
+        REGLA DE VENTAS DIRECTAS AL MOSTRADOR:
+        Si el mensaje describe la venta de un repuesto a un cliente que no ingresó su vehículo (ej. "se le vendió...", "compró...", "llevó un repuesto"), OBLIGATORIAMENTE es una 'reparacion'. 
+        - Escribe "Venta de repuestos al mostrador" en el campo 'trabajo_realizado'.
+        - En el campo 'motivo', escribe "Compra de repuesto".
+        - Pon la placa del vehículo obligatoriamente como "S/C" (Sin Código).
 
         Catálogo oficial de servicios y precios base de este taller:
         {lista_servicios_str}
@@ -664,7 +673,7 @@ async def trabajador_silencioso():
         {{
           "tipo": "reparacion" | "gasto" | "inventario" | "devolucion",
           "reparacion": {{
-              "vehiculo": "EXTRAE SOLO LA PLACA AQUÍ (sin guiones, ej. ABB3322)",
+              "vehiculo": "EXTRAE SOLO LA PLACA AQUÍ (sin guiones, ej. ABB3322). Si es venta directa, usa 'S/C'",
               "modelo": "Marca y modelo (ej. Chevrolet Sail)",
               "color": "Color del auto (ej. negro)",
               "anio": "Año (ej. 2023)",
@@ -672,7 +681,7 @@ async def trabajador_silencioso():
               "cliente": "Nombre del cliente",
               "cedula": "Número de cédula o identificación (si se menciona)",
               "telefono": "Número de teléfono (si se menciona)",
-              "motivo": "Razón de ingreso o fallo reportado (ej. 'fallo de cilindro')",
+              "motivo": "Razón de ingreso o fallo reportado (ej. 'fallo de cilindro').",
               "trabajo_realizado": "Describe el trabajo hecho (usa el nombre del catálogo si coincide). Si recién ingresa, déjalo vacío.",
               "oficial": "DEBES elegir estrictamente uno de esta lista: [{lista_tecnicos_str}]. Si el texto tiene errores tipográficos (ej. Willian en vez de William), corrígelo y usa el de la lista. Si no coincide con ninguno, déjalo vacío.",
               "cobro": 0.0,
