@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 from openai import OpenAI as ClienteOpenAICompatible
 from supabase import create_client, Client
 from postgrest.exceptions import APIError
+from typing import Literal
 
 def normalizar_placa(texto: str) -> str:
     """
@@ -578,6 +579,16 @@ class ClasificacionMensaje(BaseModel):
 
 class SolicitudUnificada(BaseModel):
     texto: str
+
+
+class RouterIntencion(BaseModel):
+    accion: Literal["registro", "consulta", "generar_orden"] = Field(
+        description="Clasificación estricta de la intención del usuario."
+    )
+    placa: str = Field(
+        default="", 
+        description="Placa del vehículo SOLO si la acción es generar_orden."
+    )
 # ==============================================================================
 # TRABAJADOR SILENCIOSO
 # ==============================================================================
@@ -1204,25 +1215,41 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
     texto_usuario = solicitud.texto
     tiempo_actual = ahora_utc_str()
 
-    # MODIFICACIÓN: El router ahora devuelve JSON para saber si debe imprimir la orden
+    # PROMPT BLINDADO CON REGLAS Y FEW-SHOT (Ejemplos)
     prompt_router = f"""
-    Analiza el siguiente texto de un usuario de taller mecánico y determina la intención.
-    Responde ESTRICTAMENTE en formato JSON con las siguientes claves:
-    - "accion": Debe ser "generar_orden" (si pide imprimir, descargar, ficha, factura u orden de trabajo de un vehículo), "consulta" (si hace preguntas de estadísticas, historiales o repuestos), o "registro" (si reporta trabajos, ingresos o gastos).
-    - "placa": Extrae la placa del vehículo SOLO si la acción es "generar_orden" (sin espacios ni guiones). De lo contrario, déjalo vacío.
+    Eres el enrutador principal de un sistema de gestión de taller automotriz. 
+    Tu única tarea es clasificar la intención del texto en una de estas tres categorías: 'registro', 'consulta' o 'generar_orden'.
 
+    REGLAS CRÍTICAS DE CLASIFICACIÓN:
+    1. REGISTRO (Por defecto para ingresos): El usuario proporciona información que debe guardarse. 
+       - IMPORTANTE: La sola presencia de un vehículo, cliente, placa o diagnóstico implica un REGISTRO de entrada. 
+       - NUNCA clasifiques como 'generar_orden' o 'consulta' a menos que el usuario pida explícitamente buscar, imprimir o descargar.
+    2. CONSULTA: El usuario pregunta por datos históricos o estadísticas (ej. ¿cuándo vino?, ¿cuánto gastó?).
+    3. GENERAR_ORDEN: El usuario pide EXPLÍCITAMENTE imprimir, descargar, generar factura u orden de un vehículo que YA existe.
+
+    EJEMPLOS DE CLASIFICACIÓN:
+    - "Ingresa el Spark GSC8797 por falla de freno" -> {{"accion": "registro", "placa": ""}}
+    - "Chevrolet Spark blanco Placa GSC8797, Jeferson Laje quiere escaneo" -> {{"accion": "registro", "placa": ""}}
+    - "¿Cuándo vino el carro placa GSC8797?" -> {{"accion": "consulta", "placa": ""}}
+    - "Genera la orden de trabajo para GSC8797" -> {{"accion": "generar_orden", "placa": "GSC8797"}}
+    - "Imprime la ficha del cliente" -> {{"accion": "generar_orden", "placa": ""}}
+
+    Responde ESTRICTAMENTE en formato JSON válido con las claves "accion" y "placa".
     Texto: "{texto_usuario}"
     """
 
     try:
-        resultado_json, proveedor_usado = generar_json_con_respaldo(prompt_router)
-        accion = resultado_json.get("accion", "registro")
-        placa_extraida = resultado_json.get("placa", "")
+        # 1. Obtenemos el JSON de Groq o DeepSeek
+        resultado_bruto, proveedor_usado = generar_json_con_respaldo(prompt_router)
+        
+        # 2. Forzamos la validación estricta con Pydantic para evitar alucinaciones
+        resultado_validado = RouterIntencion.model_validate(resultado_bruto)
+        
+        accion = resultado_validado.accion
+        placa_extraida = resultado_validado.placa
     except Exception as e:
-        # Ni Gemini ni Groq respondieron. NO asumimos "registro" a ciegas: eso
-        # mete preguntas analíticas a la cola de trabajo y el usuario nunca ve
-        # respuesta. Usamos un respaldo por palabras clave como último recurso.
-        print(f"⚠️ Router de IA falló en ambos proveedores, usando respaldo por palabras clave. Error: {e}")
+        # Fallback de seguridad (Se mantiene igual que antes)
+        print(f"⚠️ Router de IA falló en ambos proveedores o falló validación Pydantic. Error: {e}")
         texto_min = texto_usuario.lower()
         palabras_consulta = (
             "cuánt", "cuant", "cuál", "cual", "quién", "quien", "qué", "que ",
@@ -1234,7 +1261,6 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         else:
             accion = "registro"
         placa_extraida = ""
-
     # --- NUEVA LÓGICA: GENERAR ORDEN DE TRABAJO ---
     if accion == "generar_orden":
         placa = normalizar_placa(placa_extraida)
