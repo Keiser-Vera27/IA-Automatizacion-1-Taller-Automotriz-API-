@@ -641,7 +641,12 @@ function llenarPlantillaOrden(datos) {
     document.getElementById('orden-detalles-vehiculo').innerText = `${modelo} | ${color} | ${anio} | ${cilindraje}`;
     
     document.getElementById('orden-cliente').innerText = datos.cliente || '---';
-    document.getElementById('orden-cedula').innerText = datos.cedula || 'No registrada';
+    
+    // CORRECCIÓN CÉDULA: Conversión segura a String para evitar errores con trim()
+    const rawCedula = datos.cedula || datos.cedula_cliente || datos.identificacion || '';
+    const cedulaLimpia = String(rawCedula).trim();
+    document.getElementById('orden-cedula').innerText = (cedulaLimpia !== '' && cedulaLimpia !== 'null' && cedulaLimpia !== 'undefined') ? cedulaLimpia : 'No registrada';
+    
     document.getElementById('orden-telefono').innerText = datos.telefono || 'No registrado';
 
     // 3. Fechas y Equipo
@@ -653,7 +658,7 @@ function llenarPlantillaOrden(datos) {
     document.getElementById('orden-motivo').innerText = datos.motivo || 'No especificado';
     document.getElementById('orden-trabajo').innerText = datos.trabajo_realizado || 'No especificado';
 
-    // 5. Tabla de Repuestos (Si los hay)
+    // 5. Tabla de Repuestos
     const tbody = document.getElementById('orden-repuestos-body');
     tbody.innerHTML = '';
     let totalRepuestos = 0;
@@ -677,7 +682,7 @@ function llenarPlantillaOrden(datos) {
         tbody.innerHTML = `<tr><td colspan="5" style="border: 1px solid #ddd; padding: 8px; text-align: center;">No se registraron repuestos (Solo mano de obra)</td></tr>`;
     }
 
-    // 6. Lógica Dinámica de Cobros y Estados
+    // 6. Lógica de Cobros y Total
     const estado = datos.estado || 'Pendiente';
     document.getElementById('orden-estado-texto').innerText = estado;
     
@@ -686,18 +691,27 @@ function llenarPlantillaOrden(datos) {
         etiquetaTotal.innerText = estado === 'Terminado' ? 'Valor Cancelado:' : 'Valor a Pagar:';
     }
 
-    // Calcular total final (Repuestos + Mano de Obra)
     const cobroManoObra = parseFloat(datos.cobro || 0);
     const totalFinal = totalRepuestos + cobroManoObra;
     document.getElementById('orden-total').innerText = totalFinal.toFixed(2);
 
-    // 7. Lógica Dinámica de Método de Pago y Banco
-    let metodo = datos.metodo_pago || 'No especificado';
-    if (datos.banco && datos.banco.trim() !== '') {
-        metodo += ` (${datos.banco})`; // Ej: Transferencia (Pichincha)
+    // 7. CORRECCIÓN BANCO Y MÉTODO DE PAGO
+    const metodo = String(datos.metodo_pago || '').trim();
+    const banco = String(datos.banco || '').trim();
+    let textoMetodoPago = "Pendiente de pago";
+
+    if (metodo !== '' && metodo !== 'null') {
+        textoMetodoPago = metodo;
+        if (banco !== '' && banco !== 'null' && !metodo.toLowerCase().includes(banco.toLowerCase())) {
+            textoMetodoPago += ` (${banco})`;
+        }
+    } else if (banco !== '' && banco !== 'null') {
+        textoMetodoPago = `Transferencia (${banco})`;
+    } else if (estado === 'Terminado') {
+        textoMetodoPago = "Efectivo";
     }
-    // Si la orden está pendiente, no mostramos método de pago aún
-    document.getElementById('orden-metodo-pago').innerText = estado === 'Terminado' ? metodo : 'Aún pendiente';
+
+    document.getElementById('orden-metodo-pago').innerText = textoMetodoPago;
 }
 
 // ==========================================================================
