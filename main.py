@@ -593,7 +593,7 @@ class RouterIntencion(BaseModel):
         description="Placa del vehículo SOLO si la acción es generar_orden."
     )
 # ==============================================================================
-# TRABAJADOR SILENCIOSO
+# TRABAJADOR SILENCIOSO (CORREGIDO: CÉDULA Y BANCO)
 # ==============================================================================
 
 async def trabajador_silencioso():
@@ -613,42 +613,31 @@ async def trabajador_silencioso():
     if not pendientes:
         return
 
-    # Aquí continúa tu código normal del for...
-    for msj in pendientes:
-        id_msj = msj["id"]
-        print(f"⚙️ Procesando mensaje ID: {id_msj}...")
-
     for msj in pendientes:
         id_msj = msj["id"]
         texto_msj = msj["texto"]
         taller_id = msj["taller_id"]
         tiempo_actual = ahora_utc_str()
-    # 1. Consultar técnicos válidos del taller
+
+        # 1. Consultar técnicos válidos del taller
         tecnicos_res = supabase.table("tecnicos").select("nombre").eq("taller_id", taller_id).execute()
         nombres_tecnicos = [t["nombre"] for t in tecnicos_res.data] if tecnicos_res.data else []
         lista_tecnicos_str = ", ".join(nombres_tecnicos) if nombres_tecnicos else "Ninguno registrado"
 
-        # =======================================================
-        # NUEVO: EXTRAER EL CATÁLOGO DE SERVICIOS (A PRUEBA DE ERRORES)
-        # =======================================================
+        # Catálogo de servicios
         try:
-            # Traemos todo con "*" para evitar que falte una columna
             servicios_res = supabase.table("servicios").select("*").eq("taller_id", taller_id).execute()
-            
             lista_servicios_str = "No hay servicios registrados aún."
             if servicios_res.data:
                 lista_servicios_str = "\n".join([
-                    # Usamos .get() para que si la columna tiene otro nombre, no colapse el sistema
                     f"- {s.get('nombre_servicio', s.get('nombre', 'Servicio'))}: ${s.get('precio_base', s.get('precio', 0.0))}" 
                     for s in servicios_res.data
                 ])
         except Exception as e:
             print(f"⚠️ Error interno leyendo el catálogo de servicios: {e}")
             lista_servicios_str = "Catálogo de servicios no disponible."
-        # =======================================================
-        # =======================================================
 
-# 2. PROMPT ACTUALIZADO (Con Catálogo, Reglas de Cobro y Ventas Directas)
+        # PROMPT CON EXTRACCIÓN MEJORADA DE CÉDULA Y BANCO
         prompt = f"""
         Eres un asistente contable inteligente de un taller mecánico.
         Analiza el siguiente mensaje y clasifícalo ESTRICTAMENTE en una de estas 4 categorías: 'reparacion', 'gasto', 'inventario' o 'devolucion'.
@@ -667,8 +656,6 @@ async def trabajador_silencioso():
         2. EXCEPCIÓN: Si en el mensaje se menciona explícitamente un precio cobrado distinto, un descuento o una rebaja, IGNORA el catálogo y respeta SIEMPRE el precio mencionado en el mensaje.
         3. Si el trabajo no está en el catálogo y no se menciona precio, pon el cobro en 0.0.
 
-        Clasificalo correctamente y extrae los datos correspondientes. Si faltan datos en el mensaje, déjalos vacíos o en 0 según corresponda.
-
         Responde en JSON con esta estructura EXACTA:
         {{
           "tipo": "reparacion" | "gasto" | "inventario" | "devolucion",
@@ -679,14 +666,14 @@ async def trabajador_silencioso():
               "anio": "Año (ej. 2023)",
               "cilindraje": "Cilindraje (ej. 1.4)",
               "cliente": "Nombre del cliente",
-              "cedula": "Número de cédula o identificación (si se menciona)",
+              "cedula": "Número de cédula, RUC o CI en texto plano (ej. 1205888769)",
               "telefono": "Número de teléfono (si se menciona)",
               "motivo": "Razón de ingreso o fallo reportado (ej. 'fallo de cilindro').",
               "trabajo_realizado": "Describe el trabajo hecho (usa el nombre del catálogo si coincide). Si recién ingresa, déjalo vacío.",
-              "oficial": "DEBES elegir estrictamente uno de esta lista: [{lista_tecnicos_str}]. Si el texto tiene errores tipográficos (ej. Willian en vez de William), corrígelo y usa el de la lista. Si no coincide con ninguno, déjalo vacío.",
+              "oficial": "DEBES elegir strictly uno de esta lista: [{lista_tecnicos_str}]. Si no coincide con ninguno, déjalo vacío.",
               "cobro": 0.0,
               "metodo_pago": "efectivo, transferencia, tarjeta, etc.",
-              "banco": "Nombre del banco si es transferencia (ej. Pichincha)",
+              "banco": "Nombre exacto del banco si es transferencia (ej. Pichincha, Guayaquil, Produbanco, Pacifico)",
               "repuestos_usados": [
                   {{"codigo": "codigo_repuesto", "cantidad": 1}}
               ]
@@ -724,14 +711,8 @@ async def trabajador_silencioso():
 
             print(f"Error procesando mensaje {id_msj}: {e}")
 
-            # Límite de reintentos: si ya se agotaron los intentos que le dio
-            # el reclamo atómico, esto es definitivo — no lo vuelve a tomar
-            # la función de reclamo (intentos < max_intentos en su WHERE).
             intentos_usados = msj.get("intentos", 1)
-            if intentos_usados >= 5:
-                estado_final = "Error permanente (máx. reintentos alcanzado)"
-            else:
-                estado_final = "Error"  # reintentable: reclamar_mensajes_pendientes lo vuelve a tomar
+            estado_final = "Error permanente (máx. reintentos alcanzado)" if intentos_usados >= 5 else "Error"
 
             supabase.table("cola_mensajes").update({
                 "estado": estado_final,
@@ -744,11 +725,6 @@ async def trabajador_silencioso():
             d = resultado["reparacion"]
             placa = str(d.get("vehiculo", "")).strip()
 
-            # 2. Buscar la última orden de ESTA placa (trae "*" para tener también
-            # cliente/cedula/telefono y así poder autocompletarlos más abajo).
-            # OJO: solo se busca si hay placa real. Si se busca con "" o "S/C",
-            # se cruzarían datos de clientes distintos cuyos autos no tuvieron
-            # placa detectada (mismo bug que tenía el código original).
             ultima_orden = None
             if placa and placa != "S/C":
                 res_rep = supabase.table("reparaciones").select("*").eq("vehiculo", placa).eq("taller_id", taller_id).order("id", desc=True).limit(1).execute()
@@ -761,6 +737,7 @@ async def trabajador_silencioso():
                     supabase.table("cola_mensajes").update({"estado": "Bloqueado (Duplicado)"}).eq("id", id_msj).execute()
                     continue
 
+            # Descuento de inventario
             if (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") and d.get("repuestos_usados"):
                 for repuesto in d.get("repuestos_usados", []):
                     inv_res = supabase.table("inventario").select("id, cantidad").eq("codigo", repuesto.get("codigo")).eq("taller_id", taller_id).execute()
@@ -769,11 +746,13 @@ async def trabajador_silencioso():
                         nueva_cant = max(0, inv_item["cantidad"] - repuesto.get("cantidad", 0))
                         supabase.table("inventario").update({"cantidad": nueva_cant}).eq("id", inv_item["id"]).execute()
 
+            # Normalización estricta de Cédula y Banco a string plano
+            cedula_extraida = str(d.get("cedula") or "").strip()
+            banco_extraido = str(d.get("banco") or "").strip()
+
             if ultima_orden and ultima_orden["estado"] == 'Pendiente':
-                # 1. Determinamos si se está cerrando la orden o si es una actualización silenciosa
                 se_cierra = d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != ""
 
-                # 2. FUSIONADOR DE TEXTOS: Mantiene lo anterior y suma lo nuevo
                 motivo_bd = ultima_orden.get("motivo", "")
                 motivo_ia = d.get("motivo", "")
                 motivo_final = f"{motivo_bd} | {motivo_ia}".strip(" |") if motivo_bd and motivo_ia and motivo_ia not in motivo_bd else (motivo_ia or motivo_bd)
@@ -782,28 +761,28 @@ async def trabajador_silencioso():
                 trabajo_ia = d.get("trabajo_realizado", "")
                 trabajo_final = f"{trabajo_bd} | {trabajo_ia}".strip(" |") if trabajo_bd and trabajo_ia and trabajo_ia not in trabajo_bd else (trabajo_ia or trabajo_bd)
 
-                # 3. FUNCIÓN DE HERENCIA
-                def _heredar_o_actualizar(campo):
-                    valor_nuevo = d.get(campo, "")
-                    return valor_nuevo if valor_nuevo else ultima_orden.get(campo, "")
+                # FUNCIÓN DE HERENCIA MEJORADA (Prioriza dato nuevo válido)
+                def _heredar_o_actualizar(campo, valor_nuevo):
+                    val_str = str(valor_nuevo or "").strip()
+                    val_antiguo = str(ultima_orden.get(campo) or "").strip()
+                    return val_str if val_str and val_str.lower() != "none" else val_antiguo
 
                 datos_actualizar = {
                     "motivo": motivo_final,
                     "trabajo_realizado": trabajo_final,
-                    "cliente": _heredar_o_actualizar("cliente"),
-                    "cedula": _heredar_o_actualizar("cedula"),
-                    "telefono": _heredar_o_actualizar("telefono"),
-                    "oficial": _heredar_o_actualizar("oficial"),
-                    "modelo": _heredar_o_actualizar("modelo"),
-                    "color": _heredar_o_actualizar("color"),
-                    "anio": _heredar_o_actualizar("anio"),
-                    "cilindraje": _heredar_o_actualizar("cilindraje"),
+                    "cliente": _heredar_o_actualizar("cliente", d.get("cliente")),
+                    "cedula": _heredar_o_actualizar("cedula", cedula_extraida),
+                    "telefono": _heredar_o_actualizar("telefono", d.get("telefono")),
+                    "oficial": _heredar_o_actualizar("oficial", d.get("oficial")),
+                    "modelo": _heredar_o_actualizar("modelo", d.get("modelo")),
+                    "color": _heredar_o_actualizar("color", d.get("color")),
+                    "anio": _heredar_o_actualizar("anio", d.get("anio")),
+                    "cilindraje": _heredar_o_actualizar("cilindraje", d.get("cilindraje")),
                     "cobro": d.get("cobro", 0.0) if d.get("cobro", 0) > 0 else ultima_orden.get("cobro", 0.0),
-                    "metodo_pago": _heredar_o_actualizar("metodo_pago"),
-                    "banco": _heredar_o_actualizar("banco")
+                    "metodo_pago": _heredar_o_actualizar("metodo_pago", d.get("metodo_pago")),
+                    "banco": _heredar_o_actualizar("banco", banco_extraido)
                 }
 
-                # 4. Asignamos el estado correcto
                 if se_cierra:
                     datos_actualizar["estado"] = "Terminado"
                     datos_actualizar["fecha_salida"] = tiempo_actual
@@ -815,39 +794,36 @@ async def trabajador_silencioso():
                 estado_nuevo = 'Terminado' if (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") else 'Pendiente'
                 fecha_sal = tiempo_actual if estado_nuevo == 'Terminado' else None
 
-                def _heredar(campo):
-                    valor_nuevo = d.get(campo, "")
-                    if valor_nuevo:
-                        return valor_nuevo
-                    return ultima_orden.get(campo, "") if ultima_orden else ""
+                def _heredar(campo, valor_nuevo):
+                    val_str = str(valor_nuevo or "").strip()
+                    if val_str and val_str.lower() != "none":
+                        return val_str
+                    return str(ultima_orden.get(campo) or "").strip() if ultima_orden else ""
 
-                # AUTOCOMPLETADO: si el vehículo ya visitó el taller antes, _heredar()
-                # rellena cliente/cedula/telefono con los del último registro cuando
-                # la IA no los mencionó en este mensaje.
                 try:
                     supabase.table("reparaciones").insert({
                         "taller_id": taller_id,
                         "vehiculo": placa if placa else "S/C",
-                        "modelo": _heredar("modelo"),
-                        "color": _heredar("color"),
-                        "anio": _heredar("anio"),
-                        "cilindraje": _heredar("cilindraje"),
-                        "cliente": _heredar("cliente"),
-                        "cedula": _heredar("cedula"),
-                        "telefono": _heredar("telefono"),
+                        "modelo": _heredar("modelo", d.get("modelo")),
+                        "color": _heredar("color", d.get("color")),
+                        "anio": _heredar("anio", d.get("anio")),
+                        "cilindraje": _heredar("cilindraje", d.get("cilindraje")),
+                        "cliente": _heredar("cliente", d.get("cliente")),
+                        "cedula": _heredar("cedula", cedula_extraida),
+                        "telefono": _heredar("telefono", d.get("telefono")),
                         "motivo": d.get("motivo", ""),
                         "trabajo_realizado": d.get("trabajo_realizado", ""),
                         "oficial": d.get("oficial", ""),
                         "cobro": d.get("cobro", 0.0),
                         "metodo_pago": d.get("metodo_pago", ""),
-                        "banco": d.get("banco", ""),
+                        "banco": banco_extraido,
                         "fecha_hora": tiempo_actual,
                         "fecha_salida": fecha_sal,
                         "estado": estado_nuevo,
                         "mensaje_id": id_msj
                     }).execute()
                 except APIError as e:
-                    if e.code == "23505":  # ya se había insertado en un intento anterior (idempotencia)
+                    if e.code == "23505":
                         print(f"↩️ Mensaje {id_msj} ya había creado esta reparación antes, no se duplica.")
                     else:
                         raise
