@@ -737,18 +737,14 @@ async def trabajador_silencioso():
                     supabase.table("cola_mensajes").update({"estado": "Bloqueado (Duplicado)"}).eq("id", id_msj).execute()
                     continue
 
-            # Descuento de inventario
-            if (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") and d.get("repuestos_usados"):
-                for repuesto in d.get("repuestos_usados", []):
-                    inv_res = supabase.table("inventario").select("id, cantidad").eq("codigo", repuesto.get("codigo")).eq("taller_id", taller_id).execute()
-                    if inv_res.data:
-                        inv_item = inv_res.data[0]
-                        nueva_cant = max(0, inv_item["cantidad"] - repuesto.get("cantidad", 0))
-                        supabase.table("inventario").update({"cantidad": nueva_cant}).eq("id", inv_item["id"]).execute()
-
             # Normalización estricta de Cédula y Banco a string plano
             cedula_extraida = str(d.get("cedula") or "").strip()
             banco_extraido = str(d.get("banco") or "").strip()
+
+            # id real de la reparación ya guardada (se define en cualquiera de las
+            # dos ramas de abajo). Lo necesitamos para poder dejar el detalle de
+            # repuestos usados en reparacion_detalles, ligado a esta orden.
+            reparacion_id_actual = None
 
             if ultima_orden and ultima_orden["estado"] == 'Pendiente':
                 se_cierra = d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != ""
@@ -790,6 +786,7 @@ async def trabajador_silencioso():
                     datos_actualizar["estado"] = "Pendiente"
                 
                 supabase.table("reparaciones").update(datos_actualizar).eq("id", ultima_orden["id"]).execute()
+                reparacion_id_actual = ultima_orden["id"]
             else:
                 estado_nuevo = 'Terminado' if (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") else 'Pendiente'
                 fecha_sal = tiempo_actual if estado_nuevo == 'Terminado' else None
@@ -801,7 +798,7 @@ async def trabajador_silencioso():
                     return str(ultima_orden.get(campo) or "").strip() if ultima_orden else ""
 
                 try:
-                    supabase.table("reparaciones").insert({
+                    insertada = supabase.table("reparaciones").insert({
                         "taller_id": taller_id,
                         "vehiculo": placa if placa else "S/C",
                         "modelo": _heredar("modelo", d.get("modelo")),
@@ -822,11 +819,35 @@ async def trabajador_silencioso():
                         "estado": estado_nuevo,
                         "mensaje_id": id_msj
                     }).execute()
+                    if insertada.data:
+                        reparacion_id_actual = insertada.data[0]["id"]
                 except APIError as e:
                     if e.code == "23505":
                         print(f"↩️ Mensaje {id_msj} ya había creado esta reparación antes, no se duplica.")
                     else:
                         raise
+
+            # Descuento de inventario + detalle de repuestos usados en esta orden.
+            # Se hace aquí (no antes) porque recién ahora tenemos el id real de la
+            # reparación para poder dejar el detalle en reparacion_detalles, con
+            # el precio de venta de cada repuesto al momento de usarlo. Ese detalle
+            # es lo que alimenta el PNG de la orden y el descuento de repuestos al
+            # calcular comisión (antes de esto, reparacion_detalles nunca se llenaba).
+            if reparacion_id_actual and (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") and d.get("repuestos_usados"):
+                for repuesto in d.get("repuestos_usados", []):
+                    inv_res = supabase.table("inventario").select("id, cantidad, precio_venta").eq("codigo", repuesto.get("codigo")).eq("taller_id", taller_id).execute()
+                    if inv_res.data:
+                        inv_item = inv_res.data[0]
+                        cantidad_usada = repuesto.get("cantidad", 0)
+                        nueva_cant = max(0, inv_item["cantidad"] - cantidad_usada)
+                        supabase.table("inventario").update({"cantidad": nueva_cant}).eq("id", inv_item["id"]).execute()
+                        supabase.table("reparacion_detalles").insert({
+                            "reparacion_id": reparacion_id_actual,
+                            "inventario_id": inv_item["id"],
+                            "cantidad": cantidad_usada,
+                            "precio_unitario": inv_item.get("precio_venta", 0) or 0
+                        }).execute()
+
 
         elif tipo == "gasto" and resultado.get("gasto"):
             d = resultado["gasto"]
@@ -1253,7 +1274,7 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         # Buscamos la reparación más reciente de esa placa, trayendo también sus repuestos anidados
         orden = (
             cliente_seguro.table("reparaciones")
-            .select("*, reparacion_detalles(*, repuestos(codigo_producto, nombre_repuesto))")
+            .select("*, reparacion_detalles(*, inventario(codigo, nombre))")
             .eq("vehiculo", placa)
             .eq("taller_id", taller_id)
             .order("fecha_hora", desc=True)
@@ -1611,7 +1632,7 @@ def listar_pendientes(request: Request):
 
     pendientes = (
         cliente_seguro.table("reparaciones")
-        .select("id, vehiculo, cliente, cedula, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, banco, fecha_hora, estado, fecha_salida, oficial")
+        .select("id, vehiculo, cliente, cedula, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, banco, fecha_hora, estado, fecha_salida, oficial, reparacion_detalles(cantidad, precio_unitario, inventario(codigo, nombre))")
         .eq("taller_id", taller_id)
         .eq("estado", "Pendiente")
         .execute()
@@ -1619,7 +1640,7 @@ def listar_pendientes(request: Request):
 
     terminados_hoy = (
         cliente_seguro.table("reparaciones")
-        .select("id, vehiculo, cliente, cedula, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, banco, fecha_hora, estado, fecha_salida, oficial")
+        .select("id, vehiculo, cliente, cedula, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, banco, fecha_hora, estado, fecha_salida, oficial, reparacion_detalles(cantidad, precio_unitario, inventario(codigo, nombre))")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
         .gte("fecha_salida", hoy_inicio)
@@ -1738,7 +1759,7 @@ def dashboard_stats(request: Request):
         # 1. Traer todas las órdenes terminadas con sus detalles
         res = (
             cliente_seguro.table("reparaciones")
-            .select("cliente, cobro, trabajo_realizado, reparacion_detalles(cantidad, repuestos(nombre_repuesto))")
+            .select("cliente, cobro, trabajo_realizado, reparacion_detalles(cantidad, inventario(nombre))")
             .eq("taller_id", taller_id)
             .eq("estado", "Terminado")
             .execute()
@@ -1765,9 +1786,9 @@ def dashboard_stats(request: Request):
             detalles = o.get("reparacion_detalles") or []
             for d in detalles:
                 cant = int(d.get("cantidad") or 0)
-                rep_info = d.get("repuestos") or {}
+                rep_info = d.get("inventario") or {}
                 # Buscamos el nombre correcto del repuesto
-                nombre_rep = str(rep_info.get("nombre_repuesto") or "Repuesto Genérico").strip()
+                nombre_rep = str(rep_info.get("nombre") or "Repuesto Genérico").strip()
                 dicc_repuestos[nombre_rep] = dicc_repuestos.get(nombre_rep, 0) + cant
 
         # 2. Ordenar de mayor a menor y sacar solo el Top 5
