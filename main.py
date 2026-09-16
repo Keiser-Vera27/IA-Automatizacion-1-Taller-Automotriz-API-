@@ -1611,7 +1611,7 @@ def listar_pendientes(request: Request):
 
     pendientes = (
         cliente_seguro.table("reparaciones")
-        .select("id, vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida, oficial")
+        .select("id, vehiculo, cliente, cedula, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, banco, fecha_hora, estado, fecha_salida, oficial")
         .eq("taller_id", taller_id)
         .eq("estado", "Pendiente")
         .execute()
@@ -1619,7 +1619,7 @@ def listar_pendientes(request: Request):
 
     terminados_hoy = (
         cliente_seguro.table("reparaciones")
-        .select("id, vehiculo, cliente, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, fecha_hora, estado, fecha_salida, oficial")
+        .select("id, vehiculo, cliente, cedula, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, banco, fecha_hora, estado, fecha_salida, oficial")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
         .gte("fecha_salida", hoy_inicio)
