@@ -637,6 +637,22 @@ async def trabajador_silencioso():
             print(f"⚠️ Error interno leyendo el catálogo de servicios: {e}")
             lista_servicios_str = "Catálogo de servicios no disponible."
 
+        # Catálogo de repuestos en inventario: sin esto, la IA no tiene forma de
+        # saber qué "codigo" poner en repuestos_usados cuando el mensaje solo
+        # menciona el nombre de la pieza (ej. "usé un filtro de aceite"), y
+        # repuestos_usados queda vacío aunque sí se haya usado un repuesto real.
+        try:
+            inventario_res = supabase.table("inventario").select("codigo, nombre").eq("taller_id", taller_id).limit(500).execute()
+            lista_inventario_str = "No hay repuestos registrados en el inventario aún."
+            if inventario_res.data:
+                lista_inventario_str = "\n".join([
+                    f"- {i.get('codigo', 'S/C')}: {i.get('nombre', '')}"
+                    for i in inventario_res.data
+                ])
+        except Exception as e:
+            print(f"⚠️ Error interno leyendo el inventario: {e}")
+            lista_inventario_str = "Catálogo de inventario no disponible."
+
         # PROMPT CON EXTRACCIÓN MEJORADA DE CÉDULA Y BANCO
         prompt = f"""
         Eres un asistente contable inteligente de un taller mecánico.
@@ -650,6 +666,15 @@ async def trabajador_silencioso():
 
         Catálogo oficial de servicios y precios base de este taller:
         {lista_servicios_str}
+
+        Catálogo de repuestos en inventario (código: nombre):
+        {lista_inventario_str}
+
+        REGLA DE REPUESTOS USADOS:
+        Si el mensaje menciona que se usó, cambió o vendió un repuesto (por nombre o por código), 
+        BUSCA en el catálogo de inventario de arriba cuál coincide y pon su "codigo" EXACTO en 
+        'repuestos_usados'. Si el repuesto mencionado no se parece a ninguno del catálogo, NO lo 
+        inventes: omítelo de 'repuestos_usados' (mejor dejarlo fuera que inventar un código que no existe).
 
         REGLAS DE COBRO PARA REPARACIONES:
         1. Si el trabajo mencionado coincide con un servicio del catálogo, usa automáticamente su 'precio_base' en el campo 'cobro'.
@@ -675,7 +700,7 @@ async def trabajador_silencioso():
               "metodo_pago": "efectivo, transferencia, tarjeta, etc.",
               "banco": "Nombre exacto del banco si es transferencia (ej. Pichincha, Guayaquil, Produbanco, Pacifico)",
               "repuestos_usados": [
-                  {{"codigo": "codigo_repuesto", "cantidad": 1}}
+                  {{"codigo": "codigo_repuesto_EXACTO_del_catalogo", "cantidad": 1}}
               ]
           }} | null,
           "gasto": {{
@@ -835,18 +860,23 @@ async def trabajador_silencioso():
             # calcular comisión (antes de esto, reparacion_detalles nunca se llenaba).
             if reparacion_id_actual and (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") and d.get("repuestos_usados"):
                 for repuesto in d.get("repuestos_usados", []):
-                    inv_res = supabase.table("inventario").select("id, cantidad, precio_venta").eq("codigo", repuesto.get("codigo")).eq("taller_id", taller_id).execute()
-                    if inv_res.data:
-                        inv_item = inv_res.data[0]
-                        cantidad_usada = repuesto.get("cantidad", 0)
-                        nueva_cant = max(0, inv_item["cantidad"] - cantidad_usada)
-                        supabase.table("inventario").update({"cantidad": nueva_cant}).eq("id", inv_item["id"]).execute()
-                        supabase.table("reparacion_detalles").insert({
-                            "reparacion_id": reparacion_id_actual,
-                            "inventario_id": inv_item["id"],
-                            "cantidad": cantidad_usada,
-                            "precio_unitario": inv_item.get("precio_venta", 0) or 0
-                        }).execute()
+                    try:
+                        inv_res = supabase.table("inventario").select("id, cantidad, precio_venta").eq("codigo", repuesto.get("codigo")).eq("taller_id", taller_id).execute()
+                        if inv_res.data:
+                            inv_item = inv_res.data[0]
+                            cantidad_usada = repuesto.get("cantidad", 0)
+                            nueva_cant = max(0, inv_item["cantidad"] - cantidad_usada)
+                            supabase.table("inventario").update({"cantidad": nueva_cant}).eq("id", inv_item["id"]).execute()
+                            supabase.table("reparacion_detalles").insert({
+                                "reparacion_id": reparacion_id_actual,
+                                "inventario_id": inv_item["id"],
+                                "cantidad": cantidad_usada,
+                                "precio_unitario": inv_item.get("precio_venta", 0) or 0
+                            }).execute()
+                    except Exception as e_repuesto:
+                        # No dejamos que un repuesto con problema tumbe el resto del mensaje
+                        # (cierre de la orden, cédula, banco, etc. ya se guardaron arriba).
+                        print(f"⚠️ No se pudo registrar el repuesto {repuesto.get('codigo')} de la orden {reparacion_id_actual}: {e_repuesto}")
 
 
         elif tipo == "gasto" and resultado.get("gasto"):
