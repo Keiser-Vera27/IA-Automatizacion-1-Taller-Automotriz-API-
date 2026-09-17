@@ -31,7 +31,7 @@ async function cargarBienvenidaTaller() {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        // Validación: Si el servidor responde 401 (No autorizado/Caducado)
+        // ¡NUEVA VALIDACIÓN! Si el servidor responde 401 (No autorizado/Caducado)
         if (res.status === 401) {
             cerrarSesion();
             mostrarNotificacion("Tu sesión ha caducado por seguridad. Por favor, inicia sesión nuevamente.", "warning");
@@ -42,7 +42,7 @@ async function cargarBienvenidaTaller() {
 
         const data = await res.json();
         
-        // Guardamos el nombre para usarlo en la factura
+        // ¡NUEVA LÍNEA! Guardamos el nombre para usarlo en la factura
         localStorage.setItem("nombre_taller_actual", data.nombre_taller); 
         
         banner.innerHTML = `¡Bienvenido, <span class="nombre-taller-destacado">${data.nombre_taller}</span>! Empecemos a trabajar`;
@@ -475,7 +475,7 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        // Validación: Cierre automático si el token expiró
+        // ¡NUEVA VALIDACIÓN! Cierre automático si el token expiró
         if (response.status === 401) {
             cerrarSesion();
             mostrarNotificacion("Tu sesión ha caducado por seguridad. Por favor, inicia sesión nuevamente.", "warning");
@@ -505,6 +505,7 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
         const listaVehiculos = data.vehiculos || [];
         const vehiculosFiltrados = listaVehiculos.filter(v => v.estado === filtroEstadoActual);
 
+        // NUEVA ESTRUCTURA HTML: Usando las clases limpias de CSS
         let html = `
             <div class="cabecera-panel-vehiculos">
                 <h3>Control de Vehículos</h3>
@@ -518,6 +519,7 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
 
         if (vehiculosFiltrados.length > 0) {
             vehiculosFiltrados.forEach(v => {
+                // Detecta qué colores aplicar
                 let claseEstado = v.estado === 'Pendiente' ? 'estado-pendiente' : 'estado-terminado';
                 
                 let detalleExtra = v.estado === 'Terminado' 
@@ -533,6 +535,7 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                     ? `<div class="info-taller-item"><strong>Tel:</strong> <a href="tel:${v.telefono}" class="link-telefono" onclick="event.stopPropagation()">${v.telefono}</a></div>`
                     : '';
 
+                // INYECCIÓN DEL BOTÓN DE DESCARGA PARA ORDENES TERMINADAS
                 let botonDescarga = "";
                 if (v.estado === "Terminado") {
                     const datosVehiculoStr = JSON.stringify(v).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
@@ -544,6 +547,7 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                     `;
                 }
 
+                // Extraer el ID de la base de datos para mostrarlo como Número de Orden
                 let numOrden = v.id || v.id_orden || '---';
 
                 html += `
@@ -563,7 +567,7 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                     </div>
                 `;
             });
-            html += `</div>`; 
+            html += `</div>`; // Cierra el grid
             container.innerHTML = html;
         } else {
             container.innerHTML = html + `</div><p style="color: var(--texto-tenue); font-size: 0.9rem; text-align: center; margin: 20px 0; width: 100%;">No hay vehículos en la categoría '${filtroEstadoActual}'.</p>`;
@@ -618,7 +622,6 @@ function mostrarNotificacion(mensaje, tipo) {
         }, 5000);
     }
 }
-
 /// ==============================================================================
 // FUNCIÓN MAESTRA PARA LLENAR LA PLANTILLA (Evita código duplicado)
 // ==============================================================================
@@ -639,7 +642,7 @@ function llenarPlantillaOrden(datos) {
     
     document.getElementById('orden-cliente').innerText = datos.cliente || '---';
     
-    // CORRECCIÓN CÉDULA: Conversión segura a String
+    // CORRECCIÓN CÉDULA: Conversión segura a String para evitar errores con trim()
     const rawCedula = datos.cedula || datos.cedula_cliente || datos.identificacion || '';
     const cedulaLimpia = String(rawCedula).trim();
     document.getElementById('orden-cedula').innerText = (cedulaLimpia !== '' && cedulaLimpia !== 'null' && cedulaLimpia !== 'undefined') ? cedulaLimpia : 'No registrada';
@@ -655,7 +658,7 @@ function llenarPlantillaOrden(datos) {
     document.getElementById('orden-motivo').innerText = datos.motivo || 'No especificado';
     document.getElementById('orden-trabajo').innerText = datos.trabajo_realizado || 'No especificado';
 
-    // 5. Tabla de Repuestos (SOLUCIÓN IMPLEMENTADA)
+    // 5. Tabla de Repuestos
     const tbody = document.getElementById('orden-repuestos-body');
     tbody.innerHTML = '';
     let totalRepuestos = 0;
@@ -665,15 +668,10 @@ function llenarPlantillaOrden(datos) {
             const subtotal = detalle.cantidad * (detalle.precio_unitario || 0);
             totalRepuestos += subtotal;
             
-            // Evaluamos la estructura del JSON devuelto por Supabase para adaptarnos 
-            // tanto a 'inventario' como a 'repuestos' si fuera el caso
-            const codigoRef = detalle.inventario?.codigo || detalle.repuestos?.codigo_producto || 'N/A';
-            const nombreRef = detalle.inventario?.nombre || detalle.repuestos?.nombre_repuesto || 'Genérico';
-
             tbody.innerHTML += `
                 <tr>
-                    <td style="border: 1px solid #ddd; padding: 8px;">${codigoRef}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px;">${nombreRef}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">${detalle.inventario?.codigo || 'N/A'}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">${detalle.inventario?.nombre || 'Genérico'}</td>
                     <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${detalle.cantidad}</td>
                     <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">$${(detalle.precio_unitario || 0).toFixed(2)}</td>
                     <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">$${subtotal.toFixed(2)}</td>
@@ -720,7 +718,7 @@ function llenarPlantillaOrden(datos) {
 // GENERADOR DE IMÁGENES (Chat IA)
 // ==========================================================================
 async function generarImagenFactura(orden) {
-    llenarPlantillaOrden(orden); 
+    llenarPlantillaOrden(orden); // <-- Llama a la función maestra
 
     const plantilla = document.getElementById('plantilla-orden');
     plantilla.style.display = 'block'; 
@@ -752,7 +750,7 @@ async function generarComprobantePNG(vehiculoJson) {
     try {
         const reparacion = typeof vehiculoJson === 'string' ? JSON.parse(vehiculoJson) : vehiculoJson;
         
-        llenarPlantillaOrden(reparacion); 
+        llenarPlantillaOrden(reparacion); // <-- Llama a la misma función maestra
 
         const plantilla = document.getElementById('plantilla-orden');
         plantilla.style.display = 'block';
@@ -777,7 +775,6 @@ async function generarComprobantePNG(vehiculoJson) {
         document.getElementById('plantilla-orden').style.display = 'none';
     }
 }
-
 // ==============================================================================
 // REPORTE DE LIQUIDACIÓN QUINCENAL / PERSONALIZADA
 // ==============================================================================
@@ -853,7 +850,6 @@ function renderizarLiquidacion(data) {
         </div>
     `;
 }
-
 // ==============================================================================
 // LEADERBOARD / RANKING ANUAL EN VIVO
 // ==============================================================================
@@ -920,19 +916,24 @@ function renderizarRankingAnual(data) {
         </div>
     `;
 }
-
 // ==============================================================================
 // ACTUALIZACIÓN AUTOMÁTICA AL RETOMAR LA PESTAÑA (WAKE UP)
 // ==============================================================================
 document.addEventListener("visibilitychange", function() {
+    // Si el usuario vuelve a poner la pestaña en primer plano (estado visible)
     if (document.visibilityState === "visible") {
         const token = localStorage.getItem("taller_token");
         
+        // Si hay una sesión activa, refrescamos los datos críticos automáticamente
         if (token) {
             console.log("🔄 Pestaña reactivada: actualizando datos en vivo...");
+            
+            // 1. Refrescar vehículos pendientes/terminados
             if (typeof cargarVehiculosPendientes === "function") {
                 cargarVehiculosPendientes(typeof filtroEstadoActual !== 'undefined' ? filtroEstadoActual : 'Pendiente');
             }
+            
+            // 2. Refrescar el ranking anual en vivo
             if (typeof cargarRankingAnual === "function") {
                 cargarRankingAnual();
             }
@@ -940,6 +941,7 @@ document.addEventListener("visibilitychange", function() {
     }
 });
 
+// Respaldo adicional para dispositivos móviles (iOS/Android) al salir de la caché de navegación
 window.addEventListener("pageshow", function(event) {
     if (event.persisted) {
         const token = localStorage.getItem("taller_token");
@@ -949,7 +951,6 @@ window.addEventListener("pageshow", function(event) {
         }
     }
 });
-
 // ==========================================================================
 // NAVEGACIÓN Y MENÚ HAMBURGUESA
 // ==========================================================================
@@ -963,19 +964,23 @@ function toggleMenu() {
 }
 
 function cambiarVista(idVista) {
+    // Ocultar todas las vistas
     const vistas = document.querySelectorAll('.vista-app');
     vistas.forEach(vista => vista.style.display = 'none');
     
+    // Mostrar la vista seleccionada
     document.getElementById(idVista).style.display = 'block';
+    
+    // Cerrar el menú lateral
     toggleMenu();
     
+    // Si entramos al dashboard, cargamos los gráficos (lo programaremos luego)
     if (idVista === 'vista-dashboard') {
         cargarDatosDashboard(); 
     } else if (idVista === 'vista-servicios') {
-        cargarServicios(); 
+        cargarServicios(); // ¡Agrega esta línea!
     }
 }
-
 // ==========================================================================
 // DASHBOARD ANALÍTICO (CHART.JS)
 // ==========================================================================
@@ -984,10 +989,11 @@ let chartClientes = null;
 let chartServicios = null;
 
 async function cargarDatosDashboard() {
-    const token = localStorage.getItem("taller_token"); 
+    const token = localStorage.getItem("taller_token"); // ¡Corregido!
     if (!token) return;
 
     try {
+        // Llama a la URL de tu backend correctamente sin API_URL
         const response = await fetch("/dashboard-stats", {
             headers: { "Authorization": `Bearer ${token}` }
         });
@@ -1007,10 +1013,10 @@ async function cargarDatosDashboard() {
 
 function renderChartRepuestos(datos) {
     const ctx = document.getElementById('graficoRepuestos').getContext('2d');
-    if (chartRepuestos) chartRepuestos.destroy();
+    if (chartRepuestos) chartRepuestos.destroy(); // Limpiar gráfico anterior
 
     chartRepuestos = new Chart(ctx, {
-        type: 'doughnut',
+        type: 'doughnut', // Gráfico circular (donut)
         data: {
             labels: datos.map(d => d.nombre),
             datasets: [{
@@ -1029,7 +1035,7 @@ function renderChartClientes(datos) {
     if (chartClientes) chartClientes.destroy();
 
     chartClientes = new Chart(ctx, {
-        type: 'bar',
+        type: 'bar', // Gráfico de barras horizontales
         data: {
             labels: datos.map(d => d.nombre),
             datasets: [{
@@ -1040,7 +1046,7 @@ function renderChartClientes(datos) {
             }]
         },
         options: { 
-            indexAxis: 'y', 
+            indexAxis: 'y', // Lo hace horizontal
             responsive: true, 
             plugins: { legend: { display: false } },
             scales: { x: { grid: { color: '#333' } }, y: { grid: { display: false } } }
@@ -1053,7 +1059,7 @@ function renderChartServicios(datos) {
     if (chartServicios) chartServicios.destroy();
 
     chartServicios = new Chart(ctx, {
-        type: 'pie',
+        type: 'pie', // Gráfico tipo pastel
         data: {
             labels: datos.map(d => d.nombre),
             datasets: [{
@@ -1066,12 +1072,11 @@ function renderChartServicios(datos) {
         options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#888' } } } }
     });
 }
-
 // ==========================================================================
 // CATÁLOGO DE SERVICIOS
 // ==========================================================================
 async function cargarServicios() {
-    const token = localStorage.getItem("taller_token"); 
+    const token = localStorage.getItem("taller_token"); // ¡Corregido!
     if (!token) return;
 
     try {
@@ -1105,7 +1110,7 @@ async function cargarServicios() {
 async function guardarServicio() {
     const nombre = document.getElementById('nuevo-servicio-nombre').value;
     const precio = document.getElementById('nuevo-servicio-precio').value;
-    const token = localStorage.getItem("taller_token"); 
+    const token = localStorage.getItem("taller_token"); // ¡Corregido!
 
     if (!nombre || !precio) {
         alert("Por favor ingresa un nombre y un precio válido.");
@@ -1125,7 +1130,7 @@ async function guardarServicio() {
         if (res.ok) {
             document.getElementById('nuevo-servicio-nombre').value = '';
             document.getElementById('nuevo-servicio-precio').value = '';
-            cargarServicios(); 
+            cargarServicios(); // Recargar la tabla
         }
     } catch (error) {
         console.error("Error al guardar:", error);
@@ -1135,7 +1140,52 @@ async function guardarServicio() {
 async function eliminarServicio(id) {
     if (!confirm("¿Estás seguro de eliminar este servicio?")) return;
     
-    const token = localStorage.getItem("taller_token"); 
+    const token = localStorage.getItem("taller_token"); // ¡Corregido!
+    try {
+        const res = await fetch(`/servicios/${id}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) cargarServicios();
+    } catch (error) {
+        console.error("Error al eliminar:", error);
+    }
+}
+
+async function guardarServicio() {
+    const nombre = document.getElementById('nuevo-servicio-nombre').value;
+    const precio = document.getElementById('nuevo-servicio-precio').value;
+    const token = localStorage.getItem("as_token");
+
+    if (!nombre || !precio) {
+        alert("Por favor ingresa un nombre y un precio válido.");
+        return;
+    }
+
+    try {
+        const res = await fetch("/servicios", {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}` 
+            },
+            body: JSON.stringify({ nombre_servicio: nombre, precio_base: parseFloat(precio) })
+        });
+        
+        if (res.ok) {
+            document.getElementById('nuevo-servicio-nombre').value = '';
+            document.getElementById('nuevo-servicio-precio').value = '';
+            cargarServicios(); // Recargar la tabla
+        }
+    } catch (error) {
+        console.error("Error al guardar:", error);
+    }
+}
+
+async function eliminarServicio(id) {
+    if (!confirm("¿Estás seguro de eliminar este servicio?")) return;
+    
+    const token = localStorage.getItem("as_token");
     try {
         const res = await fetch(`/servicios/${id}`, {
             method: "DELETE",
