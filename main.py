@@ -1301,9 +1301,11 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
     if accion == "generar_orden":
         placa = normalizar_placa(placa_extraida)
         
-        # Buscamos la reparación más reciente de esa placa, trayendo también sus repuestos anidados
+        # Buscamos la reparación más reciente de esa placa, trayendo también sus repuestos anidados.
+        # Cliente admin (no cliente_seguro): el JOIN anidado a reparacion_detalles/inventario
+        # requiere que esas tablas también tengan política RLS de SELECT, y no la tienen.
         orden = (
-            cliente_seguro.table("reparaciones")
+            supabase.table("reparaciones")
             .select("*, reparacion_detalles(*, inventario(codigo, nombre))")
             .eq("vehiculo", placa)
             .eq("taller_id", taller_id)
@@ -1399,7 +1401,9 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
     inicio_utc, fin_utc = limites_dia_ecuador(fecha)
 
     ordenes_cerradas = (
-        cliente_seguro.table("reparaciones")
+        # Cliente admin: el JOIN a reparacion_detalles requiere política RLS de
+        # SELECT en esa tabla, y no la tiene. Sigue aislado por .eq("taller_id",...).
+        supabase.table("reparaciones")
         # 1. Añadimos reparacion_detalles para poder restar los repuestos después
         .select("vehiculo, cliente, modelo, oficial, trabajo_realizado, cobro, metodo_pago, fecha_hora, fecha_salida, reparacion_detalles(cantidad, precio_unitario)")
         .eq("taller_id", taller_id)
@@ -1488,8 +1492,9 @@ def ranking_anual(request: Request, anio: int | None = None):
     fin_ano = f"{anio}-12-31 23:59:59"
 
     # Consultamos las órdenes terminadas del año trayendo los repuestos
+    # (cliente admin: reparacion_detalles no tiene política RLS de SELECT)
     ordenes = (
-        cliente_seguro.table("reparaciones")
+        supabase.table("reparaciones")
         .select("oficial, cobro, reparacion_detalles(cantidad, precio_unitario)")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
@@ -1557,8 +1562,9 @@ def reporte_liquidacion(request: Request, fecha_inicio: str, fecha_fin: str):
     _, fin_utc = limites_dia_ecuador(fecha_fin)
 
     # Consultar las órdenes terminadas dentro del rango de corte seleccionado
+    # (cliente admin: reparacion_detalles no tiene política RLS de SELECT)
     ordenes = (
-        cliente_seguro.table("reparaciones")
+        supabase.table("reparaciones")
         .select("vehiculo, cliente, modelo, oficial, trabajo_realizado, cobro, fecha_salida, reparacion_detalles(cantidad, precio_unitario)")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
@@ -1661,7 +1667,8 @@ def listar_pendientes(request: Request):
     hoy_inicio, hoy_fin = limites_dia_ecuador()
 
     pendientes = (
-        cliente_seguro.table("reparaciones")
+        # Cliente admin: el JOIN a reparacion_detalles/inventario no tiene política RLS de SELECT
+        supabase.table("reparaciones")
         .select("id, vehiculo, cliente, cedula, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, banco, fecha_hora, estado, fecha_salida, oficial, reparacion_detalles(cantidad, precio_unitario, inventario(codigo, nombre))")
         .eq("taller_id", taller_id)
         .eq("estado", "Pendiente")
@@ -1669,7 +1676,7 @@ def listar_pendientes(request: Request):
     ).data
 
     terminados_hoy = (
-        cliente_seguro.table("reparaciones")
+        supabase.table("reparaciones")
         .select("id, vehiculo, cliente, cedula, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, banco, fecha_hora, estado, fecha_salida, oficial, reparacion_detalles(cantidad, precio_unitario, inventario(codigo, nombre))")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
@@ -1787,8 +1794,9 @@ def dashboard_stats(request: Request):
     
     try:
         # 1. Traer todas las órdenes terminadas con sus detalles
+        # (cliente admin: reparacion_detalles/inventario no tienen política RLS de SELECT)
         res = (
-            cliente_seguro.table("reparaciones")
+            supabase.table("reparaciones")
             .select("cliente, cobro, trabajo_realizado, reparacion_detalles(cantidad, inventario(nombre))")
             .eq("taller_id", taller_id)
             .eq("estado", "Terminado")
