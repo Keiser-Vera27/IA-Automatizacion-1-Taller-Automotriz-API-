@@ -1724,12 +1724,15 @@ async def importar_inventario(request: Request, archivo: UploadFile = File(...))
             proveedor = "General" if pd.isna(fila.get("proveedor")) else str(fila.get("proveedor")).strip()
             aplicacion = "General" if pd.isna(fila.get("aplicacion")) else str(fila.get("aplicacion")).strip()
 
-            inv_res = cliente_seguro.table("inventario").select("id, cantidad").eq("codigo", codigo).eq("taller_id", taller_id).execute()
+            # Cliente admin (no cliente_seguro): inventario no tiene política RLS
+            # de INSERT/UPDATE para el usuario autenticado, así que con el cliente
+            # RLS-scoped esto se bloqueaba en silencio. Sigue aislado por taller_id.
+            inv_res = supabase.table("inventario").select("id, cantidad").eq("codigo", codigo).eq("taller_id", taller_id).execute()
 
             if inv_res.data:
                 item_existente = inv_res.data[0]
                 nueva_cantidad = item_existente["cantidad"] + cantidad
-                cliente_seguro.table("inventario").update({
+                supabase.table("inventario").update({
                     "cantidad": nueva_cantidad,
                     "costo": costo,
                     "precio_venta": precio_venta,
@@ -1737,7 +1740,7 @@ async def importar_inventario(request: Request, archivo: UploadFile = File(...))
                 }).eq("id", item_existente["id"]).execute()
                 actualizados += 1
             else:
-                cliente_seguro.table("inventario").insert({
+                supabase.table("inventario").insert({
                     "taller_id": taller_id,
                     "codigo": codigo,
                     "nombre": nombre,
