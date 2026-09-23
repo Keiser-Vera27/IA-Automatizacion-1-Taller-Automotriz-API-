@@ -1689,64 +1689,112 @@ def listar_pendientes(request: Request):
 # --- IMPORTAR INVENTARIO (carga masiva desde Excel) ---------------------
 # Regla de negocio: si el código YA existe, SUMA la cantidad nueva al stock
 # y SOBREESCRIBE costo/precio_venta con los del archivo (igual criterio que
-# el registro individual por IA, líneas ~761-787). Si no existe, lo crea.
+# el registro individual por IA). Si no existe, lo crea.
+
+def _normalizar_encabezado(col) -> str:
+    """'Código ' -> 'codigo', 'Precio Venta' -> 'precio_venta', 'Aplicación' -> 'aplicacion'."""
+    import unicodedata
+    texto = unicodedata.normalize("NFKD", str(col)).encode("ascii", "ignore").decode()
+    return re.sub(r"[\s\-]+", "_", texto.strip().lower())
+
+def _celda_vacia(valor) -> bool:
+    """True si la celda viene vacía (NaN de pandas, None o texto en blanco)."""
+    return valor is None or (not isinstance(valor, str) and pd.isna(valor)) or str(valor).strip() == ""
+
+def _a_numero(valor, entero: bool = False):
+    """Convierte una celda a número. Vacío -> 0. Acepta '$12,50' o '1.234,5'.
+    Antes: una celda vacía llegaba como NaN -> int(NaN) reventaba o se enviaba
+    NaN a Supabase (JSON inválido) y la fila se descartaba en silencio."""
+    if _celda_vacia(valor):
+        return 0
+    if isinstance(valor, str):
+        limpio = valor.strip().replace("$", "").replace(" ", "")
+        if "," in limpio and "." in limpio:
+            limpio = limpio.replace(".", "").replace(",", ".")  # formato 1.234,50
+        else:
+            limpio = limpio.replace(",", ".")                   # formato 12,50
+        valor = float(limpio)
+    return int(round(float(valor))) if entero else round(float(valor), 2)
+
+def _a_texto(valor, por_defecto: str = "") -> str:
+    """Texto limpio; evita guardar la palabra 'nan' en la base."""
+    if _celda_vacia(valor):
+        return por_defecto
+    if isinstance(valor, float) and valor.is_integer():
+        valor = int(valor)  # códigos numéricos: 12345.0 -> '12345'
+    return str(valor).strip()
+
 @app.post("/importar-inventario")
-async def importar_inventario(request: Request, archivo: UploadFile = File(...)):
+def importar_inventario(request: Request, archivo: UploadFile = File(...)):
+    # 'def' (no 'async def'): las llamadas a Supabase son bloqueantes; así FastAPI
+    # ejecuta la importación en el threadpool y NO congela el servidor completo
+    # mientras se procesa un Excel grande.
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
 
     try:
-        contenido = await archivo.read()
-        df = pd.read_excel(io.BytesIO(contenido))
+        contenido = archivo.file.read()
+        # dtype=object: no dejamos que pandas convierta códigos como '0012' en 12
+        df = pd.read_excel(io.BytesIO(contenido), dtype=object)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No se pudo leer el Excel: {e}")
 
-    df.columns = [str(c).strip().lower() for c in df.columns]
+    df.columns = [_normalizar_encabezado(c) for c in df.columns]
+    df = df.dropna(how="all")  # filas totalmente vacías al final del Excel
+
     columnas_requeridas = {"codigo", "nombre", "cantidad"}
     faltantes = columnas_requeridas - set(df.columns)
     if faltantes:
-        raise HTTPException(status_code=400, detail=f"Faltan columnas obligatorias: {', '.join(faltantes)}")
+        raise HTTPException(
+            status_code=400,
+            detail=(f"Faltan columnas obligatorias: {', '.join(sorted(faltantes))}. "
+                    f"Columnas encontradas: {', '.join(map(str, df.columns))}")
+        )
+    if df.empty:
+        raise HTTPException(status_code=400, detail="El Excel no tiene filas con datos.")
 
     tiempo_actual = ahora_utc_str()
     nuevos, actualizados, errores = 0, 0, []
 
     for idx, fila in df.iterrows():
+        num_fila = idx + 2  # +1 por encabezado, +1 porque Excel cuenta desde 1
         try:
-            codigo = str(fila.get("codigo", "")).strip()
-            if not codigo or codigo.lower() == "nan":
-                errores.append(f"Fila {idx + 2}: sin código, omitida")
+            codigo = _a_texto(fila.get("codigo"))
+            if not codigo:
+                errores.append(f"Fila {num_fila}: sin código, omitida")
                 continue
 
-            cantidad = int(fila.get("cantidad", 0) or 0)
-            costo = float(fila.get("costo", 0) or 0)
-            precio_venta = float(fila.get("precio_venta", 0) or 0)
-            nombre = str(fila.get("nombre", "")).strip()
-            marca = "" if pd.isna(fila.get("marca")) else str(fila.get("marca")).strip()
-            proveedor = "General" if pd.isna(fila.get("proveedor")) else str(fila.get("proveedor")).strip()
-            aplicacion = "General" if pd.isna(fila.get("aplicacion")) else str(fila.get("aplicacion")).strip()
+            cantidad = _a_numero(fila.get("cantidad"), entero=True)
+            costo = _a_numero(fila.get("costo"))
+            precio_venta = _a_numero(fila.get("precio_venta"))
 
             # Cliente admin (no cliente_seguro): inventario no tiene política RLS
-            # de INSERT/UPDATE para el usuario autenticado, así que con el cliente
-            # RLS-scoped esto se bloqueaba en silencio. Sigue aislado por taller_id.
-            inv_res = supabase.table("inventario").select("id, cantidad").eq("codigo", codigo).eq("taller_id", taller_id).execute()
+            # de INSERT/UPDATE para el usuario autenticado. Aislado por taller_id.
+            inv_res = (supabase.table("inventario").select("id, cantidad")
+                       .eq("codigo", codigo).eq("taller_id", taller_id).limit(1).execute())
 
             if inv_res.data:
                 item_existente = inv_res.data[0]
-                nueva_cantidad = item_existente["cantidad"] + cantidad
-                supabase.table("inventario").update({
-                    "cantidad": nueva_cantidad,
-                    "costo": costo,
-                    "precio_venta": precio_venta,
+                cambios = {
+                    "cantidad": (item_existente.get("cantidad") or 0) + cantidad,
                     "fecha_actualizacion": tiempo_actual
-                }).eq("id", item_existente["id"]).execute()
+                }
+                # Solo sobreescribe precios si la celda trae valor: una celda vacía
+                # NO debe dejar en $0 el costo/precio que ya estaba guardado.
+                if not _celda_vacia(fila.get("costo")):
+                    cambios["costo"] = costo
+                if not _celda_vacia(fila.get("precio_venta")):
+                    cambios["precio_venta"] = precio_venta
+                supabase.table("inventario").update(cambios) \
+                    .eq("id", item_existente["id"]).eq("taller_id", taller_id).execute()
                 actualizados += 1
             else:
                 supabase.table("inventario").insert({
                     "taller_id": taller_id,
                     "codigo": codigo,
-                    "nombre": nombre,
-                    "marca": marca,
-                    "proveedor": proveedor,
-                    "aplicacion": aplicacion,
+                    "nombre": _a_texto(fila.get("nombre"), por_defecto=codigo),
+                    "marca": _a_texto(fila.get("marca")),
+                    "proveedor": _a_texto(fila.get("proveedor"), por_defecto="General"),
+                    "aplicacion": _a_texto(fila.get("aplicacion"), por_defecto="General"),
                     "cantidad": cantidad,
                     "costo": costo,
                     "precio_venta": precio_venta,
@@ -1754,9 +1802,14 @@ async def importar_inventario(request: Request, archivo: UploadFile = File(...))
                 }).execute()
                 nuevos += 1
         except Exception as e_fila:
-            errores.append(f"Fila {idx + 2}: {e_fila}")
+            errores.append(f"Fila {num_fila}: {e_fila}")
 
-    return {"status": "ok", "nuevos": nuevos, "actualizados": actualizados, "errores": errores}
+    # Log en Render para poder diagnosticar sin depender del navegador
+    print(f"[importar-inventario] taller={taller_id} nuevos={nuevos} "
+          f"actualizados={actualizados} errores={len(errores)} {errores[:5]}")
+
+    return {"status": "ok", "nuevos": nuevos, "actualizados": actualizados,
+            "total_filas": int(len(df)), "errores": errores}
 # ==============================================================================
 # CATÁLOGO DE SERVICIOS
 # ==============================================================================
@@ -1886,4 +1939,4 @@ def exportar_inventario(request: Request):
 if __name__ == "__main__":
     import uvicorn
     puerto = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=puerto, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=puerto, reload=False)

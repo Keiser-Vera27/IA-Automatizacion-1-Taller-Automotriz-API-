@@ -165,6 +165,10 @@
                         <input type="file" id="input-excel-inventario" accept=".xlsx,.xls" style="display: none;" onchange="subirInventarioExcel(event)">
                     </div>
 
+                    <!-- Resultado de la importación: se muestra AQUÍ, junto al botón.
+                         Antes el aviso salía arriba (bajo el chat) y fuera de la vista. -->
+                    <div id="resultado-importacion" style="display: none; margin-top: 15px;"></div>
+
                     <!-- CONTENEDOR DINÁMICO DEL CUADRE DIARIO -->
                     <div id="panel-cuadre-caja"></div>
 
@@ -338,4 +342,4 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="script.js?v=999"></script>
 </body>
-</html>
+</html>

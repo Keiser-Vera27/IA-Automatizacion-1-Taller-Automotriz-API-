@@ -266,8 +266,28 @@ function abrirSelectorInventario() {
 }
 
 // Importación masiva de inventario (sube el Excel al backend)
+// Muestra el resultado en #resultado-importacion (junto al botón), no en la
+// caja del chat, que quedaba fuera de la pantalla y se borraba a los 5 s.
+function mostrarResultadoImportacion(html, tipo) {
+    const caja = document.getElementById('resultado-importacion');
+    if (!caja) { mostrarNotificacion(html, tipo); return; }  // respaldo
+    caja.className = `mensaje-procesando-ia ${tipo}`;
+    caja.style.display = 'block';
+    caja.style.padding = '15px 20px';
+    caja.style.borderRadius = '10px';
+    caja.innerHTML = html;
+    caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function escaparHTML(texto) {
+    const div = document.createElement('div');
+    div.textContent = String(texto);
+    return div.innerHTML;
+}
+
 async function subirInventarioExcel(event) {
-    const archivo = event.target.files[0];
+    const input = event.target;
+    const archivo = input.files[0];
     if (!archivo) return;
 
     const token = localStorage.getItem("taller_token");
@@ -275,7 +295,7 @@ async function subirInventarioExcel(event) {
     formData.append("archivo", archivo);
 
     try {
-        mostrarNotificacion("Importando inventario, espera un momento...", "info");
+        mostrarResultadoImportacion(`⏳ Importando <b>${escaparHTML(archivo.name)}</b>, espera un momento...`, "info");
 
         const response = await fetch('/importar-inventario', {
             method: 'POST',
@@ -283,21 +303,35 @@ async function subirInventarioExcel(event) {
             body: formData
         });
 
-        const data = await response.json();
+        // Si el servidor responde algo que no es JSON (500, timeout del proxy),
+        // no lo tratamos como "error de conexión": mostramos el código real.
+        const data = await response.json().catch(() => ({}));
 
-        if (response.ok) {
-            let mensaje = `Importación lista: ${data.nuevos} repuestos nuevos, ${data.actualizados} actualizados.`;
-            if (data.errores && data.errores.length > 0) {
-                mensaje += ` (${data.errores.length} fila(s) con problemas)`;
-            }
-            mostrarNotificacion(mensaje, "success");
-        } else {
-            mostrarNotificacion(data.detail || "Error al importar el inventario.", "warning");
+        if (!response.ok) {
+            const detalle = data.detail || `El servidor respondió ${response.status}.`;
+            mostrarResultadoImportacion(`⚠️ No se importó el inventario: ${escaparHTML(detalle)}`, "warning");
+            return;
         }
+
+        const errores = data.errores || [];
+        const procesados = (data.nuevos || 0) + (data.actualizados || 0);
+        let html = `📦 Importación terminada: <b>${data.nuevos}</b> repuestos nuevos, <b>${data.actualizados}</b> actualizados`;
+        if (data.total_filas !== undefined) html += ` de ${data.total_filas} fila(s)`;
+        html += '.';
+
+        if (errores.length > 0) {
+            // Mostramos hasta 10 errores para que se pueda corregir el Excel
+            const lista = errores.slice(0, 10).map(e => `<li>${escaparHTML(e)}</li>`).join('');
+            const resto = errores.length > 10 ? `<li>... y ${errores.length - 10} más</li>` : '';
+            html += `<br>${errores.length} fila(s) con problemas:<ul style="margin: 6px 0 0 18px;">${lista}${resto}</ul>`;
+        }
+
+        // Si nada se guardó, no es un "éxito" aunque el servidor devuelva 200
+        mostrarResultadoImportacion(html, procesados === 0 ? "warning" : (errores.length ? "info" : "success"));
     } catch (error) {
-        mostrarNotificacion("Error de conexion al importar el inventario.", "error");
+        mostrarResultadoImportacion("❌ Error de conexión al importar el inventario.", "error");
     } finally {
-        event.target.value = "";
+        input.value = "";  // permite volver a elegir el mismo archivo
     }
 }
 
