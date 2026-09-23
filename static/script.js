@@ -12,11 +12,15 @@ function alternarTema() {
     actualizarIconoTema(nuevoTema);
 }
 
+const ICONO_LUNA = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+const ICONO_SOL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+
 function actualizarIconoTema(tema) {
     const icono = document.getElementById("icono-tema");
     const texto = document.getElementById("texto-tema");
     if (!icono || !texto) return;
-    icono.innerText = tema === "dark" ? "☾" : "☀";
+    // Íconos SVG (luna/sol) en lugar de caracteres especiales
+    icono.innerHTML = tema === "dark" ? ICONO_LUNA : ICONO_SOL;
     texto.innerText = tema === "dark" ? "Oscuro" : "Claro";
 }
 
@@ -265,19 +269,17 @@ function abrirSelectorInventario() {
     document.getElementById('input-excel-inventario').click();
 }
 
-// Importación masiva de inventario (sube el Excel al backend)
-// Muestra el resultado en #resultado-importacion (junto al botón), no en la
-// caja del chat, que quedaba fuera de la pantalla y se borraba a los 5 s.
-function mostrarResultadoImportacion(html, tipo) {
-    const caja = document.getElementById('resultado-importacion');
-    if (!caja) { mostrarNotificacion(html, tipo); return; }  // respaldo
-    caja.className = `mensaje-procesando-ia ${tipo}`;
-    caja.style.display = 'block';
-    caja.style.padding = '15px 20px';
-    caja.style.borderRadius = '10px';
-    caja.innerHTML = html;
-    caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
+// ==============================================================================
+// MODAL DE AVISO REUTILIZABLE (centro de pantalla + botón OK)
+// Uso: mostrarModal({ tipo: 'success'|'warning'|'error'|'info', titulo, mensaje, detalles: [] })
+//      mostrarModal({ cargando: true, titulo, mensaje })  -> sin botón, con spinner
+// ==============================================================================
+const ICONOS_MODAL = {
+    success: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>',
+    warning: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16.5" x2="12.01" y2="16.5"/></svg>',
+    error:   '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    info:    '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="7.5" x2="12.01" y2="7.5"/></svg>'
+};
 
 function escaparHTML(texto) {
     const div = document.createElement('div');
@@ -285,6 +287,54 @@ function escaparHTML(texto) {
     return div.innerHTML;
 }
 
+function mostrarModal({ tipo = 'info', titulo = '', mensaje = '', detalles = [], cargando = false } = {}) {
+    const overlay = document.getElementById('modal-aviso');
+    if (!overlay) { mostrarNotificacion(mensaje, tipo); return; }  // respaldo
+
+    const icono = document.getElementById('modal-icono');
+    icono.className = `modal-icono ${cargando ? 'info cargando' : tipo}`;
+    icono.innerHTML = cargando ? '' : (ICONOS_MODAL[tipo] || ICONOS_MODAL.info);
+
+    document.getElementById('modal-titulo').textContent = titulo;
+    document.getElementById('modal-mensaje').innerHTML = mensaje;  // mensaje ya viene escapado
+
+    // Lista de detalles (ej. filas con error). Máximo 10 visibles.
+    const lista = document.getElementById('modal-detalles');
+    if (detalles.length > 0) {
+        let items = detalles.slice(0, 10).map(d => `<li>${escaparHTML(d)}</li>`).join('');
+        if (detalles.length > 10) items += `<li>... y ${detalles.length - 10} más</li>`;
+        lista.innerHTML = items;
+        lista.classList.add('visible');
+    } else {
+        lista.innerHTML = '';
+        lista.classList.remove('visible');
+    }
+
+    // Mientras carga no se puede cerrar (no hay botón OK)
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.hidden = cargando;
+    overlay.dataset.bloqueado = cargando ? '1' : '';
+
+    overlay.classList.add('visible');
+    overlay.setAttribute('aria-hidden', 'false');
+    if (!cargando) btnOk.focus();
+}
+
+function cerrarModal() {
+    const overlay = document.getElementById('modal-aviso');
+    if (!overlay || overlay.dataset.bloqueado) return;
+    overlay.classList.remove('visible');
+    overlay.setAttribute('aria-hidden', 'true');
+}
+
+// Cerrar con Escape / Enter (solo si no está cargando)
+document.addEventListener('keydown', (e) => {
+    const overlay = document.getElementById('modal-aviso');
+    if (!overlay || !overlay.classList.contains('visible')) return;
+    if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); cerrarModal(); }
+});
+
+// Importación masiva de inventario (sube el Excel al backend)
 async function subirInventarioExcel(event) {
     const input = event.target;
     const archivo = input.files[0];
@@ -295,7 +345,11 @@ async function subirInventarioExcel(event) {
     formData.append("archivo", archivo);
 
     try {
-        mostrarResultadoImportacion(`⏳ Importando <b>${escaparHTML(archivo.name)}</b>, espera un momento...`, "info");
+        mostrarModal({
+            cargando: true,
+            titulo: 'Importando inventario',
+            mensaje: `Procesando <b>${escaparHTML(archivo.name)}</b>, espera un momento...`
+        });
 
         const response = await fetch('/importar-inventario', {
             method: 'POST',
@@ -306,30 +360,36 @@ async function subirInventarioExcel(event) {
         // Si el servidor responde algo que no es JSON (500, timeout del proxy),
         // no lo tratamos como "error de conexión": mostramos el código real.
         const data = await response.json().catch(() => ({}));
+        document.getElementById('modal-aviso').dataset.bloqueado = '';
 
         if (!response.ok) {
-            const detalle = data.detail || `El servidor respondió ${response.status}.`;
-            mostrarResultadoImportacion(`⚠️ No se importó el inventario: ${escaparHTML(detalle)}`, "warning");
+            mostrarModal({
+                tipo: 'error',
+                titulo: 'No se pudo importar',
+                mensaje: escaparHTML(data.detail || `El servidor respondió con el código ${response.status}.`)
+            });
             return;
         }
 
         const errores = data.errores || [];
         const procesados = (data.nuevos || 0) + (data.actualizados || 0);
-        let html = `📦 Importación terminada: <b>${data.nuevos}</b> repuestos nuevos, <b>${data.actualizados}</b> actualizados`;
-        if (data.total_filas !== undefined) html += ` de ${data.total_filas} fila(s)`;
-        html += '.';
+        let mensaje = `<b>${data.nuevos}</b> repuestos nuevos y <b>${data.actualizados}</b> actualizados`;
+        if (data.total_filas !== undefined) mensaje += ` de ${data.total_filas} fila(s)`;
+        mensaje += '.';
+        if (errores.length > 0) mensaje += `<br>${errores.length} fila(s) no se importaron:`;
 
-        if (errores.length > 0) {
-            // Mostramos hasta 10 errores para que se pueda corregir el Excel
-            const lista = errores.slice(0, 10).map(e => `<li>${escaparHTML(e)}</li>`).join('');
-            const resto = errores.length > 10 ? `<li>... y ${errores.length - 10} más</li>` : '';
-            html += `<br>${errores.length} fila(s) con problemas:<ul style="margin: 6px 0 0 18px;">${lista}${resto}</ul>`;
-        }
+        let tipo = 'success', titulo = 'Inventario importado';
+        if (procesados === 0) { tipo = 'error'; titulo = 'No se importó ningún repuesto'; }
+        else if (errores.length > 0) { tipo = 'warning'; titulo = 'Importación con observaciones'; }
 
-        // Si nada se guardó, no es un "éxito" aunque el servidor devuelva 200
-        mostrarResultadoImportacion(html, procesados === 0 ? "warning" : (errores.length ? "info" : "success"));
+        mostrarModal({ tipo, titulo, mensaje, detalles: errores });
     } catch (error) {
-        mostrarResultadoImportacion("❌ Error de conexión al importar el inventario.", "error");
+        document.getElementById('modal-aviso').dataset.bloqueado = '';
+        mostrarModal({
+            tipo: 'error',
+            titulo: 'Error de conexión',
+            mensaje: 'No se pudo contactar al servidor. Revisa tu internet e inténtalo de nuevo.'
+        });
     } finally {
         input.value = "";  // permite volver a elegir el mismo archivo
     }
@@ -557,7 +617,7 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                 let claseEstado = v.estado === 'Pendiente' ? 'estado-pendiente' : 'estado-terminado';
                 
                 let detalleExtra = v.estado === 'Terminado' 
-                    ? `<div class="info-cobro">✅ Cobro: $${v.cobro || 0} (${v.metodo_pago || 'Efectivo'})</div>` 
+                    ? `<div class="info-cobro">Cobro: $${v.cobro || 0} (${v.metodo_pago || 'Efectivo'})</div>` 
                     : `<div class="info-taller-item"><strong>Falla / Motivo:</strong> ${v.motivo || 'No especificado'}</div>`;
 
                 const partesVehiculo = [v.modelo, v.color, v.anio, v.cilindraje ? `${v.cilindraje}cc` : ''].filter(Boolean);
@@ -576,7 +636,7 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                     botonDescarga = `
                         <button class="btn-filtro activo" style="margin-top: 15px; width: 100%; border:none; padding: 8px; border-radius: 8px; font-weight: 600; cursor: pointer;" 
                         onclick="event.stopPropagation(); generarComprobantePNG('${datosVehiculoStr}')">
-                            📥 Descargar Orden
+                            Descargar Orden
                         </button>
                     `;
                 }
@@ -919,10 +979,10 @@ function renderizarRankingAnual(data) {
 
     let filas = data.leaderboard && data.leaderboard.length > 0
         ? data.leaderboard.map(t => {
-            let medalla = t.posicion === 1 ? '🥇 ' : (t.posicion === 2 ? '🥈 ' : (t.posicion === 3 ? '🥉 ' : ''));
+            const clasePuesto = t.posicion <= 3 ? `puesto-top puesto-${t.posicion}` : '';
             return `
                 <tr>
-                    <td style="font-weight: bold;">${medalla}#${t.posicion}</td>
+                    <td style="font-weight: bold;"><span class="${clasePuesto}">#${t.posicion}</span></td>
                     <td>${t.tecnico}</td>
                     <td class="centro">${t.trabajos_totales}</td>
                     <td class="num">$${t.facturacion_anual.toFixed(2)}</td>
@@ -960,7 +1020,7 @@ document.addEventListener("visibilitychange", function() {
         
         // Si hay una sesión activa, refrescamos los datos críticos automáticamente
         if (token) {
-            console.log("🔄 Pestaña reactivada: actualizando datos en vivo...");
+            console.log("Pestaña reactivada: actualizando datos en vivo...");
             
             // 1. Refrescar vehículos pendientes/terminados
             if (typeof cargarVehiculosPendientes === "function") {
@@ -1131,7 +1191,7 @@ async function cargarServicios() {
                     <td style="padding: 12px; border-bottom: 1px solid var(--borde);">${s.nombre_servicio}</td>
                     <td style="padding: 12px; border-bottom: 1px solid var(--borde); text-align: right;">$${s.precio_base.toFixed(2)}</td>
                     <td style="padding: 12px; border-bottom: 1px solid var(--borde); text-align: center;">
-                        <button onclick="eliminarServicio('${s.id}')" style="background: none; border: none; color: #ff5555; cursor: pointer; font-size: 16px;" title="Eliminar">🗑️</button>
+                        <button onclick="eliminarServicio('${s.id}')" style="background: none; border: none; color: #ff5555; cursor: pointer; display: inline-flex; padding: 4px;" title="Eliminar" aria-label="Eliminar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
                     </td>
                 </tr>
             `;

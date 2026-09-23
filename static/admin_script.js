@@ -8,8 +8,13 @@ function showToast(message, type = 'info') {
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     
-    const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
-    toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+    const ICONOS_TOAST = {
+        success: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>',
+        error: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+        info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="7.5" x2="12.01" y2="7.5"/></svg>'
+    };
+    const icon = ICONOS_TOAST[type] || ICONOS_TOAST.info;
+    toast.innerHTML = `<span style="display:inline-flex;vertical-align:middle;">${icon}</span> <span>${message}</span>`;
     
     container.appendChild(toast);
     
@@ -114,7 +119,7 @@ async function cargarDashboard() {
                 document.getElementById("lista-alertas").innerHTML = htmlAlertas;
             } else {
                 // Si no hay alertas, mostramos un mensaje verde tranquilizador
-                document.getElementById("lista-alertas").innerHTML = `<div class="alerta-card alerta-ok">🟢 Todo en orden. Todos los talleres están al día y activos.</div>`;
+                document.getElementById("lista-alertas").innerHTML = `<div class="alerta-card alerta-ok">Todo en orden. Todos los talleres están al día y activos.</div>`;
             }
             document.getElementById("dashboard-alertas").style.display = "block";
             
@@ -157,7 +162,7 @@ async function cargarTalleres() {
 
             <div class="card-actions">
                 <!-- NUEVO BOTÓN 360 -->
-                <button class="btn-action btn-view" onclick="abrirFicha360('${t.id}')">👁️ Ficha 360°</button>
+                <button class="btn-action btn-view" onclick="abrirFicha360('${t.id}')">Ficha 360°</button>
                 
                 <button class="btn-action btn-pay" onclick="modalActualizarPago('${t.id}')">Renovar Pago</button>
                 <button class="btn-action btn-suspend" onclick="suspender('${t.id}')">Suspender</button>
@@ -311,8 +316,8 @@ function renderizarFicha360(data) {
     
     const esActivo = t.estado_pago === 'activo';
     const badgeEstado = esActivo 
-        ? `<span class="pill-badge pill-activo">🟢 Activo</span>` 
-        : `<span class="pill-badge pill-suspendido">🔴 Suspendido</span>`;
+        ? `<span class="pill-badge pill-activo">Activo</span>` 
+        : `<span class="pill-badge pill-suspendido">Suspendido</span>`;
 
     const html = `
     <div class="ficha-360-container">
@@ -364,7 +369,7 @@ function renderizarFicha360(data) {
             <button class="btn-action btn-suspend" onclick="suspender('${t.id}')">Suspender Servicio</button>
             
             <!-- Preparado para la futura función 'Impersonar' -->
-            <button class="btn-action btn-user" style="margin-left:auto;" onclick="showToast('Función Entrar como Taller en desarrollo', 'info')">👤 Entrar como este Taller</button>
+            <button class="btn-action btn-user" style="margin-left:auto;" onclick="showToast('Función Entrar como Taller en desarrollo', 'info')">Entrar como este Taller</button>
         </div>
     </div>`;
     
@@ -432,7 +437,7 @@ async function cargarColaIA() {
                     </div>
                     <div class="cola-texto">"${m.texto}"</div>
                 </div>
-                ${mostrarBoton ? `<button class="btn-action btn-pay" onclick="reprocesarMensaje('${m.id}')">🔄 Reprocesar</button>` : ''}
+                ${mostrarBoton ? `<button class="btn-action btn-pay" onclick="reprocesarMensaje('${m.id}')">Reprocesar</button>` : ''}
             </div>`;
         });
         
@@ -461,4 +466,4 @@ async function reprocesarMensaje(id) {
     } catch (error) {
         showToast("Error al intentar reprocesar", "error");
     }
-}
+}

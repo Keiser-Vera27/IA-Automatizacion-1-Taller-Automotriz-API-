@@ -122,7 +122,7 @@ def generar_json_con_respaldo(prompt: str, temperature: float = 0.0) -> tuple[di
         )
         return json.loads(resp.choices[0].message.content), "groq"
     except Exception as e_groq:
-        print(f"⚠️ Groq falló, probando respaldo con DeepSeek: {e_groq}")
+        print(f"Groq falló, probando respaldo con DeepSeek: {e_groq}")
         if not deepseek_client:
             raise
         resp = deepseek_client.chat.completions.create(
@@ -366,7 +366,7 @@ def get_dashboard_metrics(request: Request):
 
             # A. Riesgo de abandono (Churn)
             if t["id"] not in talleres_con_actividad:
-                alertas.append({"tipo": "riesgo", "mensaje": f"⚠️ <b>{nombre}</b> lleva más de 3 días sin registrar actividad."})
+                alertas.append({"tipo": "riesgo", "mensaje": f"<b>{nombre}</b> lleva más de 3 días sin registrar actividad."})
 
             # B. Pagos vencidos o próximos a vencer
             if vencimiento_str:
@@ -374,13 +374,13 @@ def get_dashboard_metrics(request: Request):
                 dias_restantes = (vencimiento_obj - hoy_obj).days
 
                 if dias_restantes < 0:
-                    alertas.append({"tipo": "critico", "mensaje": f"🔴 <b>{nombre}</b> tiene el pago vencido ({vencimiento_str})."})
+                    alertas.append({"tipo": "critico", "mensaje": f"<b>{nombre}</b> tiene el pago vencido ({vencimiento_str})."})
                 elif 0 <= dias_restantes <= 5:
-                    alertas.append({"tipo": "advertencia", "mensaje": f"🟡 <b>{nombre}</b> vence en {dias_restantes} días ({vencimiento_str})."})
+                    alertas.append({"tipo": "advertencia", "mensaje": f"<b>{nombre}</b> vence en {dias_restantes} días ({vencimiento_str})."})
 
         # C. Alerta del sistema
         if errors > 0:
-            alertas.insert(0, {"tipo": "critico", "mensaje": f"🔴 Hay <b>{errors} mensajes fallidos</b> en la cola de IA que requieren tu atención."})
+            alertas.insert(0, {"tipo": "critico", "mensaje": f"Hay <b>{errors} mensajes fallidos</b> en la cola de IA que requieren tu atención."})
 
         return {
             "workshops": {
@@ -598,14 +598,14 @@ class RouterIntencion(BaseModel):
 
 async def trabajador_silencioso():
     print("==================================================")
-    print("🤖 EL TRABAJADOR SILENCIOSO SE HA DESPERTADO")
+    print("EL TRABAJADOR SILENCIOSO SE HA DESPERTADO")
     
     try:
         response = supabase.rpc("reclamar_mensajes_pendientes", {"cantidad": 20, "max_intentos": 3}).execute()
         pendientes = response.data
-        print(f"📦 Mensajes atrapados en la BD: {len(pendientes) if pendientes else 0}")
+        print(f"Mensajes atrapados en la BD: {len(pendientes) if pendientes else 0}")
     except Exception as e:
-        print(f"❌ ERROR AL HABLAR CON SUPABASE: {e}")
+        print(f"ERROR AL HABLAR CON SUPABASE: {e}")
         return
 
     print("==================================================")
@@ -634,7 +634,7 @@ async def trabajador_silencioso():
                     for s in servicios_res.data
                 ])
         except Exception as e:
-            print(f"⚠️ Error interno leyendo el catálogo de servicios: {e}")
+            print(f"Error interno leyendo el catálogo de servicios: {e}")
             lista_servicios_str = "Catálogo de servicios no disponible."
 
         # Catálogo de repuestos en inventario: sin esto, la IA no tiene forma de
@@ -650,7 +650,7 @@ async def trabajador_silencioso():
                     for i in inventario_res.data
                 ])
         except Exception as e:
-            print(f"⚠️ Error interno leyendo el inventario: {e}")
+            print(f"Error interno leyendo el inventario: {e}")
             lista_inventario_str = "Catálogo de inventario no disponible."
 
         # PROMPT CON EXTRACCIÓN MEJORADA DE CÉDULA Y BANCO
@@ -848,7 +848,7 @@ async def trabajador_silencioso():
                         reparacion_id_actual = insertada.data[0]["id"]
                 except APIError as e:
                     if e.code == "23505":
-                        print(f"↩️ Mensaje {id_msj} ya había creado esta reparación antes, no se duplica.")
+                        print(f"Mensaje {id_msj} ya había creado esta reparación antes, no se duplica.")
                     else:
                         raise
 
@@ -876,7 +876,7 @@ async def trabajador_silencioso():
                     except Exception as e_repuesto:
                         # No dejamos que un repuesto con problema tumbe el resto del mensaje
                         # (cierre de la orden, cédula, banco, etc. ya se guardaron arriba).
-                        print(f"⚠️ No se pudo registrar el repuesto {repuesto.get('codigo')} de la orden {reparacion_id_actual}: {e_repuesto}")
+                        print(f"No se pudo registrar el repuesto {repuesto.get('codigo')} de la orden {reparacion_id_actual}: {e_repuesto}")
 
 
         elif tipo == "gasto" and resultado.get("gasto"):
@@ -893,7 +893,7 @@ async def trabajador_silencioso():
                 }).execute()
             except APIError as e:
                 if e.code == "23505":
-                    print(f"↩️ Mensaje {id_msj} ya había creado este gasto antes, no se duplica.")
+                    print(f"Mensaje {id_msj} ya había creado este gasto antes, no se duplica.")
                 else:
                     raise
 
@@ -928,7 +928,7 @@ async def trabajador_silencioso():
                     }).execute()
                 except APIError as e:
                     if e.code == "23505":
-                        print(f"↩️ Mensaje {id_msj} ya había creado este repuesto antes, no se duplica.")
+                        print(f"Mensaje {id_msj} ya había creado este repuesto antes, no se duplica.")
                     else:
                         raise
 
@@ -1183,14 +1183,14 @@ def responder_consulta_analitica(cliente_seguro, texto_usuario: str, taller_id) 
     try:
         resp = _decidir_funcion(groq_client, MODELO_GROQ)
     except Exception as e_groq:
-        print(f"⚠️ Groq falló decidiendo la consulta analítica: {e_groq}")
+        print(f"Groq falló decidiendo la consulta analítica: {e_groq}")
         if not deepseek_client:
-            return "⏳ El asistente de IA no está disponible en este momento. Intenta de nuevo en unos minutos."
+            return "El asistente de IA no está disponible en este momento. Intenta de nuevo en unos minutos."
         try:
             resp = _decidir_funcion(deepseek_client, MODELO_DEEPSEEK)
         except Exception as e_ds:
-            print(f"⚠️ DeepSeek también falló decidiendo la consulta analítica: {e_ds}")
-            return "⚠️ El asistente de IA no está disponible en este momento (ni el proveedor principal ni el de respaldo). Intenta de nuevo en unos minutos."
+            print(f"DeepSeek también falló decidiendo la consulta analítica: {e_ds}")
+            return "El asistente de IA no está disponible en este momento (ni el proveedor principal ni el de respaldo). Intenta de nuevo en unos minutos."
 
     msj = resp.choices[0].message
     if msj.tool_calls:
@@ -1228,14 +1228,14 @@ def responder_consulta_analitica(cliente_seguro, texto_usuario: str, taller_id) 
         resp_final = groq_client.chat.completions.create(model=MODELO_GROQ, messages=mensajes_redaccion)
         return resp_final.choices[0].message.content
     except Exception as e:
-        print(f"⚠️ Groq falló redactando la respuesta final: {e}")
+        print(f"Groq falló redactando la respuesta final: {e}")
 
     if deepseek_client:
         try:
             resp_final = deepseek_client.chat.completions.create(model=MODELO_DEEPSEEK, messages=mensajes_redaccion)
             return resp_final.choices[0].message.content
         except Exception as e:
-            print(f"⚠️ DeepSeek también falló redactando la respuesta final: {e}")
+            print(f"DeepSeek también falló redactando la respuesta final: {e}")
 
     # Última red de seguridad: mostrar el dato crudo sin redacción de IA.
     return formatear_resultado_sin_ia(llamada_nombre, resultado_funcion)
@@ -1285,7 +1285,7 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         placa_extraida = resultado_validado.placa
     except Exception as e:
         # Fallback de seguridad (Se mantiene igual que antes)
-        print(f"⚠️ Router de IA falló en ambos proveedores o falló validación Pydantic. Error: {e}")
+        print(f"Router de IA falló en ambos proveedores o falló validación Pydantic. Error: {e}")
         texto_min = texto_usuario.lower()
         palabras_consulta = (
             "cuánt", "cuant", "cuál", "cual", "quién", "quien", "qué", "que ",
@@ -1330,9 +1330,9 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         try:
             respuesta_analitica = responder_consulta_analitica(cliente_seguro, texto_usuario, taller_id)
         except Exception as e:
-            print(f"⚠️ Falló la consulta analítica: {e}")
+            print(f"Falló la consulta analítica: {e}")
             respuesta_analitica = (
-                "⚠️ El asistente de IA no está disponible en este momento. "
+                "El asistente de IA no está disponible en este momento. "
                 "Intenta de nuevo en unos segundos."
             )
 
@@ -1341,7 +1341,7 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         # se reintente solo cuando la IA vuelva a responder. Si en verdad era
         # una pregunta (no una acción), el trabajador de la cola simplemente
         # la marcará como "Error (No clasificable)" sin efecto — inofensivo.
-        señales_no_disponible = ("⏳", "no está disponible", "temporalmente saturado")
+        señales_no_disponible = ("no está disponible", "temporalmente saturado")
         if any(s in respuesta_analitica for s in señales_no_disponible):
             cliente_seguro.table("cola_mensajes").insert({
                 "taller_id": taller_id,
@@ -1349,7 +1349,7 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
                 "fecha_hora": tiempo_actual,
                 "estado": "Pendiente"
             }).execute()
-            respuesta_analitica += "\n\n📥 Tu mensaje quedó guardado y se procesará automáticamente en cuanto la IA esté disponible."
+            respuesta_analitica += "\n\nTu mensaje quedó guardado y se procesará automáticamente en cuanto la IA esté disponible."
 
         return {
             "status": "éxito_consulta",
@@ -1371,7 +1371,7 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
     return {
         "status": "éxito",
         "tipo_detectado": "registro",
-        "mensaje_bd": "✅ ¡Recibido en la nube! Procesando registro en segundo plano.",
+        "mensaje_bd": "¡Recibido en la nube! Procesando registro en segundo plano.",
         "registrado_a_las": tiempo_actual
     }
 
@@ -1701,7 +1701,7 @@ def _celda_vacia(valor) -> bool:
     """True si la celda viene vacía (NaN de pandas, None o texto en blanco)."""
     return valor is None or (not isinstance(valor, str) and pd.isna(valor)) or str(valor).strip() == ""
 
-def _a_numero(valor, entero: bool = False):
+def _a_numero(valor, entero: bool = False, campo: str = "valor"):
     """Convierte una celda a número. Vacío -> 0. Acepta '$12,50' o '1.234,5'.
     Antes: una celda vacía llegaba como NaN -> int(NaN) reventaba o se enviaba
     NaN a Supabase (JSON inválido) y la fila se descartaba en silencio."""
@@ -1713,8 +1713,14 @@ def _a_numero(valor, entero: bool = False):
             limpio = limpio.replace(".", "").replace(",", ".")  # formato 1.234,50
         else:
             limpio = limpio.replace(",", ".")                   # formato 12,50
-        valor = float(limpio)
-    return int(round(float(valor))) if entero else round(float(valor), 2)
+        try:
+            valor = float(limpio)
+        except ValueError:
+            raise ValueError(f"'{campo}' no es un número válido: '{valor}'")
+    try:
+        return int(round(float(valor))) if entero else round(float(valor), 2)
+    except (TypeError, ValueError):
+        raise ValueError(f"'{campo}' no es un número válido: '{valor}'")
 
 def _a_texto(valor, por_defecto: str = "") -> str:
     """Texto limpio; evita guardar la palabra 'nan' en la base."""
@@ -1763,9 +1769,9 @@ def importar_inventario(request: Request, archivo: UploadFile = File(...)):
                 errores.append(f"Fila {num_fila}: sin código, omitida")
                 continue
 
-            cantidad = _a_numero(fila.get("cantidad"), entero=True)
-            costo = _a_numero(fila.get("costo"))
-            precio_venta = _a_numero(fila.get("precio_venta"))
+            cantidad = _a_numero(fila.get("cantidad"), entero=True, campo="cantidad")
+            costo = _a_numero(fila.get("costo"), campo="costo")
+            precio_venta = _a_numero(fila.get("precio_venta"), campo="precio_venta")
 
             # Cliente admin (no cliente_seguro): inventario no tiene política RLS
             # de INSERT/UPDATE para el usuario autenticado. Aislado por taller_id.
