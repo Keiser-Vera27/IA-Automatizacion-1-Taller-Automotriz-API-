@@ -1791,11 +1791,14 @@ TAMANO_LOTE = 1000  # repuestos por llamada a la función SQL
 def importar_inventario(request: Request, archivo: UploadFile = File(...)):
     """Importa TODAS las hojas del Excel en una sola operación.
 
-    - Cada hoja válida es una categoría (Sensores, Filtros, Frenos...). Si la
-      hoja tiene columna 'categoria', el valor de la fila tiene prioridad.
+    - Cada hoja válida es una categoría (Sensores, Filtros, Frenos...) que se
+      asigna a los repuestos NUEVOS. Los repuestos que ya existen conservan su
+      categoría, salvo que la fila traiga una columna 'Categoría' con valor
+      (así una hoja tipo "Pedido de la semana" no desordena el inventario).
     - Hojas sin las columnas obligatorias se omiten y se reportan.
     - Códigos repetidos (en la misma hoja o entre hojas) se agrupan: se suman
-      las cantidades y gana el último costo/precio con valor.
+      las cantidades, gana el último costo/precio con valor y la categoría es
+      la de la primera hoja donde aparece (o la de una columna explícita).
     - La escritura va por lotes a la función SQL importar_inventario_lote
       (una transacción por lote), no fila por fila.
     """
@@ -1852,15 +1855,26 @@ def importar_inventario(request: Request, archivo: UploadFile = File(...)):
                 # None = celda vacía -> la BD conserva el valor actual del repuesto
                 costo = None if _celda_vacia(fila.get("costo")) else _a_numero(fila.get("costo"), campo="costo")
                 precio = None if _celda_vacia(fila.get("precio_venta")) else _a_numero(fila.get("precio_venta"), campo="precio_venta")
-                categoria = _a_texto(fila.get("categoria")) or categoria_hoja
+                # Categoría explícita (columna) vs. implícita (nombre de la hoja).
+                # Solo la explícita puede cambiar la categoría de un repuesto existente.
+                categoria_columna = _a_texto(fila.get("categoria"))
+                categoria = categoria_columna or categoria_hoja
+                forzar = bool(categoria_columna)
 
                 if codigo in items:
                     # Código repetido en el archivo: sumar cantidad, último valor gana
                     previo = items[codigo]
                     previo["cantidad"] += cantidad
-                    for campo, valor in (("costo", costo), ("precio_venta", precio), ("categoria", categoria)):
+                    for campo, valor in (("costo", costo), ("precio_venta", precio)):
                         if valor is not None:
                             previo[campo] = valor
+                    # Categoría: una columna explícita siempre gana; si no, se
+                    # mantiene la de la primera hoja donde apareció el código.
+                    if forzar:
+                        previo["categoria"], previo["forzar_categoria"] = categoria, True
+                        hoja_de_codigo[codigo] = info
+                    elif not previo["categoria"]:
+                        previo["categoria"] = categoria
                     for campo in ("nombre", "marca", "proveedor", "aplicacion"):
                         previo[campo] = previo[campo] or _a_texto(fila.get(campo)) or None
                 else:
@@ -1871,11 +1885,12 @@ def importar_inventario(request: Request, archivo: UploadFile = File(...)):
                         "proveedor": _a_texto(fila.get("proveedor")) or None,
                         "aplicacion": _a_texto(fila.get("aplicacion")) or None,
                         "categoria": categoria,
+                        "forzar_categoria": forzar,  # lo interpreta la función SQL
                         "cantidad": cantidad,
                         "costo": costo,
                         "precio_venta": precio,
                     }
-                hoja_de_codigo[codigo] = info
+                    hoja_de_codigo[codigo] = info  # el resumen lo cuenta en su primera hoja
             except Exception as e_fila:
                 info["errores"] += 1
                 errores.append(f"{nombre_hoja}, fila {num_fila}: {e_fila}")
@@ -2045,10 +2060,11 @@ def plantilla_inventario(request: Request):
     fila = 5 + len(COLUMNAS_PLANTILLA_INVENTARIO) + 1
     ins.cell(row=fila, column=1, value="Reglas importantes").font = Font(bold=True, size=12, color=morado)
     reglas = [
-        "El NOMBRE DE LA HOJA es la categoría. Para una categoría nueva: clic derecho en una pestaña > Mover o copiar > Crear una copia, y renómbrala (ej. Sockets, Actuadores).",
+        "El NOMBRE DE LA HOJA es la categoría de los repuestos NUEVOS. Para una categoría nueva: clic derecho en una pestaña > Mover o copiar > Crear una copia, y renómbrala (ej. Sockets, Actuadores).",
+        "Los repuestos que YA EXISTEN conservan su categoría aunque estén en otra hoja (ej. una hoja 'Pedido de la semana'). Para cambiarla, agrega una columna 'Categoría' con el nuevo valor.",
         "Puedes borrar las hojas que no uses. Las hojas vacías y esta hoja de Instrucciones se ignoran al importar.",
         "No cambies los nombres de los encabezados de las columnas.",
-        "Si el código ya existe, la cantidad se SUMA al stock actual; costo, precio y categoría se actualizan solo si vienen llenos.",
+        "Si el código ya existe, la cantidad se SUMA al stock actual; costo y precio se actualizan solo si vienen llenos.",
         "Si un mismo código aparece en varias filas u hojas, las cantidades se suman antes de guardar.",
         "Las filas sin código se omiten. Al terminar, el sistema muestra un resumen por hoja y qué filas tuvieron problemas.",
         "Los precios van sin el símbolo $ (la plantilla ya les da formato de dólares).",
