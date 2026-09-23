@@ -8,6 +8,10 @@ import io
 import re
 import json
 import asyncio
+import base64
+import hashlib
+import hmac
+import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -592,7 +596,10 @@ class ClasificacionMensaje(BaseModel):
     devolucion: DevolucionInventario | None = Field(default=None)
 
 class SolicitudUnificada(BaseModel):
-    texto: str
+    texto: str = ""
+    # Segundo paso del modal "faltan datos": borrador firmado + datos completados
+    borrador: str | None = None
+    datos_confirmados: dict[str, str] | None = None
 
 
 class RouterIntencion(BaseModel):
@@ -603,6 +610,300 @@ class RouterIntencion(BaseModel):
         default="", 
         description="Placa del vehículo SOLO si la acción es generar_orden."
     )
+
+
+def construir_prompt_extraccion(taller_id, texto: str, nombres_tecnicos: list[str]) -> str:
+    """Prompt de extracción de registros (reparación/gasto/inventario/devolución).
+    Se usa en dos lugares: la pre-validación síncrona de /procesar-mensaje y el
+    trabajador de la cola (cuando el mensaje llegó sin datos pre-extraídos)."""
+    lista_tecnicos_str = ", ".join(nombres_tecnicos) if nombres_tecnicos else "(no hay técnicos registrados)"
+
+    # Catálogo de servicios
+    try:
+        servicios_res = supabase.table("servicios").select("*").eq("taller_id", taller_id).execute()
+        lista_servicios_str = "No hay servicios registrados aún."
+        if servicios_res.data:
+            lista_servicios_str = "\n".join([
+                f"- {s.get('nombre_servicio', s.get('nombre', 'Servicio'))}: ${s.get('precio_base', s.get('precio', 0.0))}" 
+                for s in servicios_res.data
+            ])
+    except Exception as e:
+        print(f"Error interno leyendo el catálogo de servicios: {e}")
+        lista_servicios_str = "Catálogo de servicios no disponible."
+
+    # Catálogo de repuestos en inventario: sin esto, la IA no tiene forma de
+    # saber qué "codigo" poner en repuestos_usados cuando el mensaje solo
+    # menciona el nombre de la pieza (ej. "usé un filtro de aceite"), y
+    # repuestos_usados queda vacío aunque sí se haya usado un repuesto real.
+    try:
+        inventario_res = supabase.table("inventario").select("codigo, nombre").eq("taller_id", taller_id).limit(500).execute()
+        lista_inventario_str = "No hay repuestos registrados en el inventario aún."
+        if inventario_res.data:
+            lista_inventario_str = "\n".join([
+                f"- {i.get('codigo', 'S/C')}: {i.get('nombre', '')}"
+                for i in inventario_res.data
+            ])
+    except Exception as e:
+        print(f"Error interno leyendo el inventario: {e}")
+        lista_inventario_str = "Catálogo de inventario no disponible."
+
+    # PROMPT CON EXTRACCIÓN MEJORADA DE CÉDULA Y BANCO
+    prompt = f"""
+    Eres un asistente contable inteligente de un taller mecánico.
+    Analiza el siguiente mensaje y clasifícalo ESTRICTAMENTE en una de estas 4 categorías: 'reparacion', 'gasto', 'inventario' o 'devolucion'.
+
+    REGLA DE VENTAS DIRECTAS AL MOSTRADOR:
+    Si el mensaje describe la venta de un repuesto a un cliente que no ingresó su vehículo (ej. "se le vendió...", "compró...", "llevó un repuesto"), OBLIGATORIAMENTE es una 'reparacion'. 
+    - Escribe "Venta de repuestos al mostrador" en el campo 'trabajo_realizado'.
+    - En el campo 'motivo', escribe "Compra de repuesto".
+    - Pon la placa del vehículo obligatoriamente como "S/C" (Sin Código).
+
+    Catálogo oficial de servicios y precios base de este taller:
+    {lista_servicios_str}
+
+    Catálogo de repuestos en inventario (código: nombre):
+    {lista_inventario_str}
+
+    REGLA DE REPUESTOS USADOS:
+    Si el mensaje menciona que se usó, cambió o vendió un repuesto (por nombre o por código), 
+    BUSCA en el catálogo de inventario de arriba cuál coincide y pon su "codigo" EXACTO en 
+    'repuestos_usados'. Si el repuesto mencionado no se parece a ninguno del catálogo, NO lo 
+    inventes: omítelo de 'repuestos_usados' (mejor dejarlo fuera que inventar un código que no existe).
+
+    REGLAS DE COBRO PARA REPARACIONES:
+    1. Si el trabajo mencionado coincide con un servicio del catálogo, usa automáticamente su 'precio_base' en el campo 'cobro'.
+    2. EXCEPCIÓN: Si en el mensaje se menciona explícitamente un precio cobrado distinto, un descuento o una rebaja, IGNORA el catálogo y respeta SIEMPRE el precio mencionado en el mensaje.
+    3. Si el trabajo no está en el catálogo y no se menciona precio, pon el cobro en 0.0.
+
+    Responde en JSON con esta estructura EXACTA:
+    {{
+      "tipo": "reparacion" | "gasto" | "inventario" | "devolucion",
+      "reparacion": {{
+          "vehiculo": "EXTRAE SOLO LA PLACA AQUÍ (sin guiones, ej. ABB3322). Si es venta directa, usa 'S/C'",
+          "modelo": "Marca y modelo (ej. Chevrolet Sail)",
+          "color": "Color del auto (ej. negro)",
+          "anio": "Año (ej. 2023)",
+          "cilindraje": "Cilindraje (ej. 1.4)",
+          "cliente": "Nombre del cliente",
+          "cedula": "Número de cédula, RUC o CI en texto plano (ej. 1205888769)",
+          "telefono": "Número de teléfono (si se menciona)",
+          "motivo": "Razón de ingreso o fallo reportado (ej. 'fallo de cilindro').",
+          "trabajo_realizado": "Describe el trabajo hecho (usa el nombre del catálogo si coincide). Si recién ingresa, déjalo vacío.",
+          "oficial": "DEBES elegir estrictamente uno de esta lista: [{lista_tecnicos_str}]. Si el mensaje no menciona un técnico o no coincide con ninguno, déjalo vacío (\"\"). NUNCA inventes un nombre.",
+          "cobro": 0.0,
+          "metodo_pago": "efectivo, transferencia, tarjeta, etc.",
+          "banco": "Nombre exacto del banco si es transferencia (ej. Pichincha, Guayaquil, Produbanco, Pacifico)",
+          "repuestos_usados": [
+              {{"codigo": "codigo_repuesto_EXACTO_del_catalogo", "cantidad": 1}}
+          ]
+      }} | null,
+      "gasto": {{
+          "monto": 0.0,
+          "motivo": "",
+          "vehiculo": "placa o N/A",
+          "responsable": ""
+      }} | null,
+      "inventario": {{
+          "codigo": "", "nombre": "", "marca": "", "cantidad": 0, "costo": 0.0, "precio_venta": 0.0, "proveedor": ""
+      }} | null,
+      "devolucion": {{
+          "codigo": "", "cantidad": 0, "motivo": ""
+      }} | null
+    }}
+
+    Mensaje: "{texto}"
+    """
+    return prompt
+
+
+# ==============================================================================
+# TÉCNICOS REGISTRADOS Y VALIDACIÓN DE ÓRDENES DE TRABAJO
+# ==============================================================================
+
+def obtener_tecnicos_registrados(taller_id) -> dict[str, str]:
+    """{nombre_normalizado: nombre_oficial} de los técnicos del taller.
+    Cliente admin: la tabla tecnicos no tiene política RLS de SELECT (filtrado por taller_id)."""
+    filas = supabase.table("tecnicos").select("nombre").eq("taller_id", taller_id).execute().data or []
+    return {normalizar_nombre_tecnico(t["nombre"]): t["nombre"].strip() for t in filas if t.get("nombre")}
+
+def canonizar_tecnico(nombre, mapa_tecnicos: dict[str, str]) -> str:
+    """Devuelve el nombre oficial si coincide con un técnico registrado; si no, ''."""
+    return mapa_tecnicos.get(normalizar_nombre_tecnico(nombre), "") if nombre else ""
+
+def normalizar_telefono_ec(telefono) -> tuple[str, bool]:
+    """Celular ecuatoriano: '+593 99 123 4567' / '0991234567' -> ('0991234567', True).
+    También acepta convencional de 9 dígitos (02xxxxxxx). Devuelve (valor, es_valido)."""
+    digitos = re.sub(r"\D", "", str(telefono or ""))
+    if digitos.startswith("593"):
+        digitos = "0" + digitos[3:]
+    if re.fullmatch(r"09\d{8}", digitos) or re.fullmatch(r"0[2-7]\d{7}", digitos):
+        return digitos, True
+    return str(telefono or "").strip(), False
+
+def validar_identificacion_ec(valor) -> tuple[str, str]:
+    """Cédula (10 dígitos, con dígito verificador) o RUC (13 dígitos).
+    Pasaportes de extranjeros (letras y números) se aceptan tal cual.
+    Devuelve (valor_limpio, mensaje_error) — mensaje vacío si es válido."""
+    texto = re.sub(r"[\s.\-]", "", str(valor or ""))
+    if not texto:
+        return "", "falta"
+    if not texto.isdigit():
+        return texto, "" if re.fullmatch(r"[A-Za-z0-9]{5,15}", texto) else "formato no válido"
+    if len(texto) == 13:
+        return texto, ""
+    if len(texto) != 10:
+        return texto, "debe tener 10 dígitos (cédula) o 13 (RUC)"
+    provincia, tercero = int(texto[:2]), int(texto[2])
+    if not (1 <= provincia <= 24 or provincia == 30) or tercero >= 6:
+        return texto, "cédula no válida"
+    suma = 0
+    for i, coef in enumerate([2, 1, 2, 1, 2, 1, 2, 1, 2]):
+        prod = int(texto[i]) * coef
+        suma += prod - 9 if prod > 9 else prod
+    verificador = (10 - suma % 10) % 10
+    return (texto, "") if verificador == int(texto[9]) else (texto, "cédula no válida (revisa los dígitos)")
+
+# Campos obligatorios de una orden de trabajo (en este orden se muestran en el modal)
+CAMPOS_OBLIGATORIOS_ORDEN = [
+    ("vehiculo", "Placa del vehículo"),
+    ("modelo",   "Marca y modelo"),
+    ("cliente",  "Nombre del cliente"),
+    ("cedula",   "Cédula o RUC del cliente"),
+    ("telefono", "Número de celular"),
+    ("motivo",   "Motivo de ingreso al taller"),
+    ("oficial",  "Técnico asignado"),
+]
+# Datos que el usuario puede completar desde el modal
+CAMPOS_EDITABLES_ORDEN = {c for c, _ in CAMPOS_OBLIGATORIOS_ORDEN} | {"metodo_pago", "banco"}
+
+def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> tuple[dict, list[dict], dict]:
+    """Revisa una orden (ingreso o cierre) ANTES de guardarla.
+    - Considera lo que el vehículo ya tiene en su última orden (el trabajador
+      hereda esos datos), así al cerrar no se vuelve a pedir lo ya registrado.
+    - Devuelve (orden_normalizada, faltantes, contexto)."""
+    d = dict(d)
+    placa = str(d.get("vehiculo") or "").strip()
+    texto_trabajo = f"{d.get('trabajo_realizado', '')} {d.get('motivo', '')}".lower()
+    es_mostrador = placa in ("", "S/C") and ("mostrador" in texto_trabajo or "compra de repuesto" in texto_trabajo)
+    se_cierra = (d.get("cobro") or 0) > 0 or str(d.get("trabajo_realizado") or "").strip() != ""
+
+    ultima = None
+    if placa and placa != "S/C":
+        res = (supabase.table("reparaciones").select("*").eq("vehiculo", placa)
+               .eq("taller_id", taller_id).order("id", desc=True).limit(1).execute())
+        ultima = res.data[0] if res.data else None
+    pendiente = bool(ultima and ultima.get("estado") == "Pendiente")
+
+    def efectivo(campo):
+        """Valor que quedará guardado: el nuevo o, si no viene, el heredado."""
+        nuevo = str(d.get(campo) or "").strip()
+        if nuevo and nuevo.lower() != "none":
+            return nuevo
+        # Motivo y técnico solo se heredan de una orden que sigue abierta
+        if campo in ("motivo", "oficial") and not pendiente:
+            return ""
+        return str((ultima or {}).get(campo) or "").strip()
+
+    faltantes = []
+    def falta(campo, etiqueta, problema="falta", valor=""):
+        faltantes.append({"campo": campo, "etiqueta": etiqueta, "problema": problema, "valor": valor})
+
+    if not es_mostrador:
+        d["oficial"] = canonizar_tecnico(d.get("oficial"), mapa_tecnicos) or ""
+        for campo, etiqueta in CAMPOS_OBLIGATORIOS_ORDEN:
+            valor = efectivo(campo)
+            if campo == "vehiculo":
+                if not placa or placa == "S/C":
+                    falta(campo, etiqueta)
+            elif campo == "oficial":
+                if not canonizar_tecnico(valor, mapa_tecnicos):
+                    falta(campo, etiqueta, "falta" if not valor else f"'{valor}' no es un técnico registrado", valor)
+            elif campo == "telefono":
+                tel, ok = normalizar_telefono_ec(valor)
+                if not valor:
+                    falta(campo, etiqueta)
+                elif not ok:
+                    falta(campo, etiqueta, "número no válido (ej. 0991234567)", valor)
+                elif d.get("telefono"):
+                    d["telefono"] = tel
+            elif campo == "cedula":
+                ced, error = validar_identificacion_ec(valor)
+                if error:
+                    falta(campo, etiqueta, error, "" if error == "falta" else valor)
+                elif d.get("cedula"):
+                    d["cedula"] = ced
+            elif not valor:
+                falta(campo, etiqueta)
+
+    # Al cobrar, el método de pago es obligatorio para poder cuadrar caja
+    if (d.get("cobro") or 0) > 0:
+        categoria, banco = normalizar_metodo_pago(efectivo("metodo_pago"), efectivo("banco"))
+        if categoria in ("Sin especificar", "Otro"):
+            falta("metodo_pago", "Método de pago", "falta" if categoria == "Sin especificar" else "no reconocido",
+                  efectivo("metodo_pago"))
+        elif categoria == "Transferencia" and not banco:
+            falta("banco", "Banco de la transferencia")
+
+    contexto = {
+        "placa": placa, "es_cierre": se_cierra, "es_mostrador": es_mostrador,
+        "orden_abierta": pendiente,
+        "cliente": efectivo("cliente"), "modelo": efectivo("modelo"),
+        "trabajo": str(d.get("trabajo_realizado") or ""), "cobro": d.get("cobro") or 0,
+    }
+    return d, faltantes, contexto
+
+# --- Borrador firmado: el backend devuelve lo que extrajo la IA junto con una
+# firma HMAC. Al completar los datos en el modal, el navegador lo reenvía y el
+# backend verifica la firma: así no se vuelve a llamar a la IA y nadie puede
+# alterar los datos extraídos ni usarlos en otro taller.
+_CLAVE_BORRADOR = hashlib.sha256(f"borrador-orden:{os.getenv('SUPABASE_SERVICE_ROLE_KEY', '')}".encode()).digest()
+VIGENCIA_BORRADOR_SEG = 30 * 60
+
+def firmar_borrador(taller_id, texto: str, resultado: dict) -> str:
+    cuerpo = json.dumps({"t": str(taller_id), "ts": int(time.time()), "texto": texto, "resultado": resultado},
+                        ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    firma = hmac.new(_CLAVE_BORRADOR, cuerpo, hashlib.sha256).hexdigest()
+    return base64.urlsafe_b64encode(cuerpo).decode() + "." + firma
+
+def verificar_borrador(token: str, taller_id) -> dict:
+    try:
+        cuerpo_b64, firma = token.rsplit(".", 1)
+        cuerpo = base64.urlsafe_b64decode(cuerpo_b64.encode())
+        esperada = hmac.new(_CLAVE_BORRADOR, cuerpo, hashlib.sha256).hexdigest()
+        datos = json.loads(cuerpo)
+    except Exception:
+        raise HTTPException(status_code=400, detail="El borrador de la orden no es válido. Vuelve a escribir el registro.")
+    if not hmac.compare_digest(firma, esperada) or datos.get("t") != str(taller_id):
+        raise HTTPException(status_code=400, detail="El borrador de la orden no es válido. Vuelve a escribir el registro.")
+    if time.time() - datos.get("ts", 0) > VIGENCIA_BORRADOR_SEG:
+        raise HTTPException(status_code=400, detail="El borrador expiró (más de 30 minutos). Vuelve a escribir el registro.")
+    return datos
+
+def encolar_registro(cliente, taller_id, texto: str, tiempo: str, resultado: dict | None):
+    """Guarda el mensaje en la cola. Si ya viene validado, se guarda también lo
+    extraído (el trabajador no vuelve a llamar a la IA). Si la columna
+    datos_extraidos aún no existe (migración sin ejecutar), se guarda sin ella."""
+    fila = {"taller_id": taller_id, "texto": texto, "fecha_hora": tiempo, "estado": "Pendiente"}
+    if resultado is not None:
+        try:
+            cliente.table("cola_mensajes").insert({**fila, "datos_extraidos": resultado}).execute()
+            return
+        except APIError as e:
+            if "datos_extraidos" not in str(e):
+                raise
+            print("Aviso: falta la columna cola_mensajes.datos_extraidos; se encola sin datos pre-extraídos.")
+    cliente.table("cola_mensajes").insert(fila).execute()
+
+def obtener_datos_pre_extraidos(msj: dict) -> dict | None:
+    """Datos ya validados que vienen con el mensaje de la cola (o None)."""
+    if "datos_extraidos" in msj:
+        return msj.get("datos_extraidos") or None
+    try:  # la función RPC de la cola puede no devolver esta columna
+        fila = supabase.table("cola_mensajes").select("datos_extraidos").eq("id", msj["id"]).limit(1).execute().data
+        return (fila[0].get("datos_extraidos") if fila else None) or None
+    except Exception:
+        return None
+
 # ==============================================================================
 # TRABAJADOR SILENCIOSO (CORREGIDO: CÉDULA Y BANCO)
 # ==============================================================================
@@ -630,109 +931,18 @@ async def trabajador_silencioso():
         taller_id = msj["taller_id"]
         tiempo_actual = ahora_utc_str()
 
-        # 1. Consultar técnicos válidos del taller
-        tecnicos_res = supabase.table("tecnicos").select("nombre").eq("taller_id", taller_id).execute()
-        nombres_tecnicos = [t["nombre"] for t in tecnicos_res.data] if tecnicos_res.data else []
-        lista_tecnicos_str = ", ".join(nombres_tecnicos) if nombres_tecnicos else "Ninguno registrado"
+        # Técnicos registrados del taller (normalizado -> nombre oficial)
+        mapa_tecnicos = obtener_tecnicos_registrados(taller_id)
 
-        # Catálogo de servicios
-        try:
-            servicios_res = supabase.table("servicios").select("*").eq("taller_id", taller_id).execute()
-            lista_servicios_str = "No hay servicios registrados aún."
-            if servicios_res.data:
-                lista_servicios_str = "\n".join([
-                    f"- {s.get('nombre_servicio', s.get('nombre', 'Servicio'))}: ${s.get('precio_base', s.get('precio', 0.0))}" 
-                    for s in servicios_res.data
-                ])
-        except Exception as e:
-            print(f"Error interno leyendo el catálogo de servicios: {e}")
-            lista_servicios_str = "Catálogo de servicios no disponible."
-
-        # Catálogo de repuestos en inventario: sin esto, la IA no tiene forma de
-        # saber qué "codigo" poner en repuestos_usados cuando el mensaje solo
-        # menciona el nombre de la pieza (ej. "usé un filtro de aceite"), y
-        # repuestos_usados queda vacío aunque sí se haya usado un repuesto real.
-        try:
-            inventario_res = supabase.table("inventario").select("codigo, nombre").eq("taller_id", taller_id).limit(500).execute()
-            lista_inventario_str = "No hay repuestos registrados en el inventario aún."
-            if inventario_res.data:
-                lista_inventario_str = "\n".join([
-                    f"- {i.get('codigo', 'S/C')}: {i.get('nombre', '')}"
-                    for i in inventario_res.data
-                ])
-        except Exception as e:
-            print(f"Error interno leyendo el inventario: {e}")
-            lista_inventario_str = "Catálogo de inventario no disponible."
-
-        # PROMPT CON EXTRACCIÓN MEJORADA DE CÉDULA Y BANCO
-        prompt = f"""
-        Eres un asistente contable inteligente de un taller mecánico.
-        Analiza el siguiente mensaje y clasifícalo ESTRICTAMENTE en una de estas 4 categorías: 'reparacion', 'gasto', 'inventario' o 'devolucion'.
-
-        REGLA DE VENTAS DIRECTAS AL MOSTRADOR:
-        Si el mensaje describe la venta de un repuesto a un cliente que no ingresó su vehículo (ej. "se le vendió...", "compró...", "llevó un repuesto"), OBLIGATORIAMENTE es una 'reparacion'. 
-        - Escribe "Venta de repuestos al mostrador" en el campo 'trabajo_realizado'.
-        - En el campo 'motivo', escribe "Compra de repuesto".
-        - Pon la placa del vehículo obligatoriamente como "S/C" (Sin Código).
-
-        Catálogo oficial de servicios y precios base de este taller:
-        {lista_servicios_str}
-
-        Catálogo de repuestos en inventario (código: nombre):
-        {lista_inventario_str}
-
-        REGLA DE REPUESTOS USADOS:
-        Si el mensaje menciona que se usó, cambió o vendió un repuesto (por nombre o por código), 
-        BUSCA en el catálogo de inventario de arriba cuál coincide y pon su "codigo" EXACTO en 
-        'repuestos_usados'. Si el repuesto mencionado no se parece a ninguno del catálogo, NO lo 
-        inventes: omítelo de 'repuestos_usados' (mejor dejarlo fuera que inventar un código que no existe).
-
-        REGLAS DE COBRO PARA REPARACIONES:
-        1. Si el trabajo mencionado coincide con un servicio del catálogo, usa automáticamente su 'precio_base' en el campo 'cobro'.
-        2. EXCEPCIÓN: Si en el mensaje se menciona explícitamente un precio cobrado distinto, un descuento o una rebaja, IGNORA el catálogo y respeta SIEMPRE el precio mencionado en el mensaje.
-        3. Si el trabajo no está en el catálogo y no se menciona precio, pon el cobro en 0.0.
-
-        Responde en JSON con esta estructura EXACTA:
-        {{
-          "tipo": "reparacion" | "gasto" | "inventario" | "devolucion",
-          "reparacion": {{
-              "vehiculo": "EXTRAE SOLO LA PLACA AQUÍ (sin guiones, ej. ABB3322). Si es venta directa, usa 'S/C'",
-              "modelo": "Marca y modelo (ej. Chevrolet Sail)",
-              "color": "Color del auto (ej. negro)",
-              "anio": "Año (ej. 2023)",
-              "cilindraje": "Cilindraje (ej. 1.4)",
-              "cliente": "Nombre del cliente",
-              "cedula": "Número de cédula, RUC o CI en texto plano (ej. 1205888769)",
-              "telefono": "Número de teléfono (si se menciona)",
-              "motivo": "Razón de ingreso o fallo reportado (ej. 'fallo de cilindro').",
-              "trabajo_realizado": "Describe el trabajo hecho (usa el nombre del catálogo si coincide). Si recién ingresa, déjalo vacío.",
-              "oficial": "DEBES elegir strictly uno de esta lista: [{lista_tecnicos_str}]. Si no coincide con ninguno, déjalo vacío.",
-              "cobro": 0.0,
-              "metodo_pago": "efectivo, transferencia, tarjeta, etc.",
-              "banco": "Nombre exacto del banco si es transferencia (ej. Pichincha, Guayaquil, Produbanco, Pacifico)",
-              "repuestos_usados": [
-                  {{"codigo": "codigo_repuesto_EXACTO_del_catalogo", "cantidad": 1}}
-              ]
-          }} | null,
-          "gasto": {{
-              "monto": 0.0,
-              "motivo": "",
-              "vehiculo": "placa o N/A",
-              "responsable": ""
-          }} | null,
-          "inventario": {{
-              "codigo": "", "nombre": "", "marca": "", "cantidad": 0, "costo": 0.0, "precio_venta": 0.0, "proveedor": ""
-          }} | null,
-          "devolucion": {{
-              "codigo": "", "cantidad": 0, "motivo": ""
-          }} | null
-        }}
-
-        Mensaje: "{texto_msj}"
-        """
+        # Si el mensaje ya viene validado desde /procesar-mensaje, se usan esos
+        # datos tal cual (no se vuelve a llamar a la IA). Si no, se extrae aquí.
+        resultado = obtener_datos_pre_extraidos(msj)
+        if resultado is None:
+            prompt = construir_prompt_extraccion(taller_id, texto_msj, list(mapa_tecnicos.values()))
 
         try:
-            resultado, proveedor_usado = await asyncio.to_thread(generar_json_con_respaldo, prompt)
+            if resultado is None:
+                resultado, proveedor_usado = await asyncio.to_thread(generar_json_con_respaldo, prompt)
             resultado = ClasificacionMensaje.model_validate(resultado).model_dump()
             tipo = resultado.get("tipo")
 
@@ -759,6 +969,9 @@ async def trabajador_silencioso():
 
         if tipo == "reparacion" and resultado.get("reparacion"):
             d = resultado["reparacion"]
+            # Solo se guarda un técnico REGISTRADO, con su nombre oficial
+            # (evita "Ninguno registrado", "jordy" vs "Jordy", nombres inventados)
+            d["oficial"] = canonizar_tecnico(d.get("oficial"), mapa_tecnicos)
             placa = str(d.get("vehiculo", "")).strip()
 
             ultima_orden = None
@@ -1285,29 +1498,33 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
     Texto: "{texto_usuario}"
     """
 
-    try:
-        # 1. Obtenemos el JSON de Groq o DeepSeek
-        resultado_bruto, proveedor_usado = generar_json_con_respaldo(prompt_router)
+    if solicitud.borrador:
+        # Confirmación desde el modal "faltan datos": ya sabemos que es un registro
+        accion, placa_extraida = "registro", ""
+    else:
+        try:
+            # 1. Obtenemos el JSON de Groq o DeepSeek
+            resultado_bruto, proveedor_usado = await asyncio.to_thread(generar_json_con_respaldo, prompt_router)
         
-        # 2. Forzamos la validación estricta con Pydantic para evitar alucinaciones
-        resultado_validado = RouterIntencion.model_validate(resultado_bruto)
+            # 2. Forzamos la validación estricta con Pydantic para evitar alucinaciones
+            resultado_validado = RouterIntencion.model_validate(resultado_bruto)
         
-        accion = resultado_validado.accion
-        placa_extraida = resultado_validado.placa
-    except Exception as e:
-        # Fallback de seguridad (Se mantiene igual que antes)
-        print(f"Router de IA falló en ambos proveedores o falló validación Pydantic. Error: {e}")
-        texto_min = texto_usuario.lower()
-        palabras_consulta = (
-            "cuánt", "cuant", "cuál", "cual", "quién", "quien", "qué", "que ",
-            "cómo", "como ", "dame", "dime", "muéstrame", "muestrame",
-            "cuando fue", "última vez", "ultima vez", "?"
-        )
-        if any(p in texto_min for p in palabras_consulta):
-            accion = "consulta"
-        else:
-            accion = "registro"
-        placa_extraida = ""
+            accion = resultado_validado.accion
+            placa_extraida = resultado_validado.placa
+        except Exception as e:
+            # Fallback de seguridad (Se mantiene igual que antes)
+            print(f"Router de IA falló en ambos proveedores o falló validación Pydantic. Error: {e}")
+            texto_min = texto_usuario.lower()
+            palabras_consulta = (
+                "cuánt", "cuant", "cuál", "cual", "quién", "quien", "qué", "que ",
+                "cómo", "como ", "dame", "dime", "muéstrame", "muestrame",
+                "cuando fue", "última vez", "ultima vez", "?"
+            )
+            if any(p in texto_min for p in palabras_consulta):
+                accion = "consulta"
+            else:
+                accion = "registro"
+            placa_extraida = ""
     # --- NUEVA LÓGICA: GENERAR ORDEN DE TRABAJO ---
     if accion == "generar_orden":
         placa = normalizar_placa(placa_extraida)
@@ -1369,20 +1586,56 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
             "registrado_a_las": tiempo_actual
         }
 
-    # --- REGISTRO NORMAL (En segundo plano) ---
-    cliente_seguro.table("cola_mensajes").insert({
-        "taller_id": taller_id,
-        "texto": texto_usuario,
-        "fecha_hora": tiempo_actual,
-        "estado": "Pendiente"
-    }).execute()
+    # --- REGISTRO: validación previa + cola en segundo plano ---
+    mapa_tecnicos = obtener_tecnicos_registrados(taller_id)
+    resultado = None
 
+    if solicitud.borrador:
+        # Paso 2: el usuario completó los datos faltantes en el modal
+        borrador = verificar_borrador(solicitud.borrador, taller_id)
+        texto_usuario, resultado = borrador["texto"], borrador["resultado"]
+        if resultado.get("tipo") == "reparacion" and resultado.get("reparacion"):
+            completados = {k: str(v).strip() for k, v in (solicitud.datos_confirmados or {}).items()
+                           if k in CAMPOS_EDITABLES_ORDEN and str(v or "").strip()}
+            # Se revalida con el modelo (normaliza la placa, etc.)
+            resultado["reparacion"] = TrabajoTaller.model_validate({**resultado["reparacion"], **completados}).model_dump()
+    else:
+        # Paso 1: la IA extrae los datos AHORA para poder revisarlos antes de guardar
+        try:
+            prompt = construir_prompt_extraccion(taller_id, texto_usuario, list(mapa_tecnicos.values()))
+            bruto, _ = await asyncio.to_thread(generar_json_con_respaldo, prompt)
+            resultado = ClasificacionMensaje.model_validate(bruto).model_dump()
+        except Exception as e:
+            # IA no disponible: no se bloquea el trabajo del taller. El mensaje se
+            # encola igual y el trabajador lo procesará cuando la IA responda.
+            print(f"Pre-validación no disponible, se encola sin validar: {e}")
+            resultado = None
+
+    if resultado and resultado.get("tipo") == "reparacion" and resultado.get("reparacion"):
+        orden, faltantes, contexto = await asyncio.to_thread(
+            validar_orden_trabajo, resultado["reparacion"], taller_id, mapa_tecnicos)
+        resultado["reparacion"] = orden
+        if faltantes:
+            # NO se guarda nada: el frontend muestra el modal para completar
+            return {
+                "status": "faltan_datos",
+                "faltantes": faltantes,
+                "tecnicos": sorted(mapa_tecnicos.values()),
+                "contexto": contexto,
+                "borrador": firmar_borrador(taller_id, texto_usuario, resultado),
+                "mensaje_bd": "Faltan datos obligatorios para registrar la orden de trabajo.",
+            }
+
+    encolar_registro(cliente_seguro, taller_id, texto_usuario, tiempo_actual, resultado)
     background_tasks.add_task(trabajador_silencioso)
 
     return {
         "status": "éxito",
         "tipo_detectado": "registro",
-        "mensaje_bd": "¡Recibido en la nube! Procesando registro en segundo plano.",
+        "validado": resultado is not None,
+        "mensaje_bd": "¡Recibido en la nube! Procesando registro en segundo plano."
+                      if resultado is not None else
+                      "Recibido. La IA no está disponible en este momento: el registro se procesará automáticamente cuando vuelva.",
         "registrado_a_las": tiempo_actual
     }
 
@@ -1512,6 +1765,7 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
     # Porcentajes de comisión (cliente admin: tecnicos no tiene política RLS de SELECT)
     tecnicos_bd = supabase.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data
     mapa_comisiones = {normalizar_nombre_tecnico(t["nombre"]): float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
+    nombres_oficiales = {normalizar_nombre_tecnico(t["nombre"]): t["nombre"].strip() for t in tecnicos_bd if t.get("nombre")}
 
     # ---------------- Ingresos: por orden, por método de pago y por técnico ----------------
     total_ingresos = total_repuestos = 0.0
@@ -1526,7 +1780,8 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
                         for r in (o.get("reparacion_detalles") or []))
         mano_de_obra = max(0.0, cobro - repuestos)
         categoria, banco = normalizar_metodo_pago(o.get("metodo_pago"), o.get("banco"))
-        tecnico = o.get("oficial") or "Sin asignar"
+        # Solo cuenta un técnico REGISTRADO (con su nombre oficial)
+        tecnico = canonizar_tecnico(o.get("oficial"), nombres_oficiales)
         placa = o.get("vehiculo") or "-"
 
         total_ingresos += cobro
@@ -1542,12 +1797,13 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
             b["ordenes"] += 1
             b["total"] += cobro
 
-        # Comisión solo sobre mano de obra (se excluyen repuestos)
-        reg = rendimiento.setdefault(tecnico, {"trabajos": 0, "total_generado": 0.0, "mano_de_obra": 0.0, "comision_a_pagar": 0.0})
-        reg["trabajos"] += 1
-        reg["total_generado"] += cobro
-        reg["mano_de_obra"] += mano_de_obra
-        reg["comision_a_pagar"] += mano_de_obra * (mapa_comisiones.get(normalizar_nombre_tecnico(tecnico), 0) / 100.0)
+        # Comisión solo sobre mano de obra (se excluyen repuestos) y solo para técnicos registrados
+        if tecnico:
+            reg = rendimiento.setdefault(tecnico, {"trabajos": 0, "total_generado": 0.0, "mano_de_obra": 0.0, "comision_a_pagar": 0.0})
+            reg["trabajos"] += 1
+            reg["total_generado"] += cobro
+            reg["mano_de_obra"] += mano_de_obra
+            reg["comision_a_pagar"] += mano_de_obra * (mapa_comisiones.get(normalizar_nombre_tecnico(tecnico), 0) / 100.0)
 
         # Alertas: datos que impiden un cuadre correcto
         if categoria == "Sin especificar":
@@ -1558,8 +1814,10 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
             alertas.append(f"{placa}: transferencia de ${cobro:.2f} sin banco indicado.")
         if cobro <= 0:
             alertas.append(f"{placa}: orden cerrada con cobro $0.00.")
-        if tecnico == "Sin asignar":
-            alertas.append(f"{placa}: orden sin técnico asignado (no genera comisión).")
+        if not tecnico:
+            original = str(o.get("oficial") or "").strip()
+            alertas.append(f"{placa}: técnico '{original}' no está registrado (no genera comisión)."
+                           if original else f"{placa}: orden sin técnico asignado (no genera comisión).")
 
         detalle_ordenes.append({
             "hora": hora_ecuador(o.get("fecha_salida")),
@@ -1567,7 +1825,7 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
             "modelo": o.get("modelo") or "",
             "cliente": o.get("cliente") or "-",
             "trabajo": o.get("trabajo_realizado") or "",
-            "oficial": tecnico,
+            "oficial": tecnico or "Sin técnico",
             "metodo_pago": categoria,
             "banco": banco,
             "repuestos": round(min(repuestos, cobro), 2),
@@ -1683,22 +1941,33 @@ def ranking_anual(request: Request, anio: int | None = None):
     tecnicos_bd = supabase.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data  # cliente admin: la tabla tecnicos no tiene politica RLS de SELECT
     mapa_comisiones = {normalizar_nombre_tecnico(t["nombre"]): float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
 
-    acumulado: dict[str, dict] = {}
+    # SOLO técnicos registrados. Los nombres se cruzan normalizados ("jordy" =
+    # "Jordy") y se muestran con el nombre oficial. Los registrados sin trabajos
+    # aparecen con 0. Lo que no tiene técnico válido no entra al ranking.
+    nombres_oficiales = {normalizar_nombre_tecnico(t["nombre"]): t["nombre"].strip() for t in tecnicos_bd if t.get("nombre")}
+    acumulado: dict[str, dict] = {
+        nombre: {"trabajos": 0, "total_generado": 0.0, "mano_de_obra_total": 0.0, "comision_acumulada": 0.0}
+        for nombre in nombres_oficiales.values()
+    }
+    excluidos = {"trabajos": 0, "monto": 0.0}
     for o in ordenes:
-        tecnico = o.get("oficial") or "Sin asignar"
-        reg = acumulado.setdefault(tecnico, {"trabajos": 0, "total_generado": 0.0, "mano_de_obra_total": 0.0, "comision_acumulada": 0.0})
-        
         cobro = o.get("cobro", 0) or 0
+        tecnico = canonizar_tecnico(o.get("oficial"), nombres_oficiales)
+        if not tecnico:
+            excluidos["trabajos"] += 1
+            excluidos["monto"] += cobro
+            continue
+        reg = acumulado[tecnico]
         detalles = o.get("reparacion_detalles", [])
         total_repuestos = sum((r.get("cantidad", 0) * r.get("precio_unitario", 0)) for r in detalles)
-        
+
         # Restamos los repuestos para calcular la mano de obra real
         mano_de_obra = max(0.0, cobro - total_repuestos)
 
         reg["trabajos"] += 1
         reg["total_generado"] += cobro
         reg["mano_de_obra_total"] += mano_de_obra
-        
+
         porcentaje = mapa_comisiones.get(normalizar_nombre_tecnico(tecnico), 0)
         reg["comision_acumulada"] += mano_de_obra * (porcentaje / 100.0)
 
@@ -1712,13 +1981,15 @@ def ranking_anual(request: Request, anio: int | None = None):
             "comision_acumulada": round(datos["comision_acumulada"], 2)
         }
         for i, (nombre, datos) in enumerate(sorted(
-            acumulado.items(), key=lambda x: x[1]["mano_de_obra_total"], reverse=True
+            acumulado.items(), key=lambda x: (x[1]["mano_de_obra_total"], x[1]["trabajos"]), reverse=True
         ))
     ]
 
     return {
         "anio": anio,
-        "leaderboard": ranking
+        "leaderboard": ranking,
+        # Informativo: trabajos del año sin técnico registrado (no cuentan en el ranking)
+        "excluidos": {"trabajos": excluidos["trabajos"], "monto": round(excluidos["monto"], 2)}
     }
 
 # ==============================================================================
@@ -1754,11 +2025,18 @@ def reporte_liquidacion(request: Request, fecha_inicio: str, fecha_fin: str):
     tecnicos_bd = supabase.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data  # cliente admin: la tabla tecnicos no tiene politica RLS de SELECT
     mapa_comisiones = {normalizar_nombre_tecnico(t["nombre"]): float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
 
-    liquidacion: dict[str, dict] = {}
+    # SOLO técnicos registrados (con su nombre oficial); los demás no se liquidan
+    nombres_oficiales = {normalizar_nombre_tecnico(t["nombre"]): t["nombre"].strip() for t in tecnicos_bd if t.get("nombre")}
+    liquidacion: dict[str, dict] = {
+        nombre: {"trabajos": 0, "total_generado": 0.0, "mano_de_obra_total": 0.0, "comision_total": 0.0}
+        for nombre in nombres_oficiales.values()
+    }
     for o in ordenes:
-        tecnico = o.get("oficial") or "Sin asignar"
-        reg = liquidacion.setdefault(tecnico, {"trabajos": 0, "total_generado": 0.0, "mano_de_obra_total": 0.0, "comision_total": 0.0})
-        
+        tecnico = canonizar_tecnico(o.get("oficial"), nombres_oficiales)
+        if not tecnico:
+            continue
+        reg = liquidacion[tecnico]
+
         cobro = o.get("cobro", 0) or 0
         detalles = o.get("reparacion_detalles", [])
         total_repuestos = sum((r.get("cantidad", 0) * r.get("precio_unitario", 0)) for r in detalles)

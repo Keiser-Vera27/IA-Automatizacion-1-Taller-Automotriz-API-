@@ -172,6 +172,56 @@ function cerrarSesion() {
     document.getElementById("texto_reporte").value = "";
 }
 
+// Maneja la respuesta de /procesar-mensaje (envío normal o confirmación del modal)
+async function manejarRespuestaRegistro(res, data, desdeModal) {
+    const inputTexto = document.getElementById('texto_reporte');
+
+    if (!res.ok) {
+        const mensajeError = data.detail || "Error al procesar la solicitud en el servidor.";
+        if (desdeModal) {
+            mostrarModal({ tipo: 'error', titulo: 'No se pudo registrar', mensaje: escaparHTML(mensajeError) });
+        } else {
+            inputTexto.value = "";
+            mostrarNotificacion(mensajeError, "warning");
+        }
+        return;
+    }
+
+    // Faltan datos obligatorios: NO se guardó nada, se piden en el modal
+    if (data.status === "faltan_datos") {
+        mostrarNotificacion("Faltan datos obligatorios: complétalos en la ventana para registrar la orden.", "warning");
+        mostrarFormularioFaltantes(data);
+        return;
+    }
+
+    // INTERCEPTAMOS LA SOLICITUD DE ORDEN DE TRABAJO
+    if (data.status === "imprimir_orden") {
+        inputTexto.value = "";
+        mostrarNotificacion(data.mensaje_bd, "success");
+        generarImagenFactura(data.datos_orden);
+        return;
+    }
+
+    if (data.status === "éxito") {
+        inputTexto.value = "";
+        if (desdeModal) {
+            mostrarModal({ tipo: 'success', titulo: 'Orden registrada',
+                           mensaje: 'Los datos están completos. La orden se está guardando.' });
+        }
+        mostrarNotificacion(`${data.mensaje_bd}`, data.validado === false ? "warning" : "success");
+        cargarVehiculosPendientes();
+        refrescarCuadrePronto();   // el registro se procesa en segundo plano
+    }
+    else if (data.status === "éxito_consulta") {
+        inputTexto.value = "";
+        mostrarNotificacion(`<b>Respuesta del Gerente IA:</b><br>${data.mensaje_bd}`, "info");
+    }
+    else {
+        inputTexto.value = "";
+        mostrarNotificacion(`Error del sistema: ${data.mensaje || "Desconocido"}`, "error");
+    }
+}
+
 // Función unificada: Envía reportes o consultas analíticas
 async function enviarReporte() {
     const inputTexto = document.getElementById('texto_reporte');
@@ -201,37 +251,8 @@ async function enviarReporte() {
             body: JSON.stringify({ texto: texto })
         });
 
-        const data = await res.json();
-
-        if (!res.ok) {
-            inputTexto.value = "";
-            const mensajeError = data.detail || "Error al procesar la solicitud en el servidor.";
-            mostrarNotificacion(mensajeError, "warning");
-            return;
-        }
-
-        // INTERCEPTAMOS LA SOLICITUD DE ORDEN DE TRABAJO
-        if (data.status === "imprimir_orden") {
-            inputTexto.value = ""; 
-            mostrarNotificacion(data.mensaje_bd, "success"); 
-            generarImagenFactura(data.datos_orden);
-            return; 
-        }
-
-        if (data.status === "éxito") {
-            inputTexto.value = "";
-            mostrarNotificacion(`${data.mensaje_bd}`, "success");
-            cargarVehiculosPendientes(); 
-            refrescarCuadrePronto();   // el registro se procesa en segundo plano
-        }
-        else if (data.status === "éxito_consulta") {
-            inputTexto.value = "";
-            mostrarNotificacion(`<b>Respuesta del Gerente IA:</b><br>${data.mensaje_bd}`, "info");
-        }
-        else {
-            inputTexto.value = "";
-            mostrarNotificacion(`Error del sistema: ${data.mensaje || "Desconocido"}`, "error");
-        }
+        const data = await res.json().catch(() => ({}));
+        await manejarRespuestaRegistro(res, data, false);
 
     } catch (e) {
         console.error("Error:", e);
@@ -349,8 +370,18 @@ function mostrarModal({ tipo = 'info', titulo = '', mensaje = '', detalles = [],
         lista.classList.remove('visible');
     }
 
+    // Modo aviso: sin formulario ni botón Cancelar, OK solo cierra
+    const formulario = document.getElementById('modal-formulario');
+    if (formulario) { formulario.hidden = true; formulario.innerHTML = ''; }
+    const btnCancelar = document.getElementById('modal-btn-cancelar');
+    if (btnCancelar) btnCancelar.hidden = true;
+    overlay.dataset.modo = '';
+
     // Mientras carga no se puede cerrar (no hay botón OK)
     const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'OK';
+    btnOk.disabled = false;
+    btnOk.onclick = cerrarModal;
     btnOk.hidden = cargando;
     overlay.dataset.bloqueado = cargando ? '1' : '';
 
@@ -366,12 +397,147 @@ function cerrarModal() {
     overlay.setAttribute('aria-hidden', 'true');
 }
 
-// Cerrar con Escape / Enter (solo si no está cargando)
+// Teclado: en modo aviso, Escape/Enter cierran. En modo formulario, Enter
+// envía y Escape cancela (así no se cierra por accidente al escribir).
 document.addEventListener('keydown', (e) => {
     const overlay = document.getElementById('modal-aviso');
     if (!overlay || !overlay.classList.contains('visible')) return;
+    if (overlay.dataset.modo === 'formulario') {
+        if (e.key === 'Escape') { e.preventDefault(); document.getElementById('modal-btn-cancelar').click(); }
+        else if (e.key === 'Enter' && e.target.tagName !== 'SELECT') { e.preventDefault(); document.getElementById('modal-btn-ok').click(); }
+        return;
+    }
     if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); cerrarModal(); }
 });
+
+// ==============================================================================
+// ORDEN DE TRABAJO CON DATOS FALTANTES: modal para completarlos
+// El backend NO guarda nada hasta que estén todos los datos obligatorios.
+// ==============================================================================
+const BANCOS_SUGERIDOS = ['Pichincha', 'Guayaquil', 'Produbanco', 'Pacífico', 'Bolivariano',
+                          'Internacional', 'Austro', 'Loja', 'Machala', 'JEP', 'Jardín Azuayo'];
+const EJEMPLOS_CAMPO = {
+    vehiculo: 'Ej. PXY9876', modelo: 'Ej. Chevrolet Sail', cliente: 'Ej. Juan Pérez',
+    cedula: 'Ej. 0912345678', telefono: 'Ej. 0991234567', motivo: 'Ej. Ruido en la suspensión delantera',
+    banco: 'Ej. Pichincha'
+};
+
+// Arma el HTML de un campo según su tipo (técnico y método de pago son listas)
+function campoFaltanteHTML(f, tecnicos) {
+    const e = escaparHTML;
+    const error = f.problema && f.problema !== 'falta'
+        ? `<span class="campo-error">${e(f.problema)}</span>` : '';
+    let control;
+    if (f.campo === 'oficial') {
+        control = tecnicos.length
+            ? `<select name="oficial" required>
+                   <option value="">Selecciona el técnico...</option>
+                   ${tecnicos.map(t => `<option value="${e(t)}">${e(t)}</option>`).join('')}
+               </select>`
+            : `<div class="campo-error">No hay técnicos registrados en este taller. Pide al administrador que los registre para poder asignar órdenes.</div>`;
+    } else if (f.campo === 'metodo_pago') {
+        control = `<select name="metodo_pago" required onchange="alternarCampoBanco(this)">
+                       <option value="">Selecciona...</option>
+                       <option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option>
+                   </select>
+                   <div class="campo-banco" hidden>
+                       <input name="banco" list="lista-bancos" placeholder="Banco de la transferencia (ej. Pichincha)" autocomplete="off">
+                   </div>`;
+    } else {
+        const extra = f.campo === 'cedula' || f.campo === 'telefono' ? 'inputmode="numeric"' : '';
+        const lista = f.campo === 'banco' ? 'list="lista-bancos"' : '';
+        control = `<input name="${e(f.campo)}" value="${e(f.valor || '')}" placeholder="${e(EJEMPLOS_CAMPO[f.campo] || '')}"
+                          autocomplete="off" required ${extra} ${lista}>`;
+    }
+    return `<label class="campo-faltante">
+                <span class="campo-etiqueta">${e(f.etiqueta)} ${error}</span>
+                ${control}
+                <span class="campo-aviso" hidden>Este dato es obligatorio</span>
+            </label>`;
+}
+
+// Muestra el campo "banco" solo cuando el pago es por transferencia
+function alternarCampoBanco(select) {
+    const caja = select.parentElement.querySelector('.campo-banco');
+    if (caja) caja.hidden = select.value !== 'Transferencia';
+}
+
+// Muestra el modal con SOLO los datos que faltan o son inválidos
+function mostrarFormularioFaltantes(data) {
+    const overlay = document.getElementById('modal-aviso');
+    const e = escaparHTML;
+    const ctx = data.contexto || {};
+    const tecnicos = data.tecnicos || [];
+
+    mostrarModal({ tipo: 'warning', titulo: 'Faltan datos obligatorios' });  // base visual
+    overlay.dataset.modo = 'formulario';
+
+    const tipoOrden = ctx.es_cierre ? 'Cierre de trabajo' : 'Ingreso al taller';
+    const resumen = [ctx.placa && ctx.placa !== 'S/C' ? `<b>${e(ctx.placa)}</b>` : '',
+                     ctx.modelo ? e(ctx.modelo) : '', ctx.cliente ? e(ctx.cliente) : '']
+                    .filter(Boolean).join(' · ');
+    document.getElementById('modal-mensaje').innerHTML =
+        `<div class="resumen-orden">${tipoOrden}${resumen ? ': ' + resumen : ''}</div>
+         Completa estos datos para registrar la orden. <b>No se guardó nada todavía.</b>`;
+
+    const formulario = document.getElementById('modal-formulario');
+    formulario.innerHTML = (data.faltantes || []).map(f => campoFaltanteHTML(f, tecnicos)).join('')
+        + `<datalist id="lista-bancos">${BANCOS_SUGERIDOS.map(b => `<option value="${e(b)}">`).join('')}</datalist>`;
+    formulario.hidden = false;
+
+    const btnCancelar = document.getElementById('modal-btn-cancelar');
+    btnCancelar.hidden = false;
+    btnCancelar.onclick = () => {
+        overlay.dataset.modo = '';
+        cerrarModal();
+        mostrarNotificacion("Registro cancelado: no se guardó la orden. Tu mensaje sigue en el cuadro de texto.", "warning");
+    };
+
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Registrar orden';
+    btnOk.disabled = (data.faltantes || []).some(f => f.campo === 'oficial') && !tecnicos.length;
+    btnOk.onclick = () => confirmarDatosFaltantes(data.borrador);
+
+    const primero = formulario.querySelector('input, select');
+    if (primero) setTimeout(() => primero.focus(), 50);
+}
+
+// Valida en pantalla y reenvía al backend junto con el borrador firmado
+async function confirmarDatosFaltantes(borrador) {
+    const formulario = document.getElementById('modal-formulario');
+    const datos = {};
+    let completo = true;
+
+    formulario.querySelectorAll('input[name], select[name]').forEach(ctrl => {
+        const visible = !ctrl.closest('[hidden]');
+        const valor = ctrl.value.trim();
+        const aviso = ctrl.closest('.campo-faltante').querySelector('.campo-aviso');
+        const obligatorio = ctrl.required || (ctrl.name === 'banco' && visible);
+        const falta = visible && obligatorio && !valor;
+        ctrl.classList.toggle('invalido', falta);
+        if (aviso) aviso.hidden = !falta;
+        if (falta) completo = false;
+        if (visible && valor) datos[ctrl.name] = valor;
+    });
+    if (!completo) return;
+
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.disabled = true;
+    btnOk.textContent = 'Registrando...';
+    try {
+        const res = await fetch('/procesar-mensaje', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem("taller_token")}` },
+            body: JSON.stringify({ borrador: borrador, datos_confirmados: datos })
+        });
+        const data = await res.json().catch(() => ({}));
+        await manejarRespuestaRegistro(res, data, true);
+    } catch (err) {
+        btnOk.disabled = false;
+        btnOk.textContent = 'Registrar orden';
+        mostrarNotificacion("Error de conexión al registrar la orden. Inténtalo de nuevo.", "error");
+    }
+}
 
 // Importación masiva de inventario (sube el Excel al backend)
 async function subirInventarioExcel(event) {
@@ -1119,7 +1285,7 @@ function renderizarLiquidacion(data) {
     let filas = data.liquidacion_tecnicos.length > 0
         ? data.liquidacion_tecnicos.map(t => `
             <tr>
-                <td>${t.tecnico}</td>
+                <td>${escaparHTML(t.tecnico)}</td>
                 <td class="centro">${t.trabajos_realizados}</td>
                 <td class="num">$${t.facturacion_total.toFixed(2)}</td>
                 <td class="num">$${t.mano_de_obra_acumulada.toFixed(2)}</td>
@@ -1184,7 +1350,7 @@ function renderizarRankingAnual(data) {
             return `
                 <tr>
                     <td style="font-weight: bold;"><span class="${clasePuesto}">#${t.posicion}</span></td>
-                    <td>${t.tecnico}</td>
+                    <td>${escaparHTML(t.tecnico)}</td>
                     <td class="centro">${t.trabajos_totales}</td>
                     <td class="num">$${t.facturacion_anual.toFixed(2)}</td>
                     <td class="num">$${t.mano_de_obra_acumulada.toFixed(2)}</td>
@@ -1209,6 +1375,9 @@ function renderizarRankingAnual(data) {
                 <tbody>${filas}</tbody>
             </table>
         </div>
+        ${data.excluidos && data.excluidos.trabajos > 0
+            ? `<p class="nota-ranking">${data.excluidos.trabajos} trabajo(s) del año (${dinero(data.excluidos.monto)}) no tienen un técnico registrado y no cuentan en el ranking.</p>`
+            : ''}
     `;
 }
 // ==============================================================================

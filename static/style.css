@@ -607,7 +607,7 @@ hr {
 .modal-detalles.visible { display: block; }
 
 .modal-btn-ok {
-    margin-top: 20px;
+    margin-top: 0;
     min-width: 120px;
     padding: 10px 28px;
     border: none;
@@ -739,4 +739,48 @@ hr {
 .chips-responsables { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
 .chips-responsables .chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--bg-alterno); border: 1px solid var(--borde); color: var(--texto-tenue); }
 .chips-responsables .chip b { color: var(--texto); }
+
+/* ==========================================================================
+   MODAL EN MODO FORMULARIO (orden de trabajo con datos faltantes)
+   ========================================================================== */
+.modal-botones { display: flex; justify-content: center; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+.modal-btn-secundario {
+    min-width: 120px;
+    padding: 10px 24px;
+    border-radius: 10px;
+    border: 1px solid var(--borde);
+    background: transparent;
+    color: var(--texto);
+    font-family: var(--fuente-display);
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+.modal-btn-secundario:hover { border-color: var(--morado); }
+.modal-btn-secundario[hidden] { display: none; }
+.modal-btn-ok:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.resumen-orden { color: var(--texto); font-weight: 600; margin-bottom: 6px; }
+.modal-formulario { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; text-align: left; }
+.modal-formulario[hidden] { display: none; }
+.campo-faltante { display: flex; flex-direction: column; gap: 5px; }
+.campo-etiqueta { font-size: 0.85rem; font-weight: 600; color: var(--texto); }
+.campo-faltante input, .campo-faltante select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--borde);
+    background: var(--bg-alterno);
+    color: var(--texto);
+    font-family: var(--fuente-datos);
+    font-size: 0.95rem;
+}
+.campo-faltante input:focus, .campo-faltante select:focus { outline: 2px solid var(--morado); outline-offset: 1px; }
+.campo-faltante .invalido { border-color: #DC2626; }
+.campo-error { color: #DC2626; font-weight: 500; font-size: 0.8rem; }
+.campo-aviso { color: #DC2626; font-size: 0.78rem; }
+.campo-aviso[hidden], .campo-banco[hidden] { display: none; }
+.campo-banco { margin-top: 8px; }
+
+.nota-ranking { font-size: 12px; color: var(--texto-tenue); margin: 10px 0 0; }
 

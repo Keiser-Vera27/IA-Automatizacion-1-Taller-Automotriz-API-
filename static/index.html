@@ -342,7 +342,12 @@
             <h3 id="modal-titulo" class="modal-titulo"></h3>
             <div id="modal-mensaje" class="modal-mensaje"></div>
             <ul id="modal-detalles" class="modal-detalles"></ul>
-            <button id="modal-btn-ok" class="modal-btn-ok" type="button" onclick="cerrarModal()">OK</button>
+            <!-- Formulario (solo en modo "faltan datos" de una orden de trabajo) -->
+            <form id="modal-formulario" class="modal-formulario" hidden novalidate onsubmit="return false;"></form>
+            <div class="modal-botones">
+                <button id="modal-btn-cancelar" class="modal-btn-secundario" type="button" hidden>Cancelar</button>
+                <button id="modal-btn-ok" class="modal-btn-ok" type="button" onclick="cerrarModal()">OK</button>
+            </div>
         </div>
     </div>
 </body>
