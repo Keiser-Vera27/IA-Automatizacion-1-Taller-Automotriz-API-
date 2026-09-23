@@ -264,6 +264,41 @@ async function descargarInventario() {
     }
 }
 
+// Descarga la plantilla oficial de inventario (encabezados correctos,
+// validaciones y hoja de instrucciones) generada por el backend.
+async function descargarPlantillaInventario() {
+    const token = localStorage.getItem("taller_token");
+    try {
+        const response = await fetch('/plantilla-inventario', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            mostrarModal({
+                tipo: 'error',
+                titulo: 'No se pudo descargar la plantilla',
+                mensaje: escaparHTML(errData.detail || `El servidor respondió con el código ${response.status}.`)
+            });
+            return;
+        }
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'Plantilla_Inventario.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        mostrarModal({
+            tipo: 'error',
+            titulo: 'Error de conexión',
+            mensaje: 'No se pudo descargar la plantilla. Revisa tu internet e inténtalo de nuevo.'
+        });
+    }
+}
+
 // Importación masiva de inventario (abre el selector de archivo)
 function abrirSelectorInventario() {
     document.getElementById('input-excel-inventario').click();
@@ -372,15 +407,29 @@ async function subirInventarioExcel(event) {
         }
 
         const errores = data.errores || [];
+        const hojas = data.hojas || [];
         const procesados = (data.nuevos || 0) + (data.actualizados || 0);
+        const omitidas = hojas.filter(h => h.omitida);
+
         let mensaje = `<b>${data.nuevos}</b> repuestos nuevos y <b>${data.actualizados}</b> actualizados`;
         if (data.total_filas !== undefined) mensaje += ` de ${data.total_filas} fila(s)`;
         mensaje += '.';
-        if (errores.length > 0) mensaje += `<br>${errores.length} fila(s) no se importaron:`;
+
+        // Resumen por hoja (cada hoja del Excel = una categoría)
+        if (hojas.length > 1 || omitidas.length > 0) {
+            const filas = hojas.map(h => h.omitida
+                ? `<tr class="omitida"><td>${escaparHTML(h.hoja)}</td><td colspan="3">Omitida: ${escaparHTML(h.omitida)}</td></tr>`
+                : `<tr><td>${escaparHTML(h.hoja)}</td><td>${h.nuevos}</td><td>${h.actualizados}</td><td>${h.errores || '-'}</td></tr>`
+            ).join('');
+            mensaje += `<table class="modal-tabla">
+                <thead><tr><th>Hoja</th><th>Nuevos</th><th>Actualiz.</th><th>Errores</th></tr></thead>
+                <tbody>${filas}</tbody></table>`;
+        }
+        if (errores.length > 0) mensaje += `${errores.length} fila(s) no se importaron:`;
 
         let tipo = 'success', titulo = 'Inventario importado';
         if (procesados === 0) { tipo = 'error'; titulo = 'No se importó ningún repuesto'; }
-        else if (errores.length > 0) { tipo = 'warning'; titulo = 'Importación con observaciones'; }
+        else if (errores.length > 0 || omitidas.length > 0) { tipo = 'warning'; titulo = 'Importación con observaciones'; }
 
         mostrarModal({ tipo, titulo, mensaje, detalles: errores });
     } catch (error) {

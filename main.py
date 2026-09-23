@@ -1703,10 +1703,49 @@ def listar_pendientes(request: Request):
 # el registro individual por IA). Si no existe, lo crea.
 
 def _normalizar_encabezado(col) -> str:
-    """'Código ' -> 'codigo', 'Precio Venta' -> 'precio_venta', 'Aplicación' -> 'aplicacion'."""
+    """Lleva cualquier encabezado a una forma comparable:
+    'Código*' -> 'codigo', 'Costo ($)' -> 'costo', 'Descripción / Repuesto' -> 'descripcion_repuesto'."""
     import unicodedata
-    texto = unicodedata.normalize("NFKD", str(col)).encode("ascii", "ignore").decode()
-    return re.sub(r"[\s\-]+", "_", texto.strip().lower())
+    texto = unicodedata.normalize("NFKD", str(col)).encode("ascii", "ignore").decode().lower()
+    texto = re.sub(r"\(.*?\)", " ", texto)          # quita '($)', '(opcional)', etc.
+    texto = re.sub(r"[^a-z0-9]+", "_", texto)        # espacios, '/', '*', '-' -> '_'
+    return texto.strip("_")
+
+# Nombres alternativos que la gente suele usar en sus Excel. Si el archivo
+# trae uno de estos (y no trae ya el nombre oficial), se toma como equivalente.
+# Así no hace falta acertar el encabezado exacto a prueba y error.
+ALIAS_COLUMNAS_INVENTARIO = {
+    "codigo":       ["cod", "codigo_repuesto", "codigo_producto", "sku", "referencia", "ref", "numero_parte", "no_parte",
+                     "code", "part_number", "part_no"],
+    "nombre":       ["descripcion", "descripcion_repuesto", "nombre_descripcion", "repuesto", "nombre_repuesto",
+                     "producto", "articulo", "detalle", "item",
+                     "name", "description", "product"],
+    "cantidad":     ["cant", "stock", "unidades", "existencia", "existencias", "cantidad_ingreso",
+                     "qty", "quantity"],
+    "costo":        ["costo_unitario", "precio_costo", "precio_compra", "costo_compra", "valor_compra", "cost", "unit_cost"],
+    "precio_venta": ["precio", "pvp", "venta", "precio_de_venta", "precio_publico", "valor_venta", "price", "sale_price"],
+    "aplicacion":   ["vehiculo_compatible", "vehiculos_compatibles", "compatibilidad", "compatible_con",
+                     "vehiculo", "aplica_a", "modelo_compatible", "application", "fits"],
+    "marca":        ["marca_repuesto", "fabricante", "brand"],
+    "proveedor":    ["distribuidor", "proveedor_repuesto", "supplier", "vendor"],
+    "categoria":    ["tipo", "familia", "grupo", "linea", "categoria_repuesto", "tipo_repuesto", "category"],
+}
+
+def _mapear_columnas_inventario(columnas: list[str]) -> list[str]:
+    """Normaliza encabezados y traduce alias al nombre oficial de la columna."""
+    normalizadas = [_normalizar_encabezado(c) for c in columnas]
+    presentes = set(normalizadas)
+    alias_a_oficial = {alias: oficial for oficial, alias_lista in ALIAS_COLUMNAS_INVENTARIO.items()
+                       for alias in alias_lista}
+    resultado = []
+    for col in normalizadas:
+        oficial = alias_a_oficial.get(col)
+        if oficial and oficial not in presentes:
+            presentes.add(oficial)       # solo el primer alias cuenta
+            resultado.append(oficial)
+        else:
+            resultado.append(col)
+    return resultado
 
 def _celda_vacia(valor) -> bool:
     """True si la celda viene vacía (NaN de pandas, None o texto en blanco)."""
@@ -1741,92 +1780,304 @@ def _a_texto(valor, por_defecto: str = "") -> str:
         valor = int(valor)  # códigos numéricos: 12345.0 -> '12345'
     return str(valor).strip()
 
+# Hojas que nunca son de datos (se ignoran sin reportar error)
+HOJAS_IGNORADAS = {"instrucciones", "instruccion", "leeme", "readme", "ayuda", "notas", "indice"}
+# Nombres de hoja "genéricos": no se usan como categoría (se conserva la actual
+# del repuesto, o 'General' si es nuevo)
+HOJAS_SIN_CATEGORIA = {"inventario", "hoja1", "hoja_1", "sheet1", "sheet_1", "datos", "general", "repuestos"}
+TAMANO_LOTE = 1000  # repuestos por llamada a la función SQL
+
 @app.post("/importar-inventario")
 def importar_inventario(request: Request, archivo: UploadFile = File(...)):
+    """Importa TODAS las hojas del Excel en una sola operación.
+
+    - Cada hoja válida es una categoría (Sensores, Filtros, Frenos...). Si la
+      hoja tiene columna 'categoria', el valor de la fila tiene prioridad.
+    - Hojas sin las columnas obligatorias se omiten y se reportan.
+    - Códigos repetidos (en la misma hoja o entre hojas) se agrupan: se suman
+      las cantidades y gana el último costo/precio con valor.
+    - La escritura va por lotes a la función SQL importar_inventario_lote
+      (una transacción por lote), no fila por fila.
+    """
     # 'def' (no 'async def'): las llamadas a Supabase son bloqueantes; así FastAPI
-    # ejecuta la importación en el threadpool y NO congela el servidor completo
-    # mientras se procesa un Excel grande.
+    # usa el threadpool y no congela el servidor mientras se importa.
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
 
     try:
         contenido = archivo.file.read()
-        # dtype=object: no dejamos que pandas convierta códigos como '0012' en 12
-        df = pd.read_excel(io.BytesIO(contenido), dtype=object)
+        # sheet_name=None -> diccionario {nombre_hoja: DataFrame} con TODAS las hojas.
+        # dtype=object: no convertir códigos como '0012' en 12.
+        hojas = pd.read_excel(io.BytesIO(contenido), sheet_name=None, dtype=object)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"No se pudo leer el Excel: {e}")
 
-    df.columns = [_normalizar_encabezado(c) for c in df.columns]
-    df = df.dropna(how="all")  # filas totalmente vacías al final del Excel
-
     columnas_requeridas = {"codigo", "nombre", "cantidad"}
-    faltantes = columnas_requeridas - set(df.columns)
-    if faltantes:
+    resumen_hojas = []   # lo que se muestra al usuario, hoja por hoja
+    errores = []         # errores de fila, con el nombre de la hoja
+    items = {}           # codigo -> datos agrupados listos para la BD
+    hoja_de_codigo = {}  # codigo -> nombre de hoja (para el resumen)
+    total_filas = 0
+
+    for nombre_hoja, df in hojas.items():
+        clave_hoja = _normalizar_encabezado(nombre_hoja)
+        if clave_hoja in HOJAS_IGNORADAS:
+            continue
+
+        info = {"hoja": str(nombre_hoja), "filas": 0, "nuevos": 0, "actualizados": 0, "errores": 0, "omitida": None}
+        resumen_hojas.append(info)
+
+        df.columns = _mapear_columnas_inventario(list(df.columns))
+        df = df.dropna(how="all")
+        if df.empty:
+            info["omitida"] = "hoja vacía"
+            continue
+        faltantes = columnas_requeridas - set(df.columns)
+        if faltantes:
+            info["omitida"] = f"faltan columnas: {', '.join(sorted(faltantes))}"
+            continue
+
+        categoria_hoja = None if clave_hoja in HOJAS_SIN_CATEGORIA else str(nombre_hoja).strip()
+        info["categoria"] = categoria_hoja or "(sin cambio)"
+
+        for idx, fila in df.iterrows():
+            num_fila = idx + 2  # +1 por encabezado, +1 porque Excel cuenta desde 1
+            info["filas"] += 1
+            total_filas += 1
+            try:
+                codigo = _a_texto(fila.get("codigo"))
+                if not codigo:
+                    raise ValueError("sin código, omitida")
+
+                cantidad = _a_numero(fila.get("cantidad"), entero=True, campo="cantidad")
+                # None = celda vacía -> la BD conserva el valor actual del repuesto
+                costo = None if _celda_vacia(fila.get("costo")) else _a_numero(fila.get("costo"), campo="costo")
+                precio = None if _celda_vacia(fila.get("precio_venta")) else _a_numero(fila.get("precio_venta"), campo="precio_venta")
+                categoria = _a_texto(fila.get("categoria")) or categoria_hoja
+
+                if codigo in items:
+                    # Código repetido en el archivo: sumar cantidad, último valor gana
+                    previo = items[codigo]
+                    previo["cantidad"] += cantidad
+                    for campo, valor in (("costo", costo), ("precio_venta", precio), ("categoria", categoria)):
+                        if valor is not None:
+                            previo[campo] = valor
+                    for campo in ("nombre", "marca", "proveedor", "aplicacion"):
+                        previo[campo] = previo[campo] or _a_texto(fila.get(campo)) or None
+                else:
+                    items[codigo] = {
+                        "codigo": codigo,
+                        "nombre": _a_texto(fila.get("nombre")) or None,
+                        "marca": _a_texto(fila.get("marca")) or None,
+                        "proveedor": _a_texto(fila.get("proveedor")) or None,
+                        "aplicacion": _a_texto(fila.get("aplicacion")) or None,
+                        "categoria": categoria,
+                        "cantidad": cantidad,
+                        "costo": costo,
+                        "precio_venta": precio,
+                    }
+                hoja_de_codigo[codigo] = info
+            except Exception as e_fila:
+                info["errores"] += 1
+                errores.append(f"{nombre_hoja}, fila {num_fila}: {e_fila}")
+
+    hojas_validas = [h for h in resumen_hojas if not h["omitida"]]
+    if not hojas_validas:
+        detalle = "; ".join(f"{h['hoja']}: {h['omitida']}" for h in resumen_hojas) or "el archivo no tiene hojas con datos"
         raise HTTPException(
             status_code=400,
-            detail=(f"Faltan columnas obligatorias: {', '.join(sorted(faltantes))}. "
-                    f"Columnas encontradas: {', '.join(map(str, df.columns))}")
+            detail=(f"Ninguna hoja se pudo importar ({detalle}). Cada hoja necesita las columnas "
+                    f"Código, Descripción y Cantidad. Descarga la plantilla oficial con el botón "
+                    f"'Descargar Plantilla de Inventario'.")
         )
-    if df.empty:
-        raise HTTPException(status_code=400, detail="El Excel no tiene filas con datos.")
 
+    # ---- Escritura por lotes (una transacción por lote) ----
+    # Cliente admin: la función solo la puede ejecutar service_role, y el
+    # taller_id viene del JWT, nunca del navegador.
     tiempo_actual = ahora_utc_str()
-    nuevos, actualizados, errores = 0, 0, []
-
-    for idx, fila in df.iterrows():
-        num_fila = idx + 2  # +1 por encabezado, +1 porque Excel cuenta desde 1
+    lista = list(items.values())
+    for inicio in range(0, len(lista), TAMANO_LOTE):
+        lote = lista[inicio:inicio + TAMANO_LOTE]
         try:
-            codigo = _a_texto(fila.get("codigo"))
-            if not codigo:
-                errores.append(f"Fila {num_fila}: sin código, omitida")
-                continue
+            resultado = supabase.rpc("importar_inventario_lote", {
+                "p_taller_id": taller_id,
+                "p_items": lote,
+                "p_fecha": tiempo_actual,
+            }).execute().data or []
+        except Exception as e_lote:
+            print(f"[importar-inventario] fallo de lote taller={taller_id}: {e_lote}")
+            ya_guardados = sum(h["nuevos"] + h["actualizados"] for h in resumen_hojas)
+            raise HTTPException(
+                status_code=500,
+                detail=(f"Error guardando el inventario en la base de datos ({e_lote}). "
+                        f"Se guardaron {ya_guardados} repuestos antes del error; "
+                        f"puedes volver a importar el archivo sin riesgo de duplicar códigos, "
+                        f"pero las cantidades de los ya guardados se sumarían de nuevo.")
+                if ya_guardados else
+                f"Error guardando el inventario en la base de datos: {e_lote}. No se guardó ningún repuesto."
+            )
+        for r in resultado:
+            info = hoja_de_codigo.get(r.get("codigo"))
+            if info is not None:
+                info["nuevos" if r.get("accion") == "nuevo" else "actualizados"] += 1
 
-            cantidad = _a_numero(fila.get("cantidad"), entero=True, campo="cantidad")
-            costo = _a_numero(fila.get("costo"), campo="costo")
-            precio_venta = _a_numero(fila.get("precio_venta"), campo="precio_venta")
-
-            # Cliente admin (no cliente_seguro): inventario no tiene política RLS
-            # de INSERT/UPDATE para el usuario autenticado. Aislado por taller_id.
-            inv_res = (supabase.table("inventario").select("id, cantidad")
-                       .eq("codigo", codigo).eq("taller_id", taller_id).limit(1).execute())
-
-            if inv_res.data:
-                item_existente = inv_res.data[0]
-                cambios = {
-                    "cantidad": (item_existente.get("cantidad") or 0) + cantidad,
-                    "fecha_actualizacion": tiempo_actual
-                }
-                # Solo sobreescribe precios si la celda trae valor: una celda vacía
-                # NO debe dejar en $0 el costo/precio que ya estaba guardado.
-                if not _celda_vacia(fila.get("costo")):
-                    cambios["costo"] = costo
-                if not _celda_vacia(fila.get("precio_venta")):
-                    cambios["precio_venta"] = precio_venta
-                supabase.table("inventario").update(cambios) \
-                    .eq("id", item_existente["id"]).eq("taller_id", taller_id).execute()
-                actualizados += 1
-            else:
-                supabase.table("inventario").insert({
-                    "taller_id": taller_id,
-                    "codigo": codigo,
-                    "nombre": _a_texto(fila.get("nombre"), por_defecto=codigo),
-                    "marca": _a_texto(fila.get("marca")),
-                    "proveedor": _a_texto(fila.get("proveedor"), por_defecto="General"),
-                    "aplicacion": _a_texto(fila.get("aplicacion"), por_defecto="General"),
-                    "cantidad": cantidad,
-                    "costo": costo,
-                    "precio_venta": precio_venta,
-                    "fecha_actualizacion": tiempo_actual
-                }).execute()
-                nuevos += 1
-        except Exception as e_fila:
-            errores.append(f"Fila {num_fila}: {e_fila}")
-
-    # Log en Render para poder diagnosticar sin depender del navegador
-    print(f"[importar-inventario] taller={taller_id} nuevos={nuevos} "
-          f"actualizados={actualizados} errores={len(errores)} {errores[:5]}")
+    nuevos = sum(h["nuevos"] for h in resumen_hojas)
+    actualizados = sum(h["actualizados"] for h in resumen_hojas)
+    print(f"[importar-inventario] taller={taller_id} hojas={len(hojas_validas)} filas={total_filas} "
+          f"nuevos={nuevos} actualizados={actualizados} errores={len(errores)}")
 
     return {"status": "ok", "nuevos": nuevos, "actualizados": actualizados,
-            "total_filas": int(len(df)), "errores": errores}
+            "total_filas": total_filas, "errores": errores, "hojas": resumen_hojas}
+
+
+# --- PLANTILLA OFICIAL DE INVENTARIO (Excel listo para llenar) -----------
+# Mismos encabezados que entiende /importar-inventario. Cada hoja de datos es
+# una categoría; la hoja "Instrucciones" va primero y el importador la ignora.
+COLUMNAS_PLANTILLA_INVENTARIO = [
+    # (encabezado visible, obligatoria, ancho, formato numérico, ayuda, ejemplo)
+    ("Código",               True,  16, "@",           "Código único del repuesto. Si ya existe en el sistema, se suma la cantidad.", "FA-0112"),
+    ("Descripción",          True,  38, "@",           "Nombre o descripción del repuesto.",                                            "Filtro de aceite"),
+    ("Marca",                False, 16, "@",           "Marca del repuesto (opcional).",                                               "Bosch"),
+    ("Vehículo compatible",  False, 30, "@",           "Vehículos donde se usa. Ayuda a la búsqueda por descripción (opcional).",       "Chevrolet Sail 1.4 2013-2020"),
+    ("Cantidad",             True,  12, "0",           "Unidades que ingresan. Número entero, 0 o mayor.",                             12),
+    ("Costo",                False, 14, '"$"#,##0.00', "Costo unitario de compra en dólares. Vacío = conserva el costo actual.",        3.5),
+    ("Precio venta",         False, 14, '"$"#,##0.00', "Precio unitario de venta en dólares. Vacío = conserva el precio actual.",       6.0),
+    ("Proveedor",            False, 20, "@",           "Proveedor o distribuidor (opcional). Si se deja vacío se guarda 'General'.",   "Importadora XYZ"),
+]
+
+@app.get("/plantilla-inventario")
+def plantilla_inventario(request: Request):
+    obtener_cliente_seguro(request)  # solo usuarios autenticados
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.worksheet.datavalidation import DataValidation
+    from openpyxl.utils import get_column_letter
+    from fastapi.responses import Response
+
+    FILAS_PREPARADAS = 1000  # filas con formato y validación listas para llenar
+    morado, lila, tinta = "7030EF", "EDE7FB", "14102B"
+    borde = Border(bottom=Side(style="thin", color="C9BEF2"))
+
+    wb = Workbook()
+
+    def armar_hoja_categoria(ws):
+        """Encabezados, formatos, validaciones y ayudas de una hoja de categoría."""
+        for i, (titulo, obligatoria, ancho, formato, ayuda, _) in enumerate(COLUMNAS_PLANTILLA_INVENTARIO, start=1):
+            letra = get_column_letter(i)
+            celda = ws.cell(row=1, column=i, value=titulo)
+            # Obligatorias: morado con texto blanco. Opcionales: lila con texto oscuro.
+            celda.fill = PatternFill("solid", fgColor=morado if obligatoria else lila)
+            celda.font = Font(bold=True, color="FFFFFF" if obligatoria else tinta, size=11)
+            celda.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            ws.column_dimensions[letra].width = ancho
+
+            # Formato de las filas de datos (texto para códigos: conserva ceros a la izquierda)
+            for fila in range(2, FILAS_PREPARADAS + 2):
+                c = ws.cell(row=fila, column=i)
+                c.number_format = formato
+                c.border = borde
+
+            # Mensaje de ayuda al seleccionar la columna + validación de números
+            rango = f"{letra}2:{letra}{FILAS_PREPARADAS + 1}"
+            if titulo == "Cantidad":
+                dv = DataValidation(type="whole", operator="greaterThanOrEqual", formula1="0", allow_blank=True)
+                dv.error = "La cantidad debe ser un número entero (0 o mayor)."
+            elif formato.startswith('"$"'):
+                dv = DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", allow_blank=True)
+                dv.error = "Ingresa un valor en dólares (0 o mayor), sin letras."
+            else:
+                dv = DataValidation(allow_blank=True)
+            dv.errorTitle = "Valor no válido"
+            dv.promptTitle = titulo + (" (obligatorio)" if obligatoria else " (opcional)")
+            dv.prompt = ayuda
+            dv.showInputMessage = True
+            dv.showErrorMessage = dv.type is not None
+            ws.add_data_validation(dv)
+            dv.add(rango)
+
+        ws.row_dimensions[1].height = 30
+        ws.freeze_panes = "A2"  # encabezado siempre visible
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(COLUMNAS_PLANTILLA_INVENTARIO))}1"
+
+    # ------------- Hojas de categoría (cada hoja = una categoría) -------------
+    # Ejemplos; el taller puede renombrarlas o duplicarlas (Sensores, Sockets...).
+    CATEGORIAS_EJEMPLO = ["Filtros", "Frenos", "Sensores"]
+    ws = wb.active
+    ws.title = CATEGORIAS_EJEMPLO[0]
+    armar_hoja_categoria(ws)
+    hojas_datos = [ws]
+    for nombre in CATEGORIAS_EJEMPLO[1:]:
+        nueva = wb.create_sheet(nombre)
+        armar_hoja_categoria(nueva)
+        hojas_datos.append(nueva)
+
+    # ---------------- Hoja de Instrucciones ----------------
+    ins = wb.create_sheet("Instrucciones")
+    ins.sheet_view.showGridLines = False
+    ins.column_dimensions["A"].width = 24
+    ins.column_dimensions["B"].width = 14
+    ins.column_dimensions["C"].width = 70
+    ins.column_dimensions["D"].width = 30
+
+    ins["A1"] = "Plantilla de carga de inventario"
+    ins["A1"].font = Font(bold=True, size=16, color=morado)
+    ins["A2"] = ("Cada hoja es una categoría (Filtros, Frenos, Sensores...). Llénalas con una fila por repuesto "
+                 "y sube el archivo completo con el botón \"Importar Inventario (Excel)\": se cargan todas las hojas a la vez.")
+    ins["A2"].font = Font(color="574F7A")
+
+    encabezados = ["Columna", "¿Obligatoria?", "Qué poner", "Ejemplo"]
+    for j, texto in enumerate(encabezados, start=1):
+        c = ins.cell(row=4, column=j, value=texto)
+        c.fill = PatternFill("solid", fgColor=morado)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.alignment = Alignment(vertical="center")
+    for k, (titulo, obligatoria, _, _, ayuda, ejemplo) in enumerate(COLUMNAS_PLANTILLA_INVENTARIO, start=5):
+        # El ejemplo se muestra como texto (alineado a la izquierda, con $ si aplica)
+        ejemplo_txt = f"${ejemplo:.2f}" if isinstance(ejemplo, float) else str(ejemplo)
+        valores = [titulo, "Sí" if obligatoria else "No", ayuda, ejemplo_txt]
+        for j, v in enumerate(valores, start=1):
+            c = ins.cell(row=k, column=j, value=v)
+            c.alignment = Alignment(wrap_text=True, vertical="top")
+            c.border = borde
+            if j == 2 and obligatoria:
+                c.font = Font(bold=True, color=morado)
+
+    fila = 5 + len(COLUMNAS_PLANTILLA_INVENTARIO) + 1
+    ins.cell(row=fila, column=1, value="Reglas importantes").font = Font(bold=True, size=12, color=morado)
+    reglas = [
+        "El NOMBRE DE LA HOJA es la categoría. Para una categoría nueva: clic derecho en una pestaña > Mover o copiar > Crear una copia, y renómbrala (ej. Sockets, Actuadores).",
+        "Puedes borrar las hojas que no uses. Las hojas vacías y esta hoja de Instrucciones se ignoran al importar.",
+        "No cambies los nombres de los encabezados de las columnas.",
+        "Si el código ya existe, la cantidad se SUMA al stock actual; costo, precio y categoría se actualizan solo si vienen llenos.",
+        "Si un mismo código aparece en varias filas u hojas, las cantidades se suman antes de guardar.",
+        "Las filas sin código se omiten. Al terminar, el sistema muestra un resumen por hoja y qué filas tuvieron problemas.",
+        "Los precios van sin el símbolo $ (la plantilla ya les da formato de dólares).",
+    ]
+    for r in reglas:
+        fila += 1
+        c = ins.cell(row=fila, column=1, value="•  " + r)
+        ins.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=4)
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+        ins.row_dimensions[fila].height = 30
+
+    # Instrucciones como primera pestaña (es lo primero que se ve al abrir)
+    wb.move_sheet(ins, offset=-len(hojas_datos))
+    wb.active = 0
+
+    # Impresión: horizontal y ajustada al ancho de una página
+    for hoja in hojas_datos + [ins]:
+        hoja.page_setup.orientation = "landscape"
+        hoja.sheet_properties.pageSetUpPr.fitToPage = True
+        hoja.page_setup.fitToWidth = 1
+        hoja.page_setup.fitToHeight = 0
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="Plantilla_Inventario.xlsx"'},
+    )
 # ==============================================================================
 # CATÁLOGO DE SERVICIOS
 # ==============================================================================

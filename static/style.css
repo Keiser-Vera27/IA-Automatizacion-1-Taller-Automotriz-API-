@@ -534,7 +534,7 @@ hr {
 
 .modal-caja {
     width: 100%;
-    max-width: 440px;
+    max-width: 520px;
     max-height: 85vh;
     overflow-y: auto;
     background: var(--superficie-elevada);
@@ -639,3 +639,27 @@ hr {
 .puesto-1 { background: linear-gradient(135deg, #E6B422, #B8860B); }
 .puesto-2 { background: linear-gradient(135deg, #B8BCC6, #7D828C); }
 .puesto-3 { background: linear-gradient(135deg, #CD8B4E, #8C5A2B); }
+
+/* Tabla de resumen por hoja dentro del modal de importación */
+.modal-tabla {
+    width: 100%;
+    margin: 14px 0 10px;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    text-align: left;
+}
+.modal-tabla th {
+    padding: 6px 8px;
+    color: var(--texto-tenue);
+    font-weight: 600;
+    border-bottom: 1px solid var(--borde);
+}
+.modal-tabla td {
+    padding: 6px 8px;
+    color: var(--texto);
+    border-bottom: 1px solid var(--borde);
+}
+.modal-tabla th:not(:first-child),
+.modal-tabla td:not(:first-child) { text-align: center; }
+.modal-tabla tr.omitida td { color: var(--text-pendiente); font-style: italic; }
+.modal-tabla tr.omitida td:first-child { font-style: normal; }
