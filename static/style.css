@@ -663,3 +663,38 @@ hr {
 .modal-tabla td:not(:first-child) { text-align: center; }
 .modal-tabla tr.omitida td { color: var(--text-pendiente); font-style: italic; }
 .modal-tabla tr.omitida td:first-child { font-style: normal; }
+
+/* ==========================================================================
+   CUADRE DE CAJA: cabecera con estado de actualización y botón de descarga
+   ========================================================================== */
+.cabecera-caja {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;   /* botón siempre en la esquina derecha */
+    gap: 12px;
+}
+.titulo-caja-wrap { min-width: 0; }
+.cabecera-caja h3 { margin: 0; }
+.estado-cuadre { display: block; margin-top: 4px; font-size: 12px; color: var(--texto-tenue); }
+.btn-descargar-cuadre { flex-shrink: 0; }
+.estado-cuadre.estado-error { color: var(--text-pendiente); }
+.caja-cargando { color: var(--texto-tenue); text-align: center; margin: 20px 0; }
+
+.btn-descargar-cuadre {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #16A34A;              /* verde: acción de descarga */
+    color: #FFFFFF;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);
+    transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-descargar-cuadre:hover { background: #15803D; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(22, 163, 74, 0.45); }
+.btn-descargar-cuadre:focus-visible { outline: 2px solid #22C55E; outline-offset: 3px; }
+.btn-descargar-cuadre:disabled { opacity: 0.6; cursor: wait; transform: none; }
+

@@ -67,6 +67,7 @@ window.onload = function() {
         // Al ejecutarse estas funciones, si el token expiró, la app se cerrará sola
         cargarVehiculosPendientes();
         cargarBienvenidaTaller();
+        iniciarActualizacionCuadre();   // cuadre de caja siempre visible y en vivo
         
         // Carga segura del ranking para móviles
         setTimeout(() => {
@@ -128,6 +129,7 @@ async function iniciarSesion() {
             document.getElementById("app-container").style.display = "block";
             cargarVehiculosPendientes();
             cargarBienvenidaTaller();
+            iniciarActualizacionCuadre();   // cuadre de caja siempre visible y en vivo
         } else {
             msgError.innerText = data.mensaje;
             msgError.style.display = "block";
@@ -156,6 +158,7 @@ function cerrarSesion() {
         panelPendientes.remove();
     }
 
+    detenerActualizacionCuadre();   // no seguir consultando sin sesión
     const panelCaja = document.getElementById('panel-cuadre-caja');
     if (panelCaja) {
         panelCaja.innerHTML = "";
@@ -219,6 +222,7 @@ async function enviarReporte() {
             inputTexto.value = "";
             mostrarNotificacion(`${data.mensaje_bd}`, "success");
             cargarVehiculosPendientes(); 
+            refrescarCuadrePronto();   // el registro se procesa en segundo plano
         }
         else if (data.status === "éxito_consulta") {
             inputTexto.value = "";
@@ -473,31 +477,123 @@ async function descargarReporteDiario() {
     }
 }
 
-// Cuadre de caja del día (dashboard en pantalla, no descarga)
-async function verCuadreDeCaja() {
+// ==============================================================================
+// CUADRE DE CAJA DEL DÍA: siempre visible y actualizado automáticamente
+// ==============================================================================
+const INTERVALO_CUADRE_MS = 30000;   // refresco periódico mientras la pestaña está visible
+let temporizadorCuadre = null;
+let cuadreCargando = false;          // evita peticiones superpuestas
+let cuadreYaMostrado = false;        // tras la 1.ª carga, los refrescos son silenciosos
+
+// Carga el cuadre. silencioso=true: no muestra "Calculando..." ni borra el
+// panel si falla (solo marca el estado en la esquina), para que no parpadee.
+async function cargarCuadreCaja(silencioso = false) {
     const token = localStorage.getItem("taller_token");
     const panel = document.getElementById('panel-cuadre-caja');
-    if (!panel) return;
+    if (!panel || !token || cuadreCargando) return;
+    cuadreCargando = true;
 
-    panel.innerHTML = `<p style="color: #a0a0a0; text-align: center; margin: 20px 0;">Calculando cuadre de caja...</p>`;
+    if (!silencioso || !cuadreYaMostrado) {
+        panel.innerHTML = `<div class="panel-caja"><p class="caja-cargando">Calculando cuadre de caja...</p></div>`;
+    }
 
     try {
         const response = await fetch('/reporte-dia', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            panel.innerHTML = "";
-            mostrarNotificacion(errData.detail || "Error al calcular el cuadre de caja.", "warning");
-            return;
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
         renderizarCuadreDeCaja(data);
+        cuadreYaMostrado = true;
     } catch (error) {
-        panel.innerHTML = "";
-        mostrarNotificacion("Error de conexión al calcular el cuadre de caja.", "error");
+        const estado = document.getElementById('estado-cuadre');
+        if (cuadreYaMostrado && estado) {
+            // Se conserva el último cuadre en pantalla y se avisa discretamente
+            estado.textContent = "Sin conexión, reintentando...";
+            estado.classList.add('estado-error');
+        } else {
+            panel.innerHTML = `<div class="panel-caja"><p class="caja-cargando">No se pudo cargar el cuadre de caja. Se reintentará automáticamente.</p></div>`;
+        }
+    } finally {
+        cuadreCargando = false;
+    }
+}
+
+// Arranca el refresco periódico (solo consulta si la pestaña está visible)
+function iniciarActualizacionCuadre() {
+    detenerActualizacionCuadre();
+    cargarCuadreCaja();
+    temporizadorCuadre = setInterval(() => {
+        if (document.visibilityState === "visible") cargarCuadreCaja(true);
+    }, INTERVALO_CUADRE_MS);
+}
+
+function detenerActualizacionCuadre() {
+    if (temporizadorCuadre) clearInterval(temporizadorCuadre);
+    temporizadorCuadre = null;
+    cuadreYaMostrado = false;
+}
+
+// Los registros se procesan en segundo plano (cola de IA): refrescamos un par
+// de veces en los segundos siguientes para que el cuadre refleje el cambio.
+function refrescarCuadrePronto() {
+    [4000, 12000].forEach(ms => setTimeout(() => cargarCuadreCaja(true), ms));
+}
+
+// Descarga el cuadre como imagen PNG (nítida para texto y tablas; JPG
+// difumina las letras). Se genera siempre a ancho completo y fondo sólido,
+// aunque se descargue desde un celular.
+async function descargarCuadreCaja() {
+    const tarjeta = document.querySelector('#panel-cuadre-caja .panel-caja');
+    const boton = document.getElementById('btn-descargar-cuadre');
+    if (!tarjeta || typeof html2canvas === 'undefined') {
+        mostrarModal({ tipo: 'error', titulo: 'No se pudo descargar', mensaje: 'El cuadre aún no está listo o falta la librería de imágenes. Recarga la página e inténtalo otra vez.' });
+        return;
+    }
+
+    const oscuro = (document.documentElement.getAttribute("data-theme") || "dark") === "dark";
+    const nombreTaller = localStorage.getItem("nombre_taller_actual") || "";
+    const fecha = tarjeta.dataset.fecha || new Date().toISOString().slice(0, 10);
+
+    try {
+        if (boton) boton.disabled = true;
+        const canvas = await html2canvas(tarjeta, {
+            scale: 2,                                     // doble resolución: se lee bien al hacer zoom
+            backgroundColor: oscuro ? "#15112E" : "#FFFFFF",
+            // Cambios SOLO en la copia que se fotografía (la pantalla no cambia):
+            onclone: (doc) => {
+                const copia = doc.querySelector('#panel-cuadre-caja .panel-caja');
+                copia.style.width = '900px';              // ancho fijo, también desde móvil
+                copia.style.backdropFilter = 'none';
+                copia.style.background = oscuro ? "#15112E" : "#FFFFFF";
+                copia.querySelectorAll('.tabla-scroll').forEach(t => t.style.overflow = 'visible');
+                if (nombreTaller) {
+                    const titulo = copia.querySelector('.titulo-cuadre');
+                    if (titulo) titulo.textContent = `${nombreTaller} · ${titulo.textContent}`;
+                }
+                // Pie con la hora exacta de generación (evita confundir cortes del mismo día)
+                const pie = doc.createElement('p');
+                pie.textContent = `Generado el ${new Date().toLocaleString('es-EC')}`;
+                pie.style.cssText = 'margin:4px 0 0; font-size:12px; text-align:right; opacity:0.7;';
+                copia.appendChild(pie);
+            }
+        });
+
+        canvas.toBlob((blob) => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Cuadre_Caja_${fecha}.png`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }, 'image/png');
+    } catch (error) {
+        mostrarModal({ tipo: 'error', titulo: 'No se pudo descargar', mensaje: 'Ocurrió un error al generar la imagen del cuadre de caja.' });
+    } finally {
+        if (boton) boton.disabled = false;
     }
 }
 
@@ -537,8 +633,15 @@ function renderizarCuadreDeCaja(data) {
         : `<tr><td colspan="4" class="vacio">Sin datos de técnicos hoy.</td></tr>`;
 
     panel.innerHTML = `
-        <div class="panel-caja">
-            <h3>Cuadre de Caja — ${data.fecha}</h3>
+        <div class="panel-caja" data-fecha="${data.fecha}">
+            <div class="cabecera-caja">
+                <div class="titulo-caja-wrap">
+                    <h3 class="titulo-cuadre">Cuadre de Caja — ${data.fecha}</h3>
+                    <span id="estado-cuadre" class="estado-cuadre" data-html2canvas-ignore="true">Actualizado ${new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <button id="btn-descargar-cuadre" class="btn-descargar-cuadre" onclick="descargarCuadreCaja()" data-html2canvas-ignore="true"
+                        title="Descargar cuadre de caja (imagen PNG)" aria-label="Descargar cuadre de caja"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg></button>
+            </div>
 
             <div class="tarjetas-resumen-caja">
                 <div class="tarjeta-resumen-caja">
@@ -1080,6 +1183,9 @@ document.addEventListener("visibilitychange", function() {
             if (typeof cargarRankingAnual === "function") {
                 cargarRankingAnual();
             }
+
+            // 3. Refrescar el cuadre de caja
+            cargarCuadreCaja(true);
         }
     }
 });
@@ -1091,6 +1197,7 @@ window.addEventListener("pageshow", function(event) {
         if (token) {
             cargarVehiculosPendientes();
             if (typeof cargarRankingAnual === "function") cargarRankingAnual();
+            cargarCuadreCaja(true);
         }
     }
 });

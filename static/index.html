@@ -149,9 +149,6 @@
                     
                     <!-- BOTONES DE ACCIÓN RÁPIDA -->
                     <div class="grupo-botones-reportes">
-                        <button class="btn-excel" onclick="verCuadreDeCaja()">
-                            Ver Cuadre de Caja del Día
-                        </button>
                         <button class="btn-excel" onclick="descargarReporteDiario()">
                             Descargar Reporte Diario
                         </button>
@@ -169,7 +166,7 @@
                         <input type="file" id="input-excel-inventario" accept=".xlsx,.xls" style="display: none;" onchange="subirInventarioExcel(event)">
                     </div>
 
-                    <!-- CONTENEDOR DINÁMICO DEL CUADRE DIARIO -->
+                    <!-- CUADRE DE CAJA DEL DÍA: se carga solo al iniciar sesión y se refresca automáticamente -->
                     <div id="panel-cuadre-caja"></div>
 
                     <!-- RANKING ANUAL DE TÉCNICOS -->
