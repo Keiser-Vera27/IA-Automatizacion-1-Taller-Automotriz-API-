@@ -1401,29 +1401,91 @@ def mi_taller(request: Request):
 # CUADRE DE CAJA DIARIO
 # ==============================================================================
 
+# --- Normalización de métodos de pago y bancos (texto libre escrito por la IA) ---
+# La IA guarda lo que el empleado escribió ("efectivo", "Transf.", "tarjeta de
+# crédito", "deuna"...). Para cuadrar caja hay que agruparlo en categorías fijas.
+_CLAVES_METODO_PAGO = [
+    ("Transferencia", ("transf", "deposito", "depósito", "deuna", "payphone", "banco")),
+    ("Tarjeta",       ("tarjeta", "credito", "crédito", "debito", "débito", "datafast", "visa", "mastercard")),
+    ("Efectivo",      ("efectivo", "cash", "contado", "billete")),
+]
+_BANCOS_CONOCIDOS = {
+    "pichincha": "Pichincha", "guayaquil": "Guayaquil", "produbanco": "Produbanco",
+    "pacifico": "Pacífico", "pacífico": "Pacífico", "bolivariano": "Bolivariano",
+    "internacional": "Internacional", "austro": "Austro", "loja": "Loja", "machala": "Machala",
+    "jep": "JEP", "jardin azuayo": "Jardín Azuayo", "jardín azuayo": "Jardín Azuayo",
+    "bgr": "BGR", "general ruminahui": "BGR", "rumiñahui": "BGR", "solidario": "Solidario",
+    "procredit": "ProCredit", "citibank": "Citibank", "deuna": "Pichincha",  # DeUna deposita en cuentas Pichincha: así cuadra con el estado de cuenta
+}
+
+def normalizar_metodo_pago(metodo: str | None, banco: str | None) -> tuple[str, str]:
+    """Devuelve (categoría, banco). Categoría: Efectivo | Transferencia | Tarjeta |
+    Otro | Sin especificar. Si hay banco pero no método, se asume Transferencia."""
+    texto = str(metodo or "").strip().lower()
+    banco_txt = str(banco or "").strip()
+    categoria = "Sin especificar"
+    if texto:
+        categoria = "Otro"
+        for nombre, claves in _CLAVES_METODO_PAGO:
+            if any(c in texto for c in claves):
+                categoria = nombre
+                break
+    elif banco_txt:
+        categoria = "Transferencia"
+
+    banco_norm = ""
+    if categoria in ("Transferencia", "Tarjeta"):
+        base = (banco_txt or texto).lower()
+        for clave, nombre in _BANCOS_CONOCIDOS.items():
+            if clave in base:
+                banco_norm = nombre
+                break
+        if not banco_norm and banco_txt:
+            # Banco no reconocido: se muestra tal cual, sin la palabra "banco"
+            banco_norm = re.sub(r"(?i)^banco\s+(del?\s+)?", "", banco_txt).strip().title()
+    return categoria, banco_norm
+
+def hora_ecuador(fecha_utc) -> str:
+    """'2026-09-23 19:32:05' (UTC) -> '14:32' (hora de Ecuador)."""
+    if not fecha_utc:
+        return ""
+    try:
+        texto = str(fecha_utc).replace("T", " ").replace("Z", "")[:19]
+        dt = datetime.strptime(texto, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        return dt.astimezone(ZONA_ECUADOR).strftime("%H:%M")
+    except ValueError:
+        return ""
+
+
 @app.get("/reporte-dia")
 def reporte_del_dia(request: Request, fecha: str | None = None):
     """
-    Cuadre de caja del día: órdenes cerradas, egresos, ingresos vs egresos
-    y rendimiento por técnico. 'fecha' es opcional en formato YYYY-MM-DD
-    (día calendario de Ecuador); si se omite, usa el día actual en Ecuador.
+    Cuadre de caja del día (día calendario de Ecuador; 'fecha' opcional YYYY-MM-DD).
+    Incluye todo lo necesario para cerrar caja:
+      - Totales: ingresos, egresos, neto, mano de obra vs repuestos.
+      - Ingresos por método de pago (efectivo / transferencia por banco / tarjeta).
+      - Efectivo esperado en caja (efectivo cobrado - egresos).
+      - Detalle de órdenes cerradas (hora, placa, cliente, trabajo, técnico, pago).
+      - Egresos con detalle y total por responsable.
+      - Rendimiento y comisiones por técnico.
+      - Movimiento de vehículos del día y alertas de datos incompletos.
     """
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
     inicio_utc, fin_utc = limites_dia_ecuador(fecha)
 
     ordenes_cerradas = (
-        # Cliente admin: el JOIN a reparacion_detalles requiere política RLS de
-        # SELECT en esa tabla, y no la tiene. Sigue aislado por .eq("taller_id",...).
+        # Cliente admin: el JOIN a reparacion_detalles no tiene política RLS de
+        # SELECT. Sigue aislado por .eq("taller_id", ...).
         supabase.table("reparaciones")
-        # 1. Añadimos reparacion_detalles para poder restar los repuestos después
-        .select("vehiculo, cliente, modelo, oficial, trabajo_realizado, cobro, metodo_pago, fecha_hora, fecha_salida, reparacion_detalles(cantidad, precio_unitario)")
+        .select("vehiculo, cliente, modelo, oficial, trabajo_realizado, cobro, metodo_pago, banco, "
+                "fecha_hora, fecha_salida, reparacion_detalles(cantidad, precio_unitario)")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
         .gte("fecha_salida", inicio_utc)
         .lte("fecha_salida", fin_utc)
-        .order("fecha_salida", desc=True)
+        .order("fecha_salida")   # cronológico: de la mañana a la noche
         .execute()
-    ).data
+    ).data or []
 
     egresos = (
         cliente_seguro.table("gastos")
@@ -1431,57 +1493,161 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
         .eq("taller_id", taller_id)
         .gte("fecha_hora", inicio_utc)
         .lte("fecha_hora", fin_utc)
-        .order("fecha_hora", desc=True)
+        .order("fecha_hora")
         .execute()
-    ).data
+    ).data or []
 
-    # Descargar los porcentajes de comisión de la base de datos
-    tecnicos_bd = supabase.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data  # cliente admin: la tabla tecnicos no tiene politica RLS de SELECT
+    # Movimiento de vehículos: cuántos ingresaron hoy y cuántos siguen en el taller
+    ingresados_hoy = (
+        supabase.table("reparaciones").select("id", count="exact")
+        .eq("taller_id", taller_id).gte("fecha_hora", inicio_utc).lte("fecha_hora", fin_utc)
+        .limit(1).execute()
+    ).count or 0
+    pendientes_taller = (
+        supabase.table("reparaciones").select("id", count="exact")
+        .eq("taller_id", taller_id).eq("estado", "Pendiente")
+        .limit(1).execute()
+    ).count or 0
+
+    # Porcentajes de comisión (cliente admin: tecnicos no tiene política RLS de SELECT)
+    tecnicos_bd = supabase.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data
     mapa_comisiones = {normalizar_nombre_tecnico(t["nombre"]): float(t.get("porcentaje_comision") or 0) for t in tecnicos_bd}
 
-    total_ingresos = sum(o.get("cobro", 0) or 0 for o in ordenes_cerradas)
-    total_egresos = sum(g.get("monto", 0) or 0 for g in egresos)
-
+    # ---------------- Ingresos: por orden, por método de pago y por técnico ----------------
+    total_ingresos = total_repuestos = 0.0
+    por_metodo: dict[str, dict] = {}
     rendimiento: dict[str, dict] = {}
+    alertas: list[str] = []
+    detalle_ordenes = []
+
     for o in ordenes_cerradas:
+        cobro = float(o.get("cobro") or 0)
+        repuestos = sum(float(r.get("cantidad") or 0) * float(r.get("precio_unitario") or 0)
+                        for r in (o.get("reparacion_detalles") or []))
+        mano_de_obra = max(0.0, cobro - repuestos)
+        categoria, banco = normalizar_metodo_pago(o.get("metodo_pago"), o.get("banco"))
         tecnico = o.get("oficial") or "Sin asignar"
-        registro = rendimiento.setdefault(tecnico, {"trabajos": 0, "total_generado": 0.0, "comision_a_pagar": 0.0})
-        
-        cobro = o.get("cobro", 0) or 0
-        registro["trabajos"] += 1
-        registro["total_generado"] += cobro
-        
-        # 2. Calcular el total de repuestos usados en esta orden para excluirlos de la comisión
-        detalles_repuestos = o.get("reparacion_detalles", [])
-        total_repuestos = sum((r.get("cantidad", 0) * r.get("precio_unitario", 0)) for r in detalles_repuestos)
-        
-        # 3. La mano de obra real es el cobro total menos los repuestos
-        mano_de_obra = max(0.0, cobro - total_repuestos)
-        
-        # 4. Calcular la comisión exclusivamente sobre la mano de obra
-        porcentaje = mapa_comisiones.get(normalizar_nombre_tecnico(tecnico), 0)
-        registro["comision_a_pagar"] += mano_de_obra * (porcentaje / 100.0)
+        placa = o.get("vehiculo") or "-"
+
+        total_ingresos += cobro
+        total_repuestos += min(repuestos, cobro)
+
+        # Agrupación por método de pago (y por banco dentro de transferencias/tarjeta)
+        grupo = por_metodo.setdefault(categoria, {"metodo": categoria, "ordenes": 0, "total": 0.0, "bancos": {}})
+        grupo["ordenes"] += 1
+        grupo["total"] += cobro
+        # Desglose por banco: siempre en transferencias; en tarjeta solo si se indicó
+        if categoria == "Transferencia" or (categoria == "Tarjeta" and banco):
+            b = grupo["bancos"].setdefault(banco or "Banco no indicado", {"banco": banco or "Banco no indicado", "ordenes": 0, "total": 0.0})
+            b["ordenes"] += 1
+            b["total"] += cobro
+
+        # Comisión solo sobre mano de obra (se excluyen repuestos)
+        reg = rendimiento.setdefault(tecnico, {"trabajos": 0, "total_generado": 0.0, "mano_de_obra": 0.0, "comision_a_pagar": 0.0})
+        reg["trabajos"] += 1
+        reg["total_generado"] += cobro
+        reg["mano_de_obra"] += mano_de_obra
+        reg["comision_a_pagar"] += mano_de_obra * (mapa_comisiones.get(normalizar_nombre_tecnico(tecnico), 0) / 100.0)
+
+        # Alertas: datos que impiden un cuadre correcto
+        if categoria == "Sin especificar":
+            alertas.append(f"{placa}: cobro de ${cobro:.2f} sin método de pago.")
+        elif categoria == "Otro":
+            alertas.append(f"{placa}: método de pago no reconocido ('{o.get('metodo_pago')}').")
+        elif categoria == "Transferencia" and not banco:
+            alertas.append(f"{placa}: transferencia de ${cobro:.2f} sin banco indicado.")
+        if cobro <= 0:
+            alertas.append(f"{placa}: orden cerrada con cobro $0.00.")
+        if tecnico == "Sin asignar":
+            alertas.append(f"{placa}: orden sin técnico asignado (no genera comisión).")
+
+        detalle_ordenes.append({
+            "hora": hora_ecuador(o.get("fecha_salida")),
+            "vehiculo": placa,
+            "modelo": o.get("modelo") or "",
+            "cliente": o.get("cliente") or "-",
+            "trabajo": o.get("trabajo_realizado") or "",
+            "oficial": tecnico,
+            "metodo_pago": categoria,
+            "banco": banco,
+            "repuestos": round(min(repuestos, cobro), 2),
+            "cobro": round(cobro, 2),
+        })
+
+    orden_metodos = ["Efectivo", "Transferencia", "Tarjeta", "Otro", "Sin especificar"]
+    ingresos_por_metodo = []
+    for nombre in orden_metodos:
+        if nombre in por_metodo:
+            g = por_metodo[nombre]
+            ingresos_por_metodo.append({
+                "metodo": nombre,
+                "ordenes": g["ordenes"],
+                "total": round(g["total"], 2),
+                "porcentaje": round(100 * g["total"] / total_ingresos, 1) if total_ingresos else 0.0,
+                "bancos": sorted(({**b, "total": round(b["total"], 2)} for b in g["bancos"].values()),
+                                 key=lambda x: x["total"], reverse=True),
+            })
+
+    # ---------------- Egresos: detalle y total por responsable ----------------
+    total_egresos = 0.0
+    por_responsable: dict[str, dict] = {}
+    detalle_egresos = []
+    for g in egresos:
+        monto = float(g.get("monto") or 0)
+        responsable = (g.get("responsable") or "").strip() or "Sin responsable"
+        total_egresos += monto
+        r = por_responsable.setdefault(responsable, {"responsable": responsable, "cantidad": 0, "total": 0.0})
+        r["cantidad"] += 1
+        r["total"] += monto
+        vehiculo = g.get("vehiculo") or ""
+        detalle_egresos.append({
+            "hora": hora_ecuador(g.get("fecha_hora")),
+            "motivo": g.get("motivo") or "-",
+            "vehiculo": "" if vehiculo.upper() in ("N/A", "NA", "") else vehiculo,
+            "responsable": responsable,
+            "monto": round(monto, 2),
+        })
+        if responsable == "Sin responsable":
+            alertas.append(f"Egreso '{g.get('motivo') or '-'}' de ${monto:.2f} sin responsable.")
+
+    egresos_por_responsable = sorted(({**r, "total": round(r["total"], 2)} for r in por_responsable.values()),
+                                     key=lambda x: x["total"], reverse=True)
+
+    # Efectivo esperado en caja: los egresos del taller se pagan de caja (efectivo)
+    efectivo_cobrado = por_metodo.get("Efectivo", {}).get("total", 0.0)
+    efectivo_en_caja = efectivo_cobrado - total_egresos
 
     ranking_tecnicos = [
         {
-            "tecnico": nombre, 
-            "trabajos": datos["trabajos"],
-            "total_generado": round(datos["total_generado"], 2),
-            "comision_a_pagar": round(datos["comision_a_pagar"], 2)
+            "tecnico": nombre,
+            "trabajos": d["trabajos"],
+            "total_generado": round(d["total_generado"], 2),
+            "mano_de_obra": round(d["mano_de_obra"], 2),
+            "comision_a_pagar": round(d["comision_a_pagar"], 2),
         }
-        for nombre, datos in sorted(
-            rendimiento.items(), key=lambda item: item[1]["total_generado"], reverse=True
-        )
+        for nombre, d in sorted(rendimiento.items(), key=lambda item: item[1]["total_generado"], reverse=True)
     ]
 
     return {
         "fecha": fecha or datetime.now(ZONA_ECUADOR).strftime("%Y-%m-%d"),
-        "ordenes_cerradas": ordenes_cerradas,
-        "egresos": egresos,
+        # Totales
         "total_ingresos": round(total_ingresos, 2),
         "total_egresos": round(total_egresos, 2),
         "neto": round(total_ingresos - total_egresos, 2),
+        "total_mano_obra": round(total_ingresos - total_repuestos, 2),
+        "total_repuestos": round(total_repuestos, 2),
+        "efectivo_cobrado": round(efectivo_cobrado, 2),
+        "efectivo_en_caja": round(efectivo_en_caja, 2),
+        "total_comisiones": round(sum(t["comision_a_pagar"] for t in ranking_tecnicos), 2),
+        # Desgloses
+        "ingresos_por_metodo": ingresos_por_metodo,
+        "ordenes_cerradas": detalle_ordenes,
+        "egresos": detalle_egresos,
+        "egresos_por_responsable": egresos_por_responsable,
         "rendimiento_tecnicos": ranking_tecnicos,
+        "vehiculos": {"ingresados_hoy": ingresados_hoy, "entregados_hoy": len(ordenes_cerradas),
+                      "pendientes_en_taller": pendientes_taller},
+        "alertas": alertas,
     }
 
 # ==============================================================================
@@ -1625,52 +1791,6 @@ def reporte_liquidacion(request: Request, fecha_inicio: str, fecha_fin: str):
 # ==============================================================================
 # EXPORTACIONES E INVENTARIOS
 # ==============================================================================
-
-@app.get("/exportar-excel")
-def exportar_excel(request: Request):
-    try:
-        cliente_seguro, taller_id = obtener_cliente_seguro(request)
-
-        reps = cliente_seguro.table("reparaciones").select("*").eq("taller_id", taller_id).execute().data
-        gasts = cliente_seguro.table("gastos").select("*").eq("taller_id", taller_id).execute().data
-        inv = cliente_seguro.table("inventario").select("*").eq("taller_id", taller_id).execute().data
-
-        df_reparaciones = pd.DataFrame(reps)
-        df_gastos = pd.DataFrame(gasts)
-        df_inventario = pd.DataFrame(inv)
-
-        hoy_archivo = datetime.now(ZONA_ECUADOR).strftime("%d-%m-%Y")
-        inicio_utc, fin_utc = limites_dia_ecuador()
-
-        if not df_reparaciones.empty and 'fecha_hora' in df_reparaciones.columns:
-            df_reparaciones = df_reparaciones[
-                (df_reparaciones['fecha_hora'] >= inicio_utc) & (df_reparaciones['fecha_hora'] <= fin_utc)
-            ]
-
-        if not df_gastos.empty and 'fecha_hora' in df_gastos.columns:
-            df_gastos = df_gastos[
-                (df_gastos['fecha_hora'] >= inicio_utc) & (df_gastos['fecha_hora'] <= fin_utc)
-            ]
-
-        carpeta_respaldos = "respaldos_excel"
-        os.makedirs(carpeta_respaldos, exist_ok=True)
-
-        nombre_archivo = f"Reporte Cloud AS {hoy_archivo}.xlsx"
-        ruta_completa = os.path.join(carpeta_respaldos, nombre_archivo)
-
-        with pd.ExcelWriter(ruta_completa, engine='openpyxl') as writer:
-            df_reparaciones.to_excel(writer, sheet_name='Reparaciones', index=False)
-            df_gastos.to_excel(writer, sheet_name='Gastos', index=False)
-            df_inventario.to_excel(writer, sheet_name='Inventario', index=False)
-
-        return FileResponse(
-            ruta_completa,
-            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            filename=nombre_archivo
-        )
-
-    except Exception as error_principal:
-        return {"status": "error_critico", "motivo_exacto": str(error_principal)}
 
 @app.get("/vehiculos-pendientes")
 def listar_pendientes(request: Request):

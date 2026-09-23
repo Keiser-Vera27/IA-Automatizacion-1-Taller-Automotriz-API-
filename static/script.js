@@ -448,35 +448,6 @@ async function subirInventarioExcel(event) {
     }
 }
 
-// Descarga reporte diario
-async function descargarReporteDiario() {
-    const token = localStorage.getItem("taller_token");
-    try {
-        mostrarNotificacion("Generando reporte diario...", "info");
-
-        const response = await fetch('/exportar-excel', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (response.ok) {
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Reporte Cloud AS ${new Date().toLocaleDateString()}.xlsx`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            mostrarNotificacion("Reporte diario descargado correctamente.", "success");
-        } else {
-            const errData = await response.json().catch(() => ({}));
-            mostrarNotificacion(errData.detail || "Error al generar el reporte diario.", "warning");
-        }
-    } catch (error) {
-        mostrarNotificacion("Error de conexion al descargar el reporte.", "error");
-    }
-}
-
 // ==============================================================================
 // CUADRE DE CAJA DEL DÍA: siempre visible y actualizado automáticamente
 // ==============================================================================
@@ -564,7 +535,7 @@ async function descargarCuadreCaja() {
             // Cambios SOLO en la copia que se fotografía (la pantalla no cambia):
             onclone: (doc) => {
                 const copia = doc.querySelector('#panel-cuadre-caja .panel-caja');
-                copia.style.width = '900px';              // ancho fijo, también desde móvil
+                copia.style.width = '1000px';             // ancho fijo, también desde móvil
                 copia.style.backdropFilter = 'none';
                 copia.style.background = oscuro ? "#15112E" : "#FFFFFF";
                 copia.querySelectorAll('.tabla-scroll').forEach(t => t.style.overflow = 'visible');
@@ -597,114 +568,192 @@ async function descargarCuadreCaja() {
     }
 }
 
+// Formatea dinero: 1234.5 -> "$1,234.50"
+function dinero(valor) {
+    return '$' + Number(valor || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Colores fijos por método de pago (la barra y los puntos de la tabla coinciden)
+const COLORES_METODO = {
+    'Efectivo': '#16A34A', 'Transferencia': '#7030EF', 'Tarjeta': '#2563EB',
+    'Otro': '#D97706', 'Sin especificar': '#9CA3AF'
+};
+
 function renderizarCuadreDeCaja(data) {
     const panel = document.getElementById('panel-cuadre-caja');
     if (!panel) return;
+    const e = escaparHTML;  // todo texto que viene de la BD se escapa
 
     const claseNeto = data.neto > 0 ? 'monto-positivo' : (data.neto < 0 ? 'monto-negativo' : 'monto-neutro');
+    const claseCaja = data.efectivo_en_caja < 0 ? 'monto-negativo' : 'monto-neutro';
+    const v = data.vehiculos || {};
 
-    let filasOrdenes = data.ordenes_cerradas.length > 0
-        ? data.ordenes_cerradas.map(o => `
-            <tr>
-                <td>${o.vehiculo || '-'}</td>
-                <td>${o.cliente || '-'}</td>
-                <td>${o.oficial || 'Sin asignar'}</td>
-                <td class="num">$${(o.cobro || 0).toFixed(2)}</td>
-            </tr>`).join('')
-        : `<tr><td colspan="4" class="vacio">Sin órdenes cerradas hoy.</td></tr>`;
+    // ---------- Alertas: datos incompletos que impiden cuadrar bien ----------
+    const alertas = data.alertas || [];
+    const bloqueAlertas = alertas.length ? `
+        <div class="alertas-caja">
+            <b>Revisar antes de cerrar caja (${alertas.length})</b>
+            <ul>${alertas.map(a => `<li>${e(a)}</li>`).join('')}</ul>
+        </div>` : '';
 
-    let filasEgresos = data.egresos.length > 0
-        ? data.egresos.map(g => `
-            <tr>
-                <td>${g.motivo || '-'}</td>
-                <td>${g.responsable || '-'}</td>
-                <td class="num">$${(g.monto || 0).toFixed(2)}</td>
-            </tr>`).join('')
-        : `<tr><td colspan="3" class="vacio">Sin egresos registrados hoy.</td></tr>`;
+    // ---------- Ingresos por método de pago ----------
+    const metodos = data.ingresos_por_metodo || [];
+    const barra = metodos.length ? `
+        <div class="barra-metodos">${metodos.map(m =>
+            `<span style="width:${m.porcentaje}%; background:${COLORES_METODO[m.metodo]}" title="${e(m.metodo)} ${m.porcentaje}%"></span>`).join('')}
+        </div>` : '';
+    const filasMetodos = metodos.length ? metodos.map(m => `
+            <tr class="fila-metodo">
+                <td><span class="punto-metodo" style="background:${COLORES_METODO[m.metodo]}"></span>${e(m.metodo)}</td>
+                <td class="centro">${m.ordenes}</td>
+                <td class="num">${dinero(m.total)}</td>
+                <td class="num">${m.porcentaje}%</td>
+            </tr>
+            ${(m.bancos || []).map(b => `
+            <tr class="fila-banco">
+                <td>${e(b.banco)}</td>
+                <td class="centro">${b.ordenes}</td>
+                <td class="num">${dinero(b.total)}</td>
+                <td></td>
+            </tr>`).join('')}`).join('')
+        : `<tr><td colspan="4" class="vacio">Sin cobros registrados hoy.</td></tr>`;
 
-   let filasTecnicos = data.rendimiento_tecnicos.length > 0
-        ? data.rendimiento_tecnicos.map(t => `
+    // ---------- Órdenes cerradas ----------
+    const ordenes = data.ordenes_cerradas || [];
+    const filasOrdenes = ordenes.length ? ordenes.map(o => `
             <tr>
-                <td>${t.tecnico}</td>
+                <td>${e(o.hora || '-')}</td>
+                <td><b>${e(o.vehiculo)}</b>${o.modelo ? `<div class="sub">${e(o.modelo)}</div>` : ''}</td>
+                <td>${e(o.cliente)}</td>
+                <td class="celda-trabajo" title="${e(o.trabajo)}">${e(o.trabajo || '-')}</td>
+                <td>${e(o.oficial)}</td>
+                <td>${e(o.metodo_pago)}${o.banco ? `<div class="sub">${e(o.banco)}</div>` : ''}</td>
+                <td class="num">${dinero(o.cobro)}${o.repuestos > 0 ? `<div class="sub">rep. ${dinero(o.repuestos)}</div>` : ''}</td>
+            </tr>`).join('') + `
+            <tr class="fila-total"><td colspan="6">Total cobrado</td><td class="num">${dinero(data.total_ingresos)}</td></tr>`
+        : `<tr><td colspan="7" class="vacio">Sin órdenes cerradas hoy.</td></tr>`;
+
+    // ---------- Egresos ----------
+    const egresos = data.egresos || [];
+    const filasEgresos = egresos.length ? egresos.map(g => `
+            <tr>
+                <td>${e(g.hora || '-')}</td>
+                <td>${e(g.motivo)}</td>
+                <td>${e(g.vehiculo || '-')}</td>
+                <td>${e(g.responsable)}</td>
+                <td class="num">${dinero(g.monto)}</td>
+            </tr>`).join('') + `
+            <tr class="fila-total"><td colspan="4">Total egresos</td><td class="num">${dinero(data.total_egresos)}</td></tr>`
+        : `<tr><td colspan="5" class="vacio">Sin egresos registrados hoy.</td></tr>`;
+    const porResponsable = (data.egresos_por_responsable || []);
+    const bloqueResponsables = porResponsable.length > 1 ? `
+        <div class="chips-responsables">${porResponsable.map(r =>
+            `<span class="chip">${e(r.responsable)}: <b>${dinero(r.total)}</b> (${r.cantidad})</span>`).join('')}
+        </div>` : '';
+
+    // ---------- Técnicos ----------
+    const tecnicos = data.rendimiento_tecnicos || [];
+    const filasTecnicos = tecnicos.length ? tecnicos.map(t => `
+            <tr>
+                <td>${e(t.tecnico)}</td>
                 <td class="centro">${t.trabajos}</td>
-                <td class="num">$${t.total_generado.toFixed(2)}</td>
-                <td class="num" style="color: #4CAF50; font-weight: bold;">$${(t.comision_a_pagar || 0).toFixed(2)}</td>
-            </tr>`).join('')
-        : `<tr><td colspan="4" class="vacio">Sin datos de técnicos hoy.</td></tr>`;
+                <td class="num">${dinero(t.total_generado)}</td>
+                <td class="num">${dinero(t.mano_de_obra)}</td>
+                <td class="num comision">${dinero(t.comision_a_pagar)}</td>
+            </tr>`).join('') + `
+            <tr class="fila-total"><td colspan="4">Total comisiones a pagar</td><td class="num comision">${dinero(data.total_comisiones)}</td></tr>`
+        : `<tr><td colspan="5" class="vacio">Sin datos de técnicos hoy.</td></tr>`;
 
     panel.innerHTML = `
-        <div class="panel-caja" data-fecha="${data.fecha}">
+        <div class="panel-caja" data-fecha="${e(data.fecha)}">
             <div class="cabecera-caja">
                 <div class="titulo-caja-wrap">
-                    <h3 class="titulo-cuadre">Cuadre de Caja — ${data.fecha}</h3>
+                    <h3 class="titulo-cuadre">Cuadre de Caja — ${e(data.fecha)}</h3>
                     <span id="estado-cuadre" class="estado-cuadre" data-html2canvas-ignore="true">Actualizado ${new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 <button id="btn-descargar-cuadre" class="btn-descargar-cuadre" onclick="descargarCuadreCaja()" data-html2canvas-ignore="true"
                         title="Descargar cuadre de caja (imagen PNG)" aria-label="Descargar cuadre de caja"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg></button>
             </div>
 
+            <!-- Resumen principal -->
             <div class="tarjetas-resumen-caja">
                 <div class="tarjeta-resumen-caja">
                     <div class="etiqueta">Ingresos</div>
-                    <div class="monto monto-positivo">$${data.total_ingresos.toFixed(2)}</div>
+                    <div class="monto monto-positivo">${dinero(data.total_ingresos)}</div>
                 </div>
                 <div class="tarjeta-resumen-caja">
                     <div class="etiqueta">Egresos</div>
-                    <div class="monto monto-negativo">$${data.total_egresos.toFixed(2)}</div>
+                    <div class="monto monto-negativo">${dinero(data.total_egresos)}</div>
                 </div>
                 <div class="tarjeta-resumen-caja">
-                    <div class="etiqueta">Neto</div>
-                    <div class="monto ${claseNeto}">$${data.neto.toFixed(2)}</div>
+                    <div class="etiqueta">Neto del día</div>
+                    <div class="monto ${claseNeto}">${dinero(data.neto)}</div>
+                </div>
+                <div class="tarjeta-resumen-caja tarjeta-efectivo">
+                    <div class="etiqueta">Efectivo en caja</div>
+                    <div class="monto ${claseCaja}">${dinero(data.efectivo_en_caja)}</div>
+                </div>
+            </div>
+            <div class="linea-detalle">
+                Mano de obra <b>${dinero(data.total_mano_obra)}</b> · Repuestos <b>${dinero(data.total_repuestos)}</b> · Comisiones <b>${dinero(data.total_comisiones)}</b>
+                <span class="separador">|</span>
+                Vehículos: <b>${v.ingresados_hoy || 0}</b> ingresaron · <b>${v.entregados_hoy || 0}</b> entregados · <b>${v.pendientes_en_taller || 0}</b> en taller
+            </div>
+
+            ${bloqueAlertas}
+
+            <!-- Métodos de pago + cuadre de efectivo -->
+            <div class="grid-caja">
+                <div>
+                    <h4>Ingresos por método de pago</h4>
+                    ${barra}
+                    <table class="tabla-caja tabla-compacta">
+                        <thead><tr><th>Método</th><th style="text-align:center;">Órdenes</th><th style="text-align:right;">Total</th><th style="text-align:right;">%</th></tr></thead>
+                        <tbody>${filasMetodos}</tbody>
+                    </table>
+                </div>
+                <div class="cuadre-efectivo">
+                    <h4>Cuadre de efectivo</h4>
+                    <div class="linea-cuadre"><span>Efectivo cobrado</span><span class="monto-positivo">+ ${dinero(data.efectivo_cobrado)}</span></div>
+                    <div class="linea-cuadre"><span>Egresos pagados de caja</span><span class="monto-negativo">− ${dinero(data.total_egresos)}</span></div>
+                    <div class="linea-cuadre total"><span>Debe haber en caja</span><span class="${claseCaja}">${dinero(data.efectivo_en_caja)}</span></div>
+                    <p class="nota-cuadre">Transferencias y tarjeta van directo al banco; no se cuentan en caja. Se asume que los egresos se pagan en efectivo.</p>
                 </div>
             </div>
 
-            <h4>Órdenes cerradas hoy (${data.ordenes_cerradas.length})</h4>
+            <h4>Órdenes cerradas hoy (${ordenes.length})</h4>
             <div class="tabla-scroll">
                 <table class="tabla-caja">
-                    <thead>
-                        <tr>
-                            <th>Placa</th>
-                            <th>Cliente</th>
-                            <th>Técnico</th>
-                            <th style="text-align: right;">Cobro</th>
-                        </tr>
-                    </thead>
+                    <thead><tr>
+                        <th>Hora</th><th>Placa</th><th>Cliente</th><th>Trabajo</th><th>Técnico</th><th>Pago</th><th style="text-align:right;">Cobro</th>
+                    </tr></thead>
                     <tbody>${filasOrdenes}</tbody>
                 </table>
             </div>
 
-            <h4>Egresos de hoy (${data.egresos.length})</h4>
+            <h4>Egresos de hoy (${egresos.length})</h4>
+            ${bloqueResponsables}
             <div class="tabla-scroll">
                 <table class="tabla-caja">
-                    <thead>
-                        <tr>
-                            <th>Motivo</th>
-                            <th>Responsable</th>
-                            <th style="text-align: right;">Monto</th>
-                        </tr>
-                    </thead>
+                    <thead><tr>
+                        <th>Hora</th><th>Motivo</th><th>Placa</th><th>Responsable</th><th style="text-align:right;">Monto</th>
+                    </tr></thead>
                     <tbody>${filasEgresos}</tbody>
                 </table>
             </div>
 
-            <h4>Rendimiento por técnico</h4>
+            <h4>Rendimiento y comisiones por técnico</h4>
             <div class="tabla-scroll">
                 <table class="tabla-caja">
-                    <thead>
-                        <tr>
-                            <th>Técnico</th>
-                            <th style="text-align: center;">Trabajos</th>
-                            <th style="text-align: right;">Generado</th>
-                            <th style="text-align: right;">Comisión</th>
-                        </tr>
-                    </thead>
+                    <thead><tr>
+                        <th>Técnico</th><th style="text-align:center;">Trabajos</th><th style="text-align:right;">Generado</th><th style="text-align:right;">Mano de obra</th><th style="text-align:right;">Comisión</th>
+                    </tr></thead>
                     <tbody>${filasTecnicos}</tbody>
                 </table>
             </div>
         </div>
     `;
 }
-
 // ==============================================================================
 // GESTIÓN DEL PANEL VISUAL DE VEHÍCULOS
 // ==============================================================================
