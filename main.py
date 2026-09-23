@@ -143,6 +143,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Evita que el navegador siga usando versiones viejas de script.js/style.css
+# después de un deploy. "no-cache" NO desactiva la caché: obliga a preguntar
+# al servidor si el archivo cambió (ETag); si no cambió responde 304 y
+# reutiliza la copia local, así que no hay costo de rendimiento.
+@app.middleware("http")
+async def no_cachear_frontend(request: Request, call_next):
+    respuesta = await call_next(request)
+    if request.url.path.startswith("/web"):
+        respuesta.headers["Cache-Control"] = "no-cache"
+    return respuesta
+
 app.mount("/web", StaticFiles(directory="static", html=True), name="static")
 
 # ==============================================================================
@@ -1945,4 +1956,4 @@ def exportar_inventario(request: Request):
 if __name__ == "__main__":
     import uvicorn
     puerto = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=puerto, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=puerto, reload=False)
