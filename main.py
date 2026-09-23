@@ -2304,6 +2304,14 @@ ESTADO_CERRADO_SIN_COBRO = "Cerrado sin cobro"
 class CierreSinCobro(BaseModel):
     motivo: str
     detalle: str = ""
+    # Solo para motivo "garantia" (etapa 2): de qué orden es la garantía,
+    # por qué falló y cuánto le costó al taller atenderla.
+    orden_origen_id: str | None = None
+    causa: str | None = None                      # mano_obra | repuesto | otra
+    costo: float = Field(default=0, ge=0, le=100000)
+    proveedor: str = ""
+
+CAUSAS_GARANTIA = {"mano_obra": "Falla de mano de obra", "repuesto": "Falla del repuesto", "otra": "Otra causa"}
 
 @app.get("/motivos-cierre")
 def listar_motivos_cierre(request: Request):
@@ -2329,6 +2337,29 @@ def cerrar_orden_sin_cobro(reparacion_id: str, datos: CierreSinCobro, request: R
     if orden[0].get("estado") != "Pendiente":
         raise HTTPException(status_code=409, detail=f"La orden ya estaba cerrada ({orden[0].get('estado')}).")
 
+    # Reclamo de garantía: se liga a la orden original del MISMO vehículo y taller
+    datos_reclamo = {}
+    if datos.motivo == "garantia":
+        if not datos.orden_origen_id:
+            raise HTTPException(status_code=400, detail="Selecciona la orden original que cubre esta garantía.")
+        if datos.causa not in CAUSAS_GARANTIA:
+            raise HTTPException(status_code=400, detail="Selecciona la causa de la falla.")
+        origen = (supabase.table("reparaciones").select("id, vehiculo, estado")
+                  .eq("id", datos.orden_origen_id).eq("taller_id", taller_id).limit(1).execute()).data
+        if (not origen or origen[0].get("estado") != "Terminado"
+                or origen[0].get("vehiculo") != orden[0].get("vehiculo")
+                or str(origen[0].get("id")) == str(orden[0].get("id"))):
+            raise HTTPException(status_code=400, detail="La orden original debe ser un trabajo terminado del mismo vehículo en este taller.")
+        datos_reclamo = {
+            "garantia_orden_origen": origen[0]["id"],
+            "garantia_causa": datos.causa,
+            "garantia_costo": round(float(datos.costo or 0), 2),
+        }
+        if datos.causa == "repuesto":
+            # Queda un reclamo pendiente al proveedor del repuesto que falló
+            datos_reclamo["reclamo_proveedor_estado"] = "Pendiente"
+            datos_reclamo["reclamo_proveedor_nombre"] = datos.proveedor.strip()[:120] or "Proveedor no indicado"
+
     try:
         actualizada = (
             supabase.table("reparaciones").update({
@@ -2337,6 +2368,7 @@ def cerrar_orden_sin_cobro(reparacion_id: str, datos: CierreSinCobro, request: R
                 "detalle_cierre": detalle,
                 "cobro": 0,
                 "fecha_salida": ahora_utc_str(),
+                **datos_reclamo,
             })
             .eq("id", reparacion_id).eq("taller_id", taller_id)
             .eq("estado", "Pendiente")          # evita cerrar dos veces si hay dos clics a la vez
@@ -2345,11 +2377,217 @@ def cerrar_orden_sin_cobro(reparacion_id: str, datos: CierreSinCobro, request: R
     except APIError as e:
         if "motivo_cierre" in str(e) or "detalle_cierre" in str(e) or "estado_check" in str(e):
             raise HTTPException(status_code=500, detail="Falta ejecutar en Supabase la migración sql/2026-09-23d_cierre_sin_cobro.sql.")
+        if "garantia_" in str(e) or "reclamo_proveedor" in str(e):
+            raise HTTPException(status_code=500, detail="Falta ejecutar en Supabase la migración sql/2026-09-23f_garantias_reclamos.sql.")
         raise
     if not actualizada:
         raise HTTPException(status_code=409, detail="La orden ya fue cerrada por otra persona.")
 
     return {"status": "ok", "vehiculo": orden[0].get("vehiculo"), "motivo": MOTIVOS_CIERRE_SIN_COBRO[datos.motivo]}
+
+
+# ==============================================================================
+# GARANTÍAS — ETAPA 2: reclamos ligados, reporte y reclamos a proveedores
+# ==============================================================================
+@app.get("/reparaciones/{reparacion_id}/ordenes-previas")
+def ordenes_previas_vehiculo(reparacion_id: str, request: Request):
+    """Trabajos terminados anteriores del mismo vehículo (para elegir cuál cubre
+    la garantía). Incluye el estado de su garantía y los repuestos con proveedor."""
+    _, taller_id = obtener_cliente_seguro(request)
+    actual = (supabase.table("reparaciones").select("id, vehiculo, kilometraje")
+              .eq("id", reparacion_id).eq("taller_id", taller_id).limit(1).execute()).data
+    if not actual:
+        raise HTTPException(status_code=404, detail="No se encontró la orden en este taller.")
+    previas = (supabase.table("reparaciones")
+               .select("*, reparacion_detalles(cantidad, precio_unitario, inventario(codigo, nombre, proveedor))")
+               .eq("taller_id", taller_id).eq("vehiculo", actual[0]["vehiculo"]).eq("estado", "Terminado")
+               .order("fecha_salida", desc=True).limit(10).execute()).data or []
+    km_actual = normalizar_kilometraje(actual[0].get("kilometraje"))
+    resultado = []
+    for o in previas:
+        estado = _evaluar_garantia(o, km_actual) if o.get("garantia_vence") else None
+        repuestos = [{"codigo": (d.get("inventario") or {}).get("codigo", ""),
+                      "nombre": (d.get("inventario") or {}).get("nombre", ""),
+                      "proveedor": (d.get("inventario") or {}).get("proveedor", "") or ""}
+                     for d in (o.get("reparacion_detalles") or [])]
+        resultado.append({
+            "id": o.get("id"),
+            "fecha": str(o.get("fecha_salida") or "")[:10],
+            "trabajo": o.get("trabajo_realizado") or "",
+            "tecnico": o.get("oficial") or "",
+            "garantia_vence": o.get("garantia_vence"),
+            "garantia_vigente": bool(estado and estado["vigente"]),
+            "garantia_motivo_vencida": (estado or {}).get("motivo_vencida", "") if o.get("garantia_vence") else "sin garantía",
+            "repuestos": repuestos,
+        })
+    return {"ordenes": resultado}
+
+
+@app.get("/reporte-garantias")
+def reporte_garantias(request: Request, desde: str | None = None, hasta: str | None = None):
+    """Control de garantías del taller en un período (por defecto, últimos 90 días):
+    garantías entregadas, reclamos, tasa de retorno y costo, por técnico, por
+    servicio, por causa y por repuesto; más los reclamos a proveedores."""
+    _, taller_id = obtener_cliente_seguro(request)
+    from datetime import timedelta
+    hoy = datetime.now(ZONA_ECUADOR).date()
+    try:
+        desde_d = datetime.strptime(desde, "%Y-%m-%d").date() if desde else hoy - timedelta(days=90)
+        hasta_d = datetime.strptime(hasta, "%Y-%m-%d").date() if hasta else hoy
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Fechas inválidas (formato AAAA-MM-DD).")
+    if desde_d > hasta_d:
+        raise HTTPException(status_code=400, detail="La fecha 'desde' no puede ser mayor que 'hasta'.")
+    inicio_utc, _ = limites_dia_ecuador(desde_d.isoformat())
+    _, fin_utc = limites_dia_ecuador(hasta_d.isoformat())
+
+    tecnicos_bd = supabase.table("tecnicos").select("nombre").eq("taller_id", taller_id).execute().data or []
+    nombres_oficiales = {normalizar_nombre_tecnico(t["nombre"]): t["nombre"].strip() for t in tecnicos_bd if t.get("nombre")}
+    tecnico_de = lambda o: canonizar_tecnico(o.get("oficial"), nombres_oficiales) or "Sin técnico registrado"
+
+    try:
+        # Garantías ENTREGADAS en el período (trabajos terminados con garantía)
+        entregadas = (supabase.table("reparaciones")
+                      .select("id, oficial, trabajo_realizado, garantia_servicio")
+                      .eq("taller_id", taller_id).eq("estado", "Terminado").gt("garantia_dias", 0)
+                      .gte("fecha_salida", inicio_utc).lte("fecha_salida", fin_utc)
+                      .execute()).data or []
+        # RECLAMOS atendidos en el período
+        reclamos = (supabase.table("reparaciones")
+                    .select("id, vehiculo, cliente, fecha_salida, detalle_cierre, garantia_orden_origen, garantia_causa, "
+                            "garantia_costo, reclamo_proveedor_estado, reclamo_proveedor_nombre, reclamo_proveedor_monto")
+                    .eq("taller_id", taller_id).not_.is_("garantia_orden_origen", "null")
+                    .gte("fecha_salida", inicio_utc).lte("fecha_salida", fin_utc)
+                    .order("fecha_salida", desc=True)
+                    .execute()).data or []
+        # Reclamos a proveedores aún PENDIENTES (de cualquier fecha: no se deben olvidar)
+        pendientes_prov = (supabase.table("reparaciones")
+                           .select("id, vehiculo, cliente, fecha_salida, detalle_cierre, garantia_orden_origen, garantia_causa, "
+                                   "garantia_costo, reclamo_proveedor_estado, reclamo_proveedor_nombre, reclamo_proveedor_monto")
+                           .eq("taller_id", taller_id).eq("reclamo_proveedor_estado", "Pendiente")
+                           .execute()).data or []
+    except APIError as e:
+        if "garantia" in str(e) or "reclamo_proveedor" in str(e):
+            raise HTTPException(status_code=500, detail="Falta ejecutar en Supabase las migraciones de garantías (2026-09-23e y 2026-09-23f).")
+        raise
+
+    # Órdenes originales de los reclamos (una sola consulta), con sus repuestos
+    ids_origen = sorted({r["garantia_orden_origen"] for r in reclamos + pendientes_prov if r.get("garantia_orden_origen")}, key=str)
+    origenes = {}
+    if ids_origen:
+        filas = (supabase.table("reparaciones")
+                 .select("id, oficial, trabajo_realizado, garantia_servicio, fecha_salida, "
+                         "reparacion_detalles(cantidad, inventario(codigo, nombre, proveedor))")
+                 .eq("taller_id", taller_id).in_("id", ids_origen).execute()).data or []
+        origenes = {str(f["id"]): f for f in filas}
+
+    def servicio_de(o):
+        s = (o or {}).get("garantia_servicio") or ""
+        if not s or s.startswith("Garantía general") or s.startswith("Indicada") or s.startswith("Sin garantía"):
+            s = (o or {}).get("trabajo_realizado") or "Sin detalle"
+        return s[:80]
+
+    # --- Agregados ---
+    por_tecnico: dict[str, dict] = {}
+    por_servicio: dict[str, dict] = {}
+    for e in entregadas:
+        t = por_tecnico.setdefault(tecnico_de(e), {"tecnico": tecnico_de(e), "entregadas": 0, "reclamos": 0, "costo": 0.0})
+        t["entregadas"] += 1
+        sv = servicio_de(e)
+        por_servicio.setdefault(sv, {"servicio": sv, "entregadas": 0, "reclamos": 0, "costo": 0.0})["entregadas"] += 1
+
+    por_causa = {k: {"causa": v, "reclamos": 0, "costo": 0.0} for k, v in CAUSAS_GARANTIA.items()}
+    por_repuesto: dict[str, dict] = {}
+    detalle = []
+    costo_total = 0.0
+    for r in reclamos:
+        o = origenes.get(str(r.get("garantia_orden_origen")))
+        costo = float(r.get("garantia_costo") or 0)
+        costo_total += costo
+        tec = tecnico_de(o or {})
+        t = por_tecnico.setdefault(tec, {"tecnico": tec, "entregadas": 0, "reclamos": 0, "costo": 0.0})
+        t["reclamos"] += 1; t["costo"] += costo
+        sv = servicio_de(o)
+        s_ = por_servicio.setdefault(sv, {"servicio": sv, "entregadas": 0, "reclamos": 0, "costo": 0.0})
+        s_["reclamos"] += 1; s_["costo"] += costo
+        causa = r.get("garantia_causa") or "otra"
+        if causa in por_causa:
+            por_causa[causa]["reclamos"] += 1; por_causa[causa]["costo"] += costo
+        if causa == "repuesto" and o:
+            for dd in (o.get("reparacion_detalles") or []):
+                inv = dd.get("inventario") or {}
+                clave = inv.get("codigo") or inv.get("nombre") or "?"
+                rp = por_repuesto.setdefault(clave, {"codigo": inv.get("codigo", ""), "nombre": inv.get("nombre", ""),
+                                                     "proveedor": inv.get("proveedor", "") or "", "reclamos": 0})
+                rp["reclamos"] += 1
+        detalle.append({
+            "id": r.get("id"), "fecha": str(r.get("fecha_salida") or "")[:10], "vehiculo": r.get("vehiculo") or "-",
+            "cliente": r.get("cliente") or "-", "orden_origen": r.get("garantia_orden_origen"),
+            "trabajo_original": (o or {}).get("trabajo_realizado") or "-", "tecnico": tec,
+            "causa": CAUSAS_GARANTIA.get(causa, causa), "detalle": r.get("detalle_cierre") or "", "costo": round(costo, 2),
+        })
+
+    def tasa(reclamos_n, entregadas_n):
+        return round(100 * reclamos_n / entregadas_n, 1) if entregadas_n else None
+
+    lista_tecnicos = sorted(({**t, "costo": round(t["costo"], 2), "tasa": tasa(t["reclamos"], t["entregadas"])}
+                             for t in por_tecnico.values()), key=lambda x: (-x["reclamos"], x["tecnico"]))
+    lista_servicios = sorted(({**s_, "costo": round(s_["costo"], 2), "tasa": tasa(s_["reclamos"], s_["entregadas"])}
+                              for s_ in por_servicio.values() if s_["reclamos"]), key=lambda x: -x["reclamos"])
+
+    # Reclamos a proveedores: los del período + TODOS los pendientes
+    vistos, reclamos_prov = set(), []
+    for r in reclamos + pendientes_prov:
+        if not r.get("reclamo_proveedor_estado") or str(r["id"]) in vistos:
+            continue
+        vistos.add(str(r["id"]))
+        o = origenes.get(str(r.get("garantia_orden_origen"))) or {}
+        repuestos = ", ".join(((d.get("inventario") or {}).get("nombre") or "") for d in (o.get("reparacion_detalles") or [])) or "-"
+        reclamos_prov.append({
+            "id": r["id"], "fecha": str(r.get("fecha_salida") or "")[:10], "vehiculo": r.get("vehiculo") or "-",
+            "orden_origen": r.get("garantia_orden_origen"), "repuestos": repuestos,
+            "proveedor": r.get("reclamo_proveedor_nombre") or "-", "estado": r.get("reclamo_proveedor_estado"),
+            "costo": round(float(r.get("garantia_costo") or 0), 2),
+            "recuperado": round(float(r.get("reclamo_proveedor_monto") or 0), 2),
+        })
+    reclamos_prov.sort(key=lambda x: (x["estado"] != "Pendiente", x["fecha"]), reverse=False)
+
+    recuperado = sum(x["recuperado"] for x in reclamos_prov if x["estado"] == "Aprobado")
+    total_entregadas = len(entregadas)
+    return {
+        "desde": desde_d.isoformat(), "hasta": hasta_d.isoformat(),
+        "resumen": {
+            "entregadas": total_entregadas, "reclamos": len(reclamos),
+            "tasa_retorno": tasa(len(reclamos), total_entregadas),
+            "costo_total": round(costo_total, 2), "recuperado_proveedores": round(recuperado, 2),
+            "costo_neto": round(costo_total - recuperado, 2),
+            "reclamos_proveedor_pendientes": sum(1 for x in reclamos_prov if x["estado"] == "Pendiente"),
+        },
+        "por_tecnico": lista_tecnicos,
+        "por_servicio": lista_servicios,
+        "por_causa": [{**c, "costo": round(c["costo"], 2)} for c in por_causa.values()],
+        "por_repuesto": sorted(por_repuesto.values(), key=lambda x: -x["reclamos"]),
+        "reclamos_proveedor": reclamos_prov,
+        "detalle": detalle,
+    }
+
+
+class ActualizacionReclamoProveedor(BaseModel):
+    estado: Literal["Pendiente", "Aprobado", "Rechazado"]
+    monto: float = Field(default=0, ge=0, le=100000)   # lo que devolvió/abonó el proveedor
+
+@app.patch("/reparaciones/{reparacion_id}/reclamo-proveedor")
+def actualizar_reclamo_proveedor(reparacion_id: str, datos: ActualizacionReclamoProveedor, request: Request):
+    _, taller_id = obtener_cliente_seguro(request)
+    res = (supabase.table("reparaciones")
+           .update({"reclamo_proveedor_estado": datos.estado,
+                    "reclamo_proveedor_monto": round(datos.monto, 2) if datos.estado == "Aprobado" else 0})
+           .eq("id", reparacion_id).eq("taller_id", taller_id)
+           .not_.is_("reclamo_proveedor_estado", "null")
+           .execute()).data
+    if not res:
+        raise HTTPException(status_code=404, detail="No se encontró el reclamo en este taller.")
+    return {"status": "ok"}
 
 
 @app.get("/vehiculos-pendientes")

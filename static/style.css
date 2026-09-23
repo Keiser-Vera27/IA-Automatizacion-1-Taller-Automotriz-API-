@@ -844,3 +844,16 @@ hr {
 .tabla-servicios-catalogo .vacio { text-align: center; color: var(--texto-tenue); }
 .btn-icono-eliminar { background: none; border: none; color: #ff5555; cursor: pointer; display: inline-flex; padding: 4px; }
 
+/* ==========================================================================
+   GARANTÍAS — ETAPA 2
+   ========================================================================== */
+.bloque-garantia-cierre { display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px dashed var(--borde); border-radius: 10px; }
+.bloque-garantia-cierre[hidden] { display: none; }
+.filtros-garantias { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px; }
+.filtros-garantias label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--texto-tenue); }
+.filtros-garantias input { padding: 9px 10px; border-radius: 8px; border: 1px solid var(--borde); background: var(--bg-alterno); color: var(--texto); }
+.estado-reclamo { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+.estado-reclamo.pendiente { background: var(--bg-pendiente); color: var(--text-pendiente); }
+.estado-reclamo.aprobado  { background: rgba(22, 163, 74, 0.15); color: #16A34A; }
+.estado-reclamo.rechazado { background: rgba(220, 38, 38, 0.12); color: #DC2626; }
+

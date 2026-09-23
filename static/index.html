@@ -115,6 +115,7 @@
                 <a href="#" onclick="cambiarVista('vista-chat')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Chat / Operaciones</a>
                 <a href="#" onclick="cambiarVista('vista-dashboard')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Dashboard Analítico</a>
                 <a href="#" onclick="cambiarVista('vista-servicios')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Catálogo de Servicios</a>
+                <a href="#" onclick="cambiarVista('vista-garantias')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Garantías</a>
             </div>
 
             <!-- ========================================== -->
@@ -264,6 +265,18 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            <!-- VISTA: CONTROL DE GARANTÍAS (reclamos, tasa de retorno, proveedores) -->
+            <div id="vista-garantias" class="vista-app" style="display: none; padding: 20px;">
+                <h2>Control de Garantías</h2>
+                <p style="color: var(--texto-tenue); margin-bottom: 16px;">Reclamos atendidos, qué técnicos y servicios regresan más, cuánto cuestan y qué se recuperó de los proveedores.</p>
+                <div class="filtros-garantias">
+                    <label>Desde <input type="date" id="garantias-desde"></label>
+                    <label>Hasta <input type="date" id="garantias-hasta"></label>
+                    <button class="btn-agregar-servicio" onclick="cargarReporteGarantias()">Ver reporte</button>
+                </div>
+                <div id="resultado-garantias" class="panel-caja"></div>
             </div>
 
         </div> <!-- Cierra .contenedor -->

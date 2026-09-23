@@ -555,7 +555,8 @@ async function abrirCerrarOrden(boton) {
             <span class="campo-etiqueta" id="etiqueta-detalle-cierre">Detalle (opcional)</span>
             <textarea name="detalle" placeholder="Ej. El cliente volverá cuando tenga el presupuesto"></textarea>
             <span class="campo-aviso" hidden>Este dato es obligatorio</span>
-        </label>`;
+        </label>
+        <div id="bloque-garantia-cierre" class="bloque-garantia-cierre" hidden data-orden="${e(id)}"></div>`;
     formulario.hidden = false;
 
     const btnCancelar = document.getElementById('modal-btn-cancelar');
@@ -575,6 +576,11 @@ function ajustarDetalleCierre(select) {
     const textarea = document.querySelector('#modal-formulario textarea[name="detalle"]');
     const etiqueta = document.getElementById('etiqueta-detalle-cierre');
     textarea.required = obligatorio;
+    const bloque = document.getElementById('bloque-garantia-cierre');
+    if (bloque) {
+        bloque.hidden = select.value !== 'garantia';
+        if (select.value === 'garantia' && !bloque.dataset.cargado) cargarBloqueGarantiaCierre(bloque);
+    }
     if (select.value === 'garantia') {
         etiqueta.textContent = '¿Qué se hizo bajo garantía?';
         textarea.placeholder = 'Ej. Se reajustó el embrague cambiado en la orden N° 1520';
@@ -587,15 +593,219 @@ function ajustarDetalleCierre(select) {
     }
 }
 
+// ==============================================================================
+// GARANTÍAS — ETAPA 2
+// ==============================================================================
+
+// Al cerrar por "Se cubre garantía": elegir la orden original, la causa y el costo
+async function cargarBloqueGarantiaCierre(bloque) {
+    const e = escaparHTML;
+    bloque.innerHTML = `<p class="nota-cierre">Buscando trabajos anteriores del vehículo...</p>`;
+    let ordenes = [];
+    try {
+        const res = await fetch(`/reparaciones/${encodeURIComponent(bloque.dataset.orden)}/ordenes-previas`, { headers: cabeceraAuth() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+        ordenes = data.ordenes || [];
+    } catch (err) {
+        bloque.innerHTML = `<p class="campo-error">No se pudieron cargar los trabajos anteriores: ${e(err.message)}</p>`;
+        return;
+    }
+    bloque.dataset.cargado = '1';
+    bloque._ordenes = ordenes;
+
+    if (!ordenes.length) {
+        bloque.innerHTML = `<p class="campo-error">Este vehículo no tiene trabajos terminados anteriores en el taller, así que no hay una garantía que cubrir. Usa otro motivo de cierre.</p>`;
+        return;
+    }
+    // Se preselecciona el trabajo con garantía vigente más reciente
+    const sugerida = ordenes.find(o => o.garantia_vigente) || ordenes[0];
+    const etiquetaOrden = o => {
+        const estado = o.garantia_vigente ? 'garantía vigente'
+            : (o.garantia_vence ? `garantía vencida ${o.garantia_motivo_vencida}` : 'sin garantía registrada');
+        return `N° ${o.id} · ${o.fecha} · ${o.trabajo || 'trabajo'} (${o.tecnico || 'sin técnico'}) — ${estado}`;
+    };
+    bloque.innerHTML = `
+        <label class="campo-faltante">
+            <span class="campo-etiqueta">Trabajo original que cubre la garantía</span>
+            <select name="orden_origen_id" required onchange="ajustarProveedorGarantia()">
+                ${ordenes.map(o => `<option value="${e(String(o.id))}" ${o === sugerida ? 'selected' : ''}>${e(etiquetaOrden(o))}</option>`).join('')}
+            </select>
+            <span class="campo-aviso" hidden>Este dato es obligatorio</span>
+        </label>
+        <label class="campo-faltante">
+            <span class="campo-etiqueta">¿Por qué falló?</span>
+            <select name="causa" required onchange="ajustarProveedorGarantia()">
+                <option value="">Selecciona la causa...</option>
+                <option value="mano_obra">Falla de mano de obra</option>
+                <option value="repuesto">Falla del repuesto</option>
+                <option value="otra">Otra causa</option>
+            </select>
+            <span class="campo-aviso" hidden>Este dato es obligatorio</span>
+        </label>
+        <label class="campo-faltante" id="campo-proveedor-garantia" hidden>
+            <span class="campo-etiqueta">Proveedor del repuesto (se registra un reclamo pendiente)</span>
+            <input name="proveedor" list="lista-proveedores-garantia" placeholder="Ej. Importadora Andina" autocomplete="off">
+            <datalist id="lista-proveedores-garantia"></datalist>
+            <span class="campo-aviso" hidden>Este dato es obligatorio</span>
+        </label>
+        <label class="campo-faltante">
+            <span class="campo-etiqueta">Costo para el taller ($) — repuestos y materiales usados</span>
+            <input name="costo" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+        </label>`;
+    ajustarProveedorGarantia();
+}
+
+// Muestra/rellena el proveedor cuando la causa es "Falla del repuesto"
+function ajustarProveedorGarantia() {
+    const bloque = document.getElementById('bloque-garantia-cierre');
+    if (!bloque || !bloque._ordenes) return;
+    const causa = bloque.querySelector('[name=causa]').value;
+    const campo = document.getElementById('campo-proveedor-garantia');
+    const input = campo.querySelector('input');
+    campo.hidden = causa !== 'repuesto';
+    input.required = causa === 'repuesto';
+
+    const orden = bloque._ordenes.find(o => String(o.id) === bloque.querySelector('[name=orden_origen_id]').value);
+    const proveedores = [...new Set((orden?.repuestos || []).map(r => r.proveedor).filter(p => p && p !== 'General'))];
+    document.getElementById('lista-proveedores-garantia').innerHTML = proveedores.map(p => `<option value="${escaparHTML(p)}">`).join('');
+    if (!input.value && proveedores.length === 1) input.value = proveedores[0];
+}
+
+// ---------------------------- Vista "Garantías" ----------------------------
+function iniciarVistaGarantias() {
+    const hoy = new Date();
+    const desde = new Date(hoy.getTime() - 90 * 86400000);
+    const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    const inDesde = document.getElementById('garantias-desde');
+    const inHasta = document.getElementById('garantias-hasta');
+    if (!inDesde.value) inDesde.value = iso(desde);
+    if (!inHasta.value) inHasta.value = iso(hoy);
+    cargarReporteGarantias();
+}
+
+async function cargarReporteGarantias() {
+    const cont = document.getElementById('resultado-garantias');
+    const e = escaparHTML;
+    const desde = document.getElementById('garantias-desde').value;
+    const hasta = document.getElementById('garantias-hasta').value;
+    cont.innerHTML = `<p class="caja-cargando">Cargando reporte de garantías...</p>`;
+    let d;
+    try {
+        const res = await fetch(`/reporte-garantias?desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`, { headers: cabeceraAuth() });
+        d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.detail || `Error ${res.status}`);
+    } catch (err) {
+        cont.innerHTML = `<p class="campo-error">No se pudo cargar el reporte: ${e(err.message)}</p>`;
+        return;
+    }
+    const r = d.resumen;
+    const pct = v => v === null || v === undefined ? '—' : `${v}%`;
+    const tabla = (cabeceras, filas, vacio) => `
+        <div class="tabla-scroll"><table class="tabla-caja">
+            <thead><tr>${cabeceras.map(([t, al]) => `<th style="text-align:${al || 'left'}">${t}</th>`).join('')}</tr></thead>
+            <tbody>${filas.length ? filas.join('') : `<tr><td colspan="${cabeceras.length}" class="vacio">${vacio}</td></tr>`}</tbody>
+        </table></div>`;
+
+    const filasTec = d.por_tecnico.map(t => `<tr>
+        <td>${e(t.tecnico)}</td><td class="centro">${t.entregadas}</td><td class="centro">${t.reclamos}</td>
+        <td class="num ${t.tasa >= 10 ? 'monto-negativo' : ''}">${pct(t.tasa)}</td><td class="num">${dinero(t.costo)}</td></tr>`);
+    const filasSrv = d.por_servicio.map(s => `<tr>
+        <td>${e(s.servicio)}</td><td class="centro">${s.entregadas}</td><td class="centro">${s.reclamos}</td>
+        <td class="num">${pct(s.tasa)}</td><td class="num">${dinero(s.costo)}</td></tr>`);
+    const filasCausa = d.por_causa.map(c => `<tr><td>${e(c.causa)}</td><td class="centro">${c.reclamos}</td><td class="num">${dinero(c.costo)}</td></tr>`);
+    const filasRep = d.por_repuesto.map(p => `<tr><td>${e(p.codigo || '-')}</td><td>${e(p.nombre)}</td><td>${e(p.proveedor || '-')}</td><td class="centro">${p.reclamos}</td></tr>`);
+    const filasProv = d.reclamos_proveedor.map(p => `<tr>
+        <td>${e(p.fecha)}</td><td><b>${e(p.vehiculo)}</b><div class="sub">orden N° ${e(String(p.orden_origen))}</div></td>
+        <td>${e(p.repuestos)}</td><td>${e(p.proveedor)}</td><td class="num">${dinero(p.costo)}</td>
+        <td><span class="estado-reclamo ${e(p.estado.toLowerCase())}">${e(p.estado)}</span>${p.estado === 'Aprobado' ? `<div class="sub">recuperado ${dinero(p.recuperado)}</div>` : ''}</td>
+        <td class="centro">${p.estado === 'Pendiente'
+            ? `<button class="btn-link" onclick='resolverReclamoProveedor(${JSON.stringify(String(p.id))}, "Aprobado", ${p.costo})'>Aprobado</button>
+               <button class="btn-link" onclick='resolverReclamoProveedor(${JSON.stringify(String(p.id))}, "Rechazado", 0)'>Rechazado</button>`
+            : `<button class="btn-link" onclick='resolverReclamoProveedor(${JSON.stringify(String(p.id))}, "Pendiente", 0)'>Reabrir</button>`}</td></tr>`);
+    const filasDet = d.detalle.map(x => `<tr>
+        <td>${e(x.fecha)}</td><td><b>${e(x.vehiculo)}</b><div class="sub">${e(x.cliente)}</div></td>
+        <td>${e(x.trabajo_original)}<div class="sub">orden N° ${e(String(x.orden_origen))}</div></td>
+        <td>${e(x.tecnico)}</td><td>${e(x.causa)}</td><td class="celda-trabajo" title="${e(x.detalle)}">${e(x.detalle || '-')}</td>
+        <td class="num">${dinero(x.costo)}</td></tr>`);
+
+    cont.innerHTML = `
+        <div class="tarjetas-resumen-caja">
+            <div class="tarjeta-resumen-caja"><div class="etiqueta">Garantías entregadas</div><div class="monto monto-neutro">${r.entregadas}</div></div>
+            <div class="tarjeta-resumen-caja"><div class="etiqueta">Reclamos atendidos</div><div class="monto ${r.reclamos ? 'monto-negativo' : 'monto-neutro'}">${r.reclamos}</div></div>
+            <div class="tarjeta-resumen-caja"><div class="etiqueta">Tasa de retorno</div><div class="monto monto-neutro">${pct(r.tasa_retorno)}</div></div>
+            <div class="tarjeta-resumen-caja"><div class="etiqueta">Costo neto para el taller</div><div class="monto monto-negativo">${dinero(r.costo_neto)}</div></div>
+        </div>
+        <div class="linea-detalle">Costo de reclamos <b>${dinero(r.costo_total)}</b> · Recuperado de proveedores <b>${dinero(r.recuperado_proveedores)}</b>
+            ${r.reclamos_proveedor_pendientes ? ` · <b>${r.reclamos_proveedor_pendientes}</b> reclamo(s) a proveedores pendientes` : ''}</div>
+
+        <h4>Por técnico</h4>
+        <p class="nota-cierre">La tasa de retorno compara los reclamos con las garantías que ese técnico entregó en el mismo período.</p>
+        ${tabla([['Técnico'], ['Entregadas', 'center'], ['Reclamos', 'center'], ['Tasa', 'right'], ['Costo', 'right']], filasTec, 'Sin trabajos con garantía en el período.')}
+
+        <div class="grid-caja">
+            <div><h4>Servicios con más reclamos</h4>
+                ${tabla([['Servicio'], ['Entregadas', 'center'], ['Reclamos', 'center'], ['Tasa', 'right'], ['Costo', 'right']], filasSrv, 'Sin reclamos en el período.')}</div>
+            <div><h4>Por causa</h4>
+                ${tabla([['Causa'], ['Reclamos', 'center'], ['Costo', 'right']], filasCausa, '')}</div>
+        </div>
+
+        <h4>Repuestos que fallaron</h4>
+        ${tabla([['Código'], ['Repuesto'], ['Proveedor'], ['Reclamos', 'center']], filasRep, 'Ningún reclamo por falla de repuesto en el período.')}
+
+        <h4>Reclamos a proveedores</h4>
+        <p class="nota-cierre">Se muestran los del período y todos los pendientes. Cuando el proveedor responda, márcalo aquí.</p>
+        ${tabla([['Fecha'], ['Placa'], ['Repuestos'], ['Proveedor'], ['Costo', 'right'], ['Estado'], ['Acción', 'center']], filasProv, 'No hay reclamos a proveedores.')}
+
+        <h4>Detalle de reclamos (${d.detalle.length})</h4>
+        ${tabla([['Fecha'], ['Placa'], ['Trabajo original'], ['Técnico'], ['Causa'], ['Qué se hizo'], ['Costo', 'right']], filasDet, 'Sin reclamos de garantía en el período.')}`;
+}
+
+// Registra la respuesta del proveedor a un reclamo
+function resolverReclamoProveedor(id, estado, montoSugerido) {
+    const enviar = async (monto) => {
+        const res = await fetch(`/reparaciones/${encodeURIComponent(id)}/reclamo-proveedor`, {
+            method: 'PATCH', headers: cabeceraAuth(true), body: JSON.stringify({ estado, monto })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { mostrarModal({ tipo: 'error', titulo: 'No se pudo actualizar', mensaje: escaparHTML(data.detail || `Error ${res.status}`) }); return; }
+        const overlay = document.getElementById('modal-aviso'); overlay.dataset.modo = ''; cerrarModal();
+        cargarReporteGarantias();
+    };
+    if (estado !== 'Aprobado') { enviar(0); return; }
+
+    // Aprobado: preguntar cuánto devolvió o abonó el proveedor
+    const overlay = document.getElementById('modal-aviso');
+    mostrarModal({ tipo: 'success', titulo: 'Reclamo aprobado' });
+    overlay.dataset.modo = 'formulario';
+    document.getElementById('modal-mensaje').innerHTML = '¿Cuánto devolvió o abonó el proveedor? (reposición del repuesto o nota de crédito)';
+    const formulario = document.getElementById('modal-formulario');
+    formulario.innerHTML = `<label class="campo-faltante"><span class="campo-etiqueta">Monto recuperado ($)</span>
+        <input name="monto" type="number" min="0" step="0.01" inputmode="decimal" value="${Number(montoSugerido || 0).toFixed(2)}"></label>`;
+    formulario.hidden = false;
+    const btnCancelar = document.getElementById('modal-btn-cancelar');
+    btnCancelar.hidden = false;
+    btnCancelar.onclick = () => { overlay.dataset.modo = ''; cerrarModal(); };
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Guardar';
+    btnOk.onclick = () => enviar(Math.max(0, parseFloat(formulario.querySelector('[name=monto]').value || '0') || 0));
+}
+
 async function confirmarCerrarOrden(id, placa) {
     const formulario = document.getElementById('modal-formulario');
     const motivo = formulario.querySelector('select[name="motivo"]');
     const detalle = formulario.querySelector('textarea[name="detalle"]');
     let completo = true;
-    [motivo, detalle].forEach(ctrl => {
-        const falta = ctrl.required && ctrl.value.trim().length < (ctrl.tagName === 'TEXTAREA' ? 3 : 1);
+    const extra = motivo.value === 'garantia'
+        ? [...formulario.querySelectorAll('#bloque-garantia-cierre [name]')] : [];
+    // Con motivo "garantía" debe existir una orden original para elegir
+    if (motivo.value === 'garantia' && !formulario.querySelector('[name=orden_origen_id]')) return;
+    [motivo, detalle, ...extra].forEach(ctrl => {
+        if (!ctrl.closest('.campo-faltante')) return;
+        const falta = ctrl.required && !ctrl.closest('[hidden]') && ctrl.value.trim().length < (ctrl.tagName === 'TEXTAREA' ? 3 : 1);
         ctrl.classList.toggle('invalido', falta);
-        ctrl.closest('.campo-faltante').querySelector('.campo-aviso').hidden = !falta;
+        const aviso = ctrl.closest('.campo-faltante').querySelector('.campo-aviso');
+        if (aviso) aviso.hidden = !falta;
         if (falta) completo = false;
     });
     if (!completo) return;
@@ -607,7 +817,14 @@ async function confirmarCerrarOrden(id, placa) {
         const res = await fetch(`/reparaciones/${encodeURIComponent(id)}/cerrar-sin-cobro`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem("taller_token")}` },
-            body: JSON.stringify({ motivo: motivo.value, detalle: detalle.value.trim() })
+            body: JSON.stringify(Object.assign(
+                { motivo: motivo.value, detalle: detalle.value.trim() },
+                motivo.value === 'garantia' ? {
+                    orden_origen_id: formulario.querySelector('[name=orden_origen_id]')?.value || null,
+                    causa: formulario.querySelector('[name=causa]')?.value || null,
+                    costo: parseFloat(formulario.querySelector('[name=costo]')?.value || '0') || 0,
+                    proveedor: formulario.querySelector('[name=proveedor]')?.value.trim() || ''
+                } : {}))
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -1655,7 +1872,9 @@ function cambiarVista(idVista) {
     if (idVista === 'vista-dashboard') {
         cargarDatosDashboard(); 
     } else if (idVista === 'vista-servicios') {
-        cargarServicios(); // ¡Agrega esta línea!
+        cargarServicios();
+    } else if (idVista === 'vista-garantias') {
+        iniciarVistaGarantias();
     }
 }
 // ==========================================================================
