@@ -778,6 +778,7 @@ hr {
 .campo-faltante input:focus, .campo-faltante select:focus { outline: 2px solid var(--morado); outline-offset: 1px; }
 .campo-faltante .invalido { border-color: #DC2626; }
 .campo-error { color: #DC2626; font-weight: 500; font-size: 0.8rem; }
+.campo-opcional { color: var(--texto-tenue); font-weight: 400; font-size: 0.75rem; }
 .campo-aviso { color: #DC2626; font-size: 0.78rem; }
 .campo-aviso[hidden], .campo-banco[hidden] { display: none; }
 .campo-banco { margin-top: 8px; }
@@ -856,4 +857,3 @@ hr {
 .estado-reclamo.pendiente { background: var(--bg-pendiente); color: var(--text-pendiente); }
 .estado-reclamo.aprobado  { background: rgba(22, 163, 74, 0.15); color: #16A34A; }
 .estado-reclamo.rechazado { background: rgba(220, 38, 38, 0.12); color: #DC2626; }
-

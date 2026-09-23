@@ -925,22 +925,38 @@ def guardar_reparacion(operacion: str, datos: dict, id_orden=None):
             return ejecutar({k: v for k, v in datos.items() if k not in COLUMNAS_GARANTIA})
         raise
 
+# ------------------------------------------------------------------------------
 # Campos obligatorios de una orden de trabajo (en este orden se muestran en el modal)
-CAMPOS_OBLIGATORIOS_ORDEN = [
+# ------------------------------------------------------------------------------
+# INGRESO del vehículo: solo lo mínimo para abrir la orden sin frenar la recepción.
+CAMPOS_OBLIGATORIOS_INGRESO = [
     ("vehiculo", "Placa del vehículo"),
     ("modelo",   "Marca y modelo"),
+    ("cliente",  "Nombre y apellido del cliente"),
+    ("motivo",   "Motivo de ingreso al taller"),
+]
+# Se pueden dejar pendientes al ingresar, pero son OBLIGATORIOS para cerrar la
+# orden (trabajo terminado): sin ellos la orden no pasa a "Terminado".
+CAMPOS_OBLIGATORIOS_AL_CIERRE = [
     ("kilometraje", "Kilometraje actual"),
-    ("cliente",  "Nombre del cliente"),
     ("cedula",   "Cédula o RUC del cliente"),
     ("telefono", "Número de celular"),
-    ("motivo",   "Motivo de ingreso al taller"),
     ("oficial",  "Técnico asignado"),
 ]
+CAMPOS_OBLIGATORIOS_ORDEN = CAMPOS_OBLIGATORIOS_INGRESO + CAMPOS_OBLIGATORIOS_AL_CIERRE
+CAMPOS_SOLO_INGRESO = {c for c, _ in CAMPOS_OBLIGATORIOS_INGRESO}
+# Campos que el usuario puede dejar vacíos en el modal de ingreso (dato opcional mal escrito)
+CAMPOS_VACIABLES_ORDEN = {c for c, _ in CAMPOS_OBLIGATORIOS_AL_CIERRE}
 # Datos que el usuario puede completar desde el modal
 CAMPOS_EDITABLES_ORDEN = {c for c, _ in CAMPOS_OBLIGATORIOS_ORDEN} | {"trabajo_realizado", "metodo_pago", "banco"}
 
 def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> tuple[dict, list[dict], dict]:
     """Revisa una orden (ingreso o cierre) ANTES de guardarla.
+    - INGRESO: solo exige placa, marca/modelo, nombre y apellido del cliente y
+      motivo. Los demás datos pueden quedar pendientes; si se escribieron pero
+      con formato inválido se avisa como OPCIONAL (se corrige o se deja vacío).
+    - CIERRE (trabajo terminado / cobro): exige TODOS los datos, incluidos los
+      que no se escribieron al ingresar. Sin ellos la orden no se cierra.
     - Considera lo que el vehículo ya tiene en su última orden (el trabajador
       hereda esos datos), así al cerrar no se vuelve a pedir lo ya registrado.
     - Devuelve (orden_normalizada, faltantes, contexto)."""
@@ -969,25 +985,45 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> 
         return str((ultima or {}).get(campo) or "").strip()
 
     faltantes = []
-    def falta(campo, etiqueta, problema="falta", valor=""):
-        faltantes.append({"campo": campo, "etiqueta": etiqueta, "problema": problema, "valor": valor})
+    def falta(campo, etiqueta, problema="falta", valor="", opcional=False):
+        faltantes.append({"campo": campo, "etiqueta": etiqueta, "problema": problema,
+                          "valor": valor, "opcional": opcional})
 
     if not es_mostrador:
-        d["oficial"] = canonizar_tecnico(d.get("oficial"), mapa_tecnicos) or ""
+        # Se guarda el técnico tal como vino para poder mostrar el error
+        oficial_escrito = str(d.get("oficial") or "").strip()
+        d["oficial"] = canonizar_tecnico(oficial_escrito, mapa_tecnicos) or ""
         for campo, etiqueta in CAMPOS_OBLIGATORIOS_ORDEN:
-            valor = efectivo(campo)
+            obligatorio = se_cierra or campo in CAMPOS_SOLO_INGRESO
+            if obligatorio:
+                valor = efectivo(campo)
+            else:
+                # Ingreso: el dato es opcional. Solo se revisa si se escribió
+                # en ESTE mensaje (no se vuelve a reclamar un dato heredado).
+                valor = oficial_escrito if campo == "oficial" else str(d.get(campo) or "").strip()
+                if not valor or valor.lower() == "none":
+                    continue
+            opcional = not obligatorio
+
             if campo == "vehiculo":
                 if not placa or placa == "S/C":
                     falta(campo, etiqueta)
+            elif campo == "cliente":
+                if not valor:
+                    falta(campo, etiqueta)
+                elif len(valor.split()) < 2:
+                    falta(campo, etiqueta, "escribe nombre y apellido", valor)
             elif campo == "oficial":
                 if not canonizar_tecnico(valor, mapa_tecnicos):
-                    falta(campo, etiqueta, "falta" if not valor else f"'{valor}' no es un técnico registrado", valor)
+                    escrito = oficial_escrito or valor
+                    falta(campo, etiqueta, f"'{escrito}' no es un técnico registrado" if escrito else "falta",
+                          escrito, opcional)
             elif campo == "telefono":
                 tel, ok = normalizar_telefono_ec(valor)
                 if not valor:
                     falta(campo, etiqueta)
                 elif not ok:
-                    falta(campo, etiqueta, "número no válido (ej. 0991234567)", valor)
+                    falta(campo, etiqueta, "número no válido (ej. 0991234567)", valor, opcional)
                 elif d.get("telefono"):
                     d["telefono"] = tel
             elif campo == "kilometraje":
@@ -995,13 +1031,13 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> 
                 if not valor:
                     falta(campo, etiqueta)
                 elif km is None:
-                    falta(campo, etiqueta, "número no válido (ej. 85400)", valor)
+                    falta(campo, etiqueta, "número no válido (ej. 85400)", valor, opcional)
                 elif d.get("kilometraje"):
                     d["kilometraje"] = str(km)
             elif campo == "cedula":
                 ced, error = validar_identificacion_ec(valor)
                 if error:
-                    falta(campo, etiqueta, error, "" if error == "falta" else valor)
+                    falta(campo, etiqueta, error, "" if error == "falta" else valor, opcional)
                 elif d.get("cedula"):
                     d["cedula"] = ced
             elif not valor:
@@ -1030,6 +1066,10 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> 
         "orden_abierta": pendiente, "garantia": garantia,
         "cliente": efectivo("cliente"), "modelo": efectivo("modelo"),
         "trabajo": str(d.get("trabajo_realizado") or ""), "cobro": d.get("cobro") or 0,
+        # Datos que quedan pendientes y se exigirán al cerrar la orden
+        "pendientes_cierre": [] if (se_cierra or es_mostrador) else
+            [etq for c, etq in CAMPOS_OBLIGATORIOS_AL_CIERRE
+             if not efectivo(c) or (c == "oficial" and not canonizar_tecnico(efectivo(c), mapa_tecnicos))],
     }
     return d, faltantes, contexto
 
@@ -1085,6 +1125,10 @@ def obtener_datos_pre_extraidos(msj: dict) -> dict | None:
     except Exception:
         return None
 
+# Estado de la cola para un cierre rechazado por datos faltantes (no se reintenta:
+# el usuario debe reenviar el mensaje con los datos completos)
+ESTADO_COLA_INCOMPLETO = "Incompleto (faltan datos para cerrar)"
+
 # ==============================================================================
 # TRABAJADOR SILENCIOSO (CORREGIDO: CÉDULA Y BANCO)
 # ==============================================================================
@@ -1118,6 +1162,8 @@ async def trabajador_silencioso():
         # Si el mensaje ya viene validado desde /procesar-mensaje, se usan esos
         # datos tal cual (no se vuelve a llamar a la IA). Si no, se extrae aquí.
         resultado = obtener_datos_pre_extraidos(msj)
+        # Si ya pasó por el modal de validación, no se vuelve a revisar aquí
+        venia_validado = resultado is not None
         if resultado is None:
             prompt = construir_prompt_extraccion(taller_id, texto_msj, list(mapa_tecnicos.values()))
 
@@ -1152,6 +1198,21 @@ async def trabajador_silencioso():
             d = resultado["reparacion"]
             # Solo se guarda un técnico REGISTRADO, con su nombre oficial
             # (evita "Ninguno registrado", "jordy" vs "Jordy", nombres inventados)
+            # Mensaje que NO pasó por la validación previa (la IA no respondía
+            # cuando se envió): si intenta CERRAR la orden sin los datos
+            # obligatorios, no se aplica. La orden sigue Pendiente y el
+            # mensaje queda marcado para que se reenvíe con los datos.
+            if not venia_validado:
+                _, faltantes_msj, ctx_msj = validar_orden_trabajo(d, taller_id, mapa_tecnicos)
+                faltan_cierre = [f for f in faltantes_msj if not f.get("opcional")]
+                if ctx_msj.get("es_cierre") and not ctx_msj.get("es_mostrador") and faltan_cierre:
+                    supabase.table("cola_mensajes").update({
+                        "estado": ESTADO_COLA_INCOMPLETO,
+                        "ultimo_error": "Faltan datos para cerrar la orden: "
+                                        + ", ".join(f["etiqueta"] for f in faltan_cierre),
+                    }).eq("id", id_msj).execute()
+                    continue
+
             d["oficial"] = canonizar_tecnico(d.get("oficial"), mapa_tecnicos)
             placa = str(d.get("vehiculo", "")).strip()
 
@@ -1786,8 +1847,13 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         borrador = verificar_borrador(solicitud.borrador, taller_id)
         texto_usuario, resultado = borrador["texto"], borrador["resultado"]
         if resultado.get("tipo") == "reparacion" and resultado.get("reparacion"):
-            completados = {k: str(v).strip() for k, v in (solicitud.datos_confirmados or {}).items()
-                           if k in CAMPOS_EDITABLES_ORDEN and str(v or "").strip()}
+            # Un campo opcional del ingreso puede llegar vacío a propósito
+            # (el usuario borró un dato mal escrito para completarlo al cierre)
+            completados = {}
+            for k, v in (solicitud.datos_confirmados or {}).items():
+                valor = str(v or "").strip()
+                if k in CAMPOS_EDITABLES_ORDEN and (valor or k in CAMPOS_VACIABLES_ORDEN):
+                    completados[k] = valor
             # Se revalida con el modelo (normaliza la placa, etc.)
             resultado["reparacion"] = TrabajoTaller.model_validate({**resultado["reparacion"], **completados}).model_dump()
     else:
@@ -1803,11 +1869,13 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
             resultado = None
 
     garantia_aviso = None
+    pendientes_cierre = []
     if resultado and resultado.get("tipo") == "reparacion" and resultado.get("reparacion"):
         orden, faltantes, contexto = await asyncio.to_thread(
             validar_orden_trabajo, resultado["reparacion"], taller_id, mapa_tecnicos)
         resultado["reparacion"] = orden
         garantia_aviso = contexto.get("garantia")
+        pendientes_cierre = contexto.get("pendientes_cierre") or []
         if faltantes:
             # NO se guarda nada: el frontend muestra el modal para completar
             return {
@@ -1816,7 +1884,9 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
                 "tecnicos": sorted(mapa_tecnicos.values()),
                 "contexto": contexto,
                 "borrador": firmar_borrador(taller_id, texto_usuario, resultado),
-                "mensaje_bd": "Faltan datos obligatorios para registrar la orden de trabajo.",
+                "mensaje_bd": ("Faltan datos obligatorios para cerrar la orden de trabajo."
+                               if contexto.get("es_cierre") else
+                               "Faltan datos obligatorios para registrar el ingreso del vehículo."),
             }
 
     encolar_registro(cliente_seguro, taller_id, texto_usuario, tiempo_actual, resultado)
@@ -1827,6 +1897,7 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         "tipo_detectado": "registro",
         "validado": resultado is not None,
         "garantia": garantia_aviso,
+        "pendientes_cierre": pendientes_cierre,
         "mensaje_bd": "¡Recibido en la nube! Procesando registro en segundo plano."
                       if resultado is not None else
                       "Recibido. La IA no está disponible en este momento: el registro se procesará automáticamente cuando vuelva.",

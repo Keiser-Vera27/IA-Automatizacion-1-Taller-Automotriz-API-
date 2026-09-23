@@ -189,7 +189,7 @@ async function manejarRespuestaRegistro(res, data, desdeModal) {
 
     // Faltan datos obligatorios: NO se guardó nada, se piden en el modal
     if (data.status === "faltan_datos") {
-        mostrarNotificacion("Faltan datos obligatorios: complétalos en la ventana para registrar la orden.", "warning");
+        mostrarNotificacion(data.mensaje_bd || "Faltan datos obligatorios: complétalos en la ventana.", "warning");
         mostrarFormularioFaltantes(data);
         return;
     }
@@ -206,12 +206,14 @@ async function manejarRespuestaRegistro(res, data, desdeModal) {
         inputTexto.value = "";
         if (data.garantia) {
             mostrarModal({ tipo: data.garantia.vigente ? 'warning' : 'info', titulo: 'Orden registrada',
-                           mensaje: avisoGarantiaHTML(data.garantia) });
+                           mensaje: avisoGarantiaHTML(data.garantia) + avisoPendientesCierreHTML(data.pendientes_cierre) });
         } else if (desdeModal) {
             mostrarModal({ tipo: 'success', titulo: 'Orden registrada',
-                           mensaje: 'Los datos están completos. La orden se está guardando.' });
+                           mensaje: 'La orden se está guardando.' + avisoPendientesCierreHTML(data.pendientes_cierre) });
         }
-        mostrarNotificacion(`${data.mensaje_bd}`, data.validado === false ? "warning" : "success");
+        const pendientes = (data.pendientes_cierre || []).length
+            ? `<br>Pendiente para el cierre: ${data.pendientes_cierre.map(escaparHTML).join(', ')}.` : '';
+        mostrarNotificacion(`${data.mensaje_bd}${pendientes}`, data.validado === false ? "warning" : "success");
         cargarVehiculosPendientes();
         refrescarCuadrePronto();   // el registro se procesa en segundo plano
     }
@@ -426,16 +428,26 @@ const EJEMPLOS_CAMPO = {
     banco: 'Ej. Pichincha'
 };
 
+// Lista de datos que quedaron pendientes al ingresar y se exigirán al cerrar
+function avisoPendientesCierreHTML(pendientes) {
+    if (!pendientes || !pendientes.length) return '';
+    return `<div class="nota-cierre">Datos pendientes que se pedirán al cerrar la orden: ${pendientes.map(escaparHTML).join(', ')}.</div>`;
+}
+
 // Arma el HTML de un campo según su tipo (técnico y método de pago son listas)
 function campoFaltanteHTML(f, tecnicos) {
     const e = escaparHTML;
     const error = f.problema && f.problema !== 'falta'
         ? `<span class="campo-error">${e(f.problema)}</span>` : '';
+    // Opcional = dato del ingreso que se escribió mal: se corrige o se deja
+    // vacío (se exigirá al cerrar la orden). Obligatorio = no se puede omitir.
+    const req = f.opcional ? 'data-opcional="1"' : 'required';
+    const nota = f.opcional ? '<span class="campo-opcional">(opcional: corrígelo o déjalo vacío)</span>' : '';
     let control;
     if (f.campo === 'oficial') {
         control = tecnicos.length
-            ? `<select name="oficial" required>
-                   <option value="">Selecciona el técnico...</option>
+            ? `<select name="oficial" ${req}>
+                   <option value="">${f.opcional ? 'Sin asignar todavía' : 'Selecciona el técnico...'}</option>
                    ${tecnicos.map(t => `<option value="${e(t)}">${e(t)}</option>`).join('')}
                </select>`
             : `<div class="campo-error">No hay técnicos registrados en este taller. Pide al administrador que los registre para poder asignar órdenes.</div>`;
@@ -451,10 +463,10 @@ function campoFaltanteHTML(f, tecnicos) {
         const extra = ['cedula', 'telefono', 'kilometraje'].includes(f.campo) ? 'inputmode="numeric"' : '';
         const lista = f.campo === 'banco' ? 'list="lista-bancos"' : '';
         control = `<input name="${e(f.campo)}" value="${e(f.valor || '')}" placeholder="${e(EJEMPLOS_CAMPO[f.campo] || '')}"
-                          autocomplete="off" required ${extra} ${lista}>`;
+                          autocomplete="off" ${req} ${extra} ${lista}>`;
     }
     return `<label class="campo-faltante">
-                <span class="campo-etiqueta">${e(f.etiqueta)} ${error}</span>
+                <span class="campo-etiqueta">${e(f.etiqueta)} ${nota} ${error}</span>
                 ${control}
                 <span class="campo-aviso" hidden>Este dato es obligatorio</span>
             </label>`;
@@ -473,7 +485,11 @@ function mostrarFormularioFaltantes(data) {
     const ctx = data.contexto || {};
     const tecnicos = data.tecnicos || [];
 
-    mostrarModal({ tipo: 'warning', titulo: 'Faltan datos obligatorios' });  // base visual
+    const faltantes = data.faltantes || [];
+    const hayObligatorios = faltantes.some(f => !f.opcional);
+    const titulo = !hayObligatorios ? 'Revisa estos datos'
+        : (ctx.es_cierre ? 'Faltan datos para cerrar la orden' : 'Faltan datos obligatorios');
+    mostrarModal({ tipo: 'warning', titulo });  // base visual
     overlay.dataset.modo = 'formulario';
 
     const tipoOrden = ctx.es_cierre ? 'Cierre de trabajo' : 'Ingreso al taller';
@@ -483,10 +499,13 @@ function mostrarFormularioFaltantes(data) {
     document.getElementById('modal-mensaje').innerHTML =
         `<div class="resumen-orden">${tipoOrden}${resumen ? ': ' + resumen : ''}</div>
          ${avisoGarantiaHTML(ctx.garantia)}
-         Completa estos datos para registrar la orden. <b>No se guardó nada todavía.</b>`;
+         ${ctx.es_cierre
+            ? 'Para cerrar la orden son obligatorios todos los datos del cliente y del vehículo, incluidos los que no se registraron al ingreso.'
+            : 'Completa estos datos para registrar el ingreso.'}
+         <b>No se guardó nada todavía.</b>`;
 
     const formulario = document.getElementById('modal-formulario');
-    formulario.innerHTML = (data.faltantes || []).map(f => campoFaltanteHTML(f, tecnicos)).join('')
+    formulario.innerHTML = faltantes.map(f => campoFaltanteHTML(f, tecnicos)).join('')
         + `<datalist id="lista-bancos">${BANCOS_SUGERIDOS.map(b => `<option value="${e(b)}">`).join('')}</datalist>`;
     formulario.hidden = false;
 
@@ -499,8 +518,11 @@ function mostrarFormularioFaltantes(data) {
     };
 
     const btnOk = document.getElementById('modal-btn-ok');
-    btnOk.textContent = 'Registrar orden';
-    btnOk.disabled = (data.faltantes || []).some(f => f.campo === 'oficial') && !tecnicos.length;
+    const textoBoton = ctx.es_cierre ? 'Cerrar orden' : 'Registrar orden';
+    btnOk.textContent = textoBoton;
+    btnOk.dataset.texto = textoBoton;
+    // Sin técnicos registrados no se puede cerrar una orden (el técnico es obligatorio)
+    btnOk.disabled = faltantes.some(f => f.campo === 'oficial' && !f.opcional) && !tecnicos.length;
     btnOk.onclick = () => confirmarDatosFaltantes(data.borrador);
 
     const primero = formulario.querySelector('input, select');
@@ -857,7 +879,7 @@ async function confirmarDatosFaltantes(borrador) {
         ctrl.classList.toggle('invalido', falta);
         if (aviso) aviso.hidden = !falta;
         if (falta) completo = false;
-        if (visible && valor) datos[ctrl.name] = valor;
+        if (visible && (valor || ctrl.dataset.opcional === '1')) datos[ctrl.name] = valor;
     });
     if (!completo) return;
 
@@ -874,7 +896,7 @@ async function confirmarDatosFaltantes(borrador) {
         await manejarRespuestaRegistro(res, data, true);
     } catch (err) {
         btnOk.disabled = false;
-        btnOk.textContent = 'Registrar orden';
+        btnOk.textContent = btnOk.dataset.texto || 'Registrar orden';
         mostrarNotificacion("Error de conexión al registrar la orden. Inténtalo de nuevo.", "error");
     }
 }
