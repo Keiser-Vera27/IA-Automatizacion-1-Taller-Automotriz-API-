@@ -518,6 +518,10 @@ class TrabajoTaller(BaseModel):
     color: str = Field(default="", description="Color, ej: 'blanco'. Vacío si no se menciona.")
     anio: str = Field(default="")
     cilindraje: str = Field(default="")
+    kilometraje: str = Field(default="", description="Kilometraje del vehículo, solo números")
+    # Garantía indicada EXPLÍCITAMENTE en el mensaje (tiene prioridad sobre catálogo y taller)
+    garantia_dias: str = Field(default="")
+    garantia_km: str = Field(default="")
     cliente: str = ""
     cedula: str = ""
     telefono: str = ""
@@ -684,6 +688,9 @@ def construir_prompt_extraccion(taller_id, texto: str, nombres_tecnicos: list[st
           "color": "Color del auto (ej. negro)",
           "anio": "Año (ej. 2023)",
           "cilindraje": "Cilindraje (ej. 1.4)",
+          "kilometraje": "Kilometraje del odómetro SOLO en números, sin puntos ni 'km' (ej. 'ingresa con 85.400 km' -> 85400). Vacío si no se menciona.",
+          "garantia_dias": "SOLO si el mensaje indica la garantía entregada: en DÍAS (ej. '3 meses de garantía' -> 90, '1 año' -> 365, 'sin garantía' -> 0). Vacío si no se menciona.",
+          "garantia_km": "SOLO si el mensaje indica garantía en kilómetros (ej. 'o 5.000 km' -> 5000). Vacío si no se menciona.",
           "cliente": "Nombre del cliente",
           "cedula": "Número de cédula, RUC o CI en texto plano (ej. 1205888769)",
           "telefono": "Número de teléfono (si se menciona)",
@@ -763,10 +770,166 @@ def validar_identificacion_ec(valor) -> tuple[str, str]:
     verificador = (10 - suma % 10) % 10
     return (texto, "") if verificador == int(texto[9]) else (texto, "cédula no válida (revisa los dígitos)")
 
+def normalizar_kilometraje(valor) -> int | None:
+    """'85.400 km' / '85,400' / '85400' -> 85400. None si no es un kilometraje válido."""
+    digitos = re.sub(r"[^\d]", "", str(valor or ""))
+    if not digitos:
+        return None
+    km = int(digitos)
+    return km if 0 < km < 2_000_000 else None
+
+# --- Garantías (etapa 1) ---
+GARANTIA_DIAS_DEFECTO = 30      # respaldo si el taller aún no configuró la suya
+GARANTIA_KM_DEFECTO = 1000
+
+def obtener_garantia_taller(taller_id) -> tuple[int, int]:
+    """Garantía por defecto que definió el dueño del taller (días, km)."""
+    try:
+        fila = (supabase.table("talleres").select("garantia_dias_defecto, garantia_km_defecto")
+                .eq("id", taller_id).limit(1).execute()).data
+        if fila:
+            dias = fila[0].get("garantia_dias_defecto")
+            km = fila[0].get("garantia_km_defecto")
+            return (GARANTIA_DIAS_DEFECTO if dias is None else int(dias),
+                    GARANTIA_KM_DEFECTO if km is None else int(km))
+    except Exception:
+        pass   # migración aún no ejecutada
+    return GARANTIA_DIAS_DEFECTO, GARANTIA_KM_DEFECTO
+
+def _entero_o_none(valor) -> int | None:
+    digitos = re.sub(r"[^\d]", "", str(valor if valor is not None else ""))
+    return int(digitos) if digitos else None
+
+def _sin_tildes(texto) -> str:
+    import unicodedata
+    return unicodedata.normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode().lower()
+
+def calcular_garantia(taller_id, trabajo_realizado: str, kilometraje,
+                      dias_mensaje=None, km_mensaje=None) -> dict:
+    """Garantía que se entrega al TERMINAR una orden. Prioridad:
+      1. Lo que diga el mensaje de cierre ("garantía de 3 meses o 5000 km").
+      2. La garantía del servicio en el catálogo (si hay varios, la más amplia).
+      3. La garantía por defecto que definió el dueño del taller.
+    0 días = sin garantía."""
+    dias_taller, km_taller = obtener_garantia_taller(taller_id)
+    dias_msj, km_msj = _entero_o_none(dias_mensaje), _entero_o_none(km_mensaje)
+
+    trabajo = _sin_tildes(trabajo_realizado)
+    coincidencias = []
+    try:
+        servicios = (supabase.table("servicios").select("*").eq("taller_id", taller_id).execute().data) or []
+        coincidencias = [sv for sv in servicios
+                         if _sin_tildes(sv.get("nombre_servicio")) and _sin_tildes(sv.get("nombre_servicio")) in trabajo]
+    except Exception as e:
+        print(f"No se pudo leer el catálogo para la garantía: {e}")
+
+    if coincidencias:
+        dias = max((sv.get("garantia_dias") if sv.get("garantia_dias") is not None else dias_taller) for sv in coincidencias)
+        km = max((sv.get("garantia_km") if sv.get("garantia_km") is not None else km_taller) for sv in coincidencias)
+        origen = ", ".join(sv.get("nombre_servicio", "") for sv in coincidencias)
+    else:
+        dias, km, origen = dias_taller, km_taller, "Garantía general del taller"
+
+    if dias_msj is not None or km_msj is not None:
+        # Garantía indicada en el cierre para ESTE trabajo
+        dias = dias_msj if dias_msj is not None else dias
+        km = km_msj if km_msj is not None else (0 if dias_msj == 0 else km)
+        origen = "Indicada al cerrar el trabajo"
+
+    if not dias:
+        return {"garantia_dias": 0, "garantia_km": 0, "garantia_vence": None,
+                "garantia_km_limite": None, "garantia_servicio": f"Sin garantía ({origen})"}
+
+    from datetime import timedelta
+    vence = (datetime.now(ZONA_ECUADOR).date() + timedelta(days=int(dias))).isoformat()
+    km_actual = normalizar_kilometraje(kilometraje)
+    return {
+        "garantia_dias": int(dias),
+        "garantia_km": int(km or 0),
+        "garantia_vence": vence,
+        "garantia_km_limite": (km_actual + int(km)) if (km_actual and km) else None,
+        "garantia_servicio": origen,
+    }
+
+_COLS_GARANTIA_SELECT = "id, vehiculo, trabajo_realizado, oficial, fecha_salida, garantia_vence, garantia_km_limite"
+
+def _evaluar_garantia(o: dict, km_actual: int | None) -> dict | None:
+    """Estado de la garantía de una orden terminada. None si no tiene, o si
+    venció hace más de 60 días (ya no es relevante avisar)."""
+    if not o or not o.get("garantia_vence"):
+        return None
+    hoy = datetime.now(ZONA_ECUADOR).date()
+    vence = datetime.strptime(str(o["garantia_vence"])[:10], "%Y-%m-%d").date()
+    if (hoy - vence).days > 60:
+        return None
+    km_limite = o.get("garantia_km_limite")
+    vencida_fecha = hoy > vence
+    vencida_km = bool(km_actual and km_limite and km_actual > km_limite)
+    return {
+        "orden_id": o.get("id"),
+        "trabajo": o.get("trabajo_realizado") or "",
+        "tecnico": o.get("oficial") or "",
+        "entregado": str(o.get("fecha_salida") or "")[:10],
+        "vence": vence.isoformat(),
+        "km_limite": km_limite,
+        "vigente": not (vencida_fecha or vencida_km),
+        "motivo_vencida": "por fecha" if vencida_fecha else ("por kilometraje" if vencida_km else ""),
+    }
+
+def buscar_garantia(taller_id, placa: str, km_actual: int | None) -> dict | None:
+    """Garantía de la última orden terminada de esta placa en ESTE taller."""
+    try:
+        filas = (supabase.table("reparaciones").select(_COLS_GARANTIA_SELECT)
+                 .eq("taller_id", taller_id).eq("vehiculo", placa).eq("estado", "Terminado")
+                 .order("fecha_salida", desc=True).limit(1).execute()).data
+    except Exception:
+        return None   # migración de garantías aún no ejecutada
+    return _evaluar_garantia(filas[0] if filas else None, km_actual)
+
+def buscar_garantias_lote(taller_id, placas: list[str]) -> dict[str, dict]:
+    """Última orden terminada CON garantía de cada placa, en UNA sola consulta
+    (la lista de pendientes no hace una consulta por vehículo)."""
+    placas = sorted({p for p in placas if p and p != "S/C"})
+    if not placas:
+        return {}
+    from datetime import timedelta
+    desde = (datetime.now(ZONA_ECUADOR).date() - timedelta(days=60)).isoformat()
+    try:
+        filas = (supabase.table("reparaciones").select(_COLS_GARANTIA_SELECT)
+                 .eq("taller_id", taller_id).eq("estado", "Terminado")
+                 .in_("vehiculo", placas).gte("garantia_vence", desde)
+                 .order("fecha_salida", desc=True).execute()).data or []
+    except Exception:
+        return {}
+    ultima: dict[str, dict] = {}
+    for f in filas:                       # ordenadas de la más reciente a la más antigua
+        ultima.setdefault(f.get("vehiculo"), f)
+    return ultima
+
+# Columnas nuevas de garantía/kilometraje: si la migración aún no se ejecutó,
+# se guarda la orden sin ellas en lugar de fallar.
+COLUMNAS_GARANTIA = ("kilometraje", "garantia_dias", "garantia_km", "garantia_vence",
+                     "garantia_km_limite", "garantia_servicio")
+
+def guardar_reparacion(operacion: str, datos: dict, id_orden=None):
+    def ejecutar(payload):
+        tabla = supabase.table("reparaciones")
+        if operacion == "insert":
+            return tabla.insert(payload).execute()
+        return tabla.update(payload).eq("id", id_orden).execute()
+    try:
+        return ejecutar(datos)
+    except APIError as e:
+        if any(c in str(e) for c in COLUMNAS_GARANTIA):
+            print("Aviso: faltan columnas de garantía/kilometraje (ejecuta la migración 2026-09-23e). Se guarda sin ellas.")
+            return ejecutar({k: v for k, v in datos.items() if k not in COLUMNAS_GARANTIA})
+        raise
+
 # Campos obligatorios de una orden de trabajo (en este orden se muestran en el modal)
 CAMPOS_OBLIGATORIOS_ORDEN = [
     ("vehiculo", "Placa del vehículo"),
     ("modelo",   "Marca y modelo"),
+    ("kilometraje", "Kilometraje actual"),
     ("cliente",  "Nombre del cliente"),
     ("cedula",   "Cédula o RUC del cliente"),
     ("telefono", "Número de celular"),
@@ -774,7 +937,7 @@ CAMPOS_OBLIGATORIOS_ORDEN = [
     ("oficial",  "Técnico asignado"),
 ]
 # Datos que el usuario puede completar desde el modal
-CAMPOS_EDITABLES_ORDEN = {c for c, _ in CAMPOS_OBLIGATORIOS_ORDEN} | {"metodo_pago", "banco"}
+CAMPOS_EDITABLES_ORDEN = {c for c, _ in CAMPOS_OBLIGATORIOS_ORDEN} | {"trabajo_realizado", "metodo_pago", "banco"}
 
 def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> tuple[dict, list[dict], dict]:
     """Revisa una orden (ingreso o cierre) ANTES de guardarla.
@@ -799,8 +962,9 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> 
         nuevo = str(d.get(campo) or "").strip()
         if nuevo and nuevo.lower() != "none":
             return nuevo
-        # Motivo y técnico solo se heredan de una orden que sigue abierta
-        if campo in ("motivo", "oficial") and not pendiente:
+        # Motivo, técnico y kilometraje solo se heredan de una orden abierta
+        # (en cada visita nueva el vehículo llega con otro kilometraje)
+        if campo in ("motivo", "oficial", "kilometraje") and not pendiente:
             return ""
         return str((ultima or {}).get(campo) or "").strip()
 
@@ -826,6 +990,14 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> 
                     falta(campo, etiqueta, "número no válido (ej. 0991234567)", valor)
                 elif d.get("telefono"):
                     d["telefono"] = tel
+            elif campo == "kilometraje":
+                km = normalizar_kilometraje(valor)
+                if not valor:
+                    falta(campo, etiqueta)
+                elif km is None:
+                    falta(campo, etiqueta, "número no válido (ej. 85400)", valor)
+                elif d.get("kilometraje"):
+                    d["kilometraje"] = str(km)
             elif campo == "cedula":
                 ced, error = validar_identificacion_ec(valor)
                 if error:
@@ -834,6 +1006,10 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> 
                     d["cedula"] = ced
             elif not valor:
                 falta(campo, etiqueta)
+
+    # Al cerrar (hay cobro), es obligatorio decir qué servicio o solución se dio
+    if se_cierra and not es_mostrador and not str(d.get("trabajo_realizado") or "").strip():
+        falta("trabajo_realizado", "Servicio realizado o solución brindada")
 
     # Al cobrar, el método de pago es obligatorio para poder cuadrar caja
     if (d.get("cobro") or 0) > 0:
@@ -844,9 +1020,14 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> 
         elif categoria == "Transferencia" and not banco:
             falta("banco", "Banco de la transferencia")
 
+    # Aviso de garantía: solo al INGRESAR un vehículo (no al cerrar su orden)
+    garantia = None
+    if not pendiente and not es_mostrador and placa and placa != "S/C":
+        garantia = buscar_garantia(taller_id, placa, normalizar_kilometraje(efectivo("kilometraje")))
+
     contexto = {
         "placa": placa, "es_cierre": se_cierra, "es_mostrador": es_mostrador,
-        "orden_abierta": pendiente,
+        "orden_abierta": pendiente, "garantia": garantia,
         "cliente": efectivo("cliente"), "modelo": efectivo("modelo"),
         "trabajo": str(d.get("trabajo_realizado") or ""), "cobro": d.get("cobro") or 0,
     }
@@ -1023,6 +1204,7 @@ async def trabajador_silencioso():
                     "color": _heredar_o_actualizar("color", d.get("color")),
                     "anio": _heredar_o_actualizar("anio", d.get("anio")),
                     "cilindraje": _heredar_o_actualizar("cilindraje", d.get("cilindraje")),
+                    "kilometraje": normalizar_kilometraje(d.get("kilometraje")) or ultima_orden.get("kilometraje"),
                     "cobro": d.get("cobro", 0.0) if d.get("cobro", 0) > 0 else ultima_orden.get("cobro", 0.0),
                     "metodo_pago": _heredar_o_actualizar("metodo_pago", d.get("metodo_pago")),
                     "banco": _heredar_o_actualizar("banco", banco_extraido)
@@ -1031,10 +1213,13 @@ async def trabajador_silencioso():
                 if se_cierra:
                     datos_actualizar["estado"] = "Terminado"
                     datos_actualizar["fecha_salida"] = tiempo_actual
+                    # Garantía que se entrega con este trabajo
+                    datos_actualizar.update(calcular_garantia(taller_id, trabajo_final, datos_actualizar["kilometraje"],
+                                                              d.get("garantia_dias"), d.get("garantia_km")))
                 else:
                     datos_actualizar["estado"] = "Pendiente"
-                
-                supabase.table("reparaciones").update(datos_actualizar).eq("id", ultima_orden["id"]).execute()
+
+                guardar_reparacion("update", datos_actualizar, ultima_orden["id"])
                 reparacion_id_actual = ultima_orden["id"]
             else:
                 estado_nuevo = 'Terminado' if (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") else 'Pendiente'
@@ -1046,14 +1231,19 @@ async def trabajador_silencioso():
                         return val_str
                     return str(ultima_orden.get(campo) or "").strip() if ultima_orden else ""
 
+                es_venta_mostrador = not placa or placa == "S/C"
+                garantia_nueva = (calcular_garantia(taller_id, d.get("trabajo_realizado", ""), d.get("kilometraje"),
+                                                    d.get("garantia_dias"), d.get("garantia_km"))
+                                  if estado_nuevo == "Terminado" and not es_venta_mostrador else {})
                 try:
-                    insertada = supabase.table("reparaciones").insert({
+                    insertada = guardar_reparacion("insert", {
                         "taller_id": taller_id,
                         "vehiculo": placa if placa else "S/C",
                         "modelo": _heredar("modelo", d.get("modelo")),
                         "color": _heredar("color", d.get("color")),
                         "anio": _heredar("anio", d.get("anio")),
                         "cilindraje": _heredar("cilindraje", d.get("cilindraje")),
+                        "kilometraje": normalizar_kilometraje(d.get("kilometraje")),
                         "cliente": _heredar("cliente", d.get("cliente")),
                         "cedula": _heredar("cedula", cedula_extraida),
                         "telefono": _heredar("telefono", d.get("telefono")),
@@ -1066,8 +1256,9 @@ async def trabajador_silencioso():
                         "fecha_hora": tiempo_actual,
                         "fecha_salida": fecha_sal,
                         "estado": estado_nuevo,
-                        "mensaje_id": id_msj
-                    }).execute()
+                        "mensaje_id": id_msj,
+                        **garantia_nueva
+                    })
                     if insertada.data:
                         reparacion_id_actual = insertada.data[0]["id"]
                 except APIError as e:
@@ -1611,10 +1802,12 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
             print(f"Pre-validación no disponible, se encola sin validar: {e}")
             resultado = None
 
+    garantia_aviso = None
     if resultado and resultado.get("tipo") == "reparacion" and resultado.get("reparacion"):
         orden, faltantes, contexto = await asyncio.to_thread(
             validar_orden_trabajo, resultado["reparacion"], taller_id, mapa_tecnicos)
         resultado["reparacion"] = orden
+        garantia_aviso = contexto.get("garantia")
         if faltantes:
             # NO se guarda nada: el frontend muestra el modal para completar
             return {
@@ -1633,6 +1826,7 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         "status": "éxito",
         "tipo_detectado": "registro",
         "validado": resultado is not None,
+        "garantia": garantia_aviso,
         "mensaje_bd": "¡Recibido en la nube! Procesando registro en segundo plano."
                       if resultado is not None else
                       "Recibido. La IA no está disponible en este momento: el registro se procesará automáticamente cuando vuelva.",
@@ -1761,6 +1955,20 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
         .eq("taller_id", taller_id).eq("estado", "Pendiente")
         .limit(1).execute()
     ).count or 0
+
+    # Vehículos cerrados SIN COBRO hoy (garantías, sin presupuesto, etc.).
+    # No suman a ingresos ni comisiones, pero se muestran para el control.
+    try:
+        cerrados_sin_cobro = (
+            supabase.table("reparaciones")
+            .select("vehiculo, cliente, modelo, oficial, fecha_salida, motivo_cierre, detalle_cierre")
+            .eq("taller_id", taller_id).eq("estado", ESTADO_CERRADO_SIN_COBRO)
+            .gte("fecha_salida", inicio_utc).lte("fecha_salida", fin_utc)
+            .order("fecha_salida")
+            .execute()
+        ).data or []
+    except Exception:
+        cerrados_sin_cobro = []   # migración aún no ejecutada
 
     # Porcentajes de comisión (cliente admin: tecnicos no tiene política RLS de SELECT)
     tecnicos_bd = supabase.table("tecnicos").select("nombre, porcentaje_comision").eq("taller_id", taller_id).execute().data
@@ -1904,7 +2112,14 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
         "egresos_por_responsable": egresos_por_responsable,
         "rendimiento_tecnicos": ranking_tecnicos,
         "vehiculos": {"ingresados_hoy": ingresados_hoy, "entregados_hoy": len(ordenes_cerradas),
-                      "pendientes_en_taller": pendientes_taller},
+                      "cerrados_sin_cobro": len(cerrados_sin_cobro), "pendientes_en_taller": pendientes_taller},
+        "cerrados_sin_cobro": [
+            {"hora": hora_ecuador(c.get("fecha_salida")), "vehiculo": c.get("vehiculo") or "-",
+             "modelo": c.get("modelo") or "", "cliente": c.get("cliente") or "-",
+             "oficial": canonizar_tecnico(c.get("oficial"), nombres_oficiales) or "-",
+             "motivo": c.get("motivo_cierre") or "-", "detalle": c.get("detalle_cierre") or ""}
+            for c in cerrados_sin_cobro
+        ],
         "alertas": alertas,
     }
 
@@ -2070,6 +2285,73 @@ def reporte_liquidacion(request: Request, fecha_inicio: str, fecha_fin: str):
 # EXPORTACIONES E INVENTARIOS
 # ==============================================================================
 
+# ==============================================================================
+# CERRAR ORDEN SIN COBRO (botón "Cerrar orden" en la tarjeta del vehículo)
+# ==============================================================================
+# Para vehículos que se van sin que se cobre nada. Si hubo cobro (aunque sea
+# un diagnóstico) NO se usa esto: se registra como un cierre normal por el chat.
+MOTIVOS_CIERRE_SIN_COBRO = {
+    "garantia":        "Se cubre garantía",
+    "sin_presupuesto": "Cliente sin presupuesto para la reparación",
+    "sin_tiempo":      "Cliente no dispone de tiempo para la reparación",
+    "fuera_capacidad": "Falla sobrepasa las capacidades del taller",
+    "otro":            "Otro",
+}
+# En estos motivos el detalle es obligatorio (qué se hizo / cuál fue el motivo)
+MOTIVOS_CON_DETALLE_OBLIGATORIO = {"garantia", "otro"}
+ESTADO_CERRADO_SIN_COBRO = "Cerrado sin cobro"
+
+class CierreSinCobro(BaseModel):
+    motivo: str
+    detalle: str = ""
+
+@app.get("/motivos-cierre")
+def listar_motivos_cierre(request: Request):
+    obtener_cliente_seguro(request)
+    return {"motivos": [{"clave": k, "texto": v, "detalle_obligatorio": k in MOTIVOS_CON_DETALLE_OBLIGATORIO}
+                        for k, v in MOTIVOS_CIERRE_SIN_COBRO.items()]}
+
+@app.post("/reparaciones/{reparacion_id}/cerrar-sin-cobro")
+def cerrar_orden_sin_cobro(reparacion_id: str, datos: CierreSinCobro, request: Request):
+    cliente_seguro, taller_id = obtener_cliente_seguro(request)
+
+    if datos.motivo not in MOTIVOS_CIERRE_SIN_COBRO:
+        raise HTTPException(status_code=400, detail="Selecciona un motivo de cierre válido.")
+    detalle = datos.detalle.strip()
+    if datos.motivo in MOTIVOS_CON_DETALLE_OBLIGATORIO and len(detalle) < 3:
+        raise HTTPException(status_code=400, detail="Para este motivo es obligatorio escribir el detalle.")
+
+    # La orden debe ser de ESTE taller y seguir abierta (cliente admin + filtro taller_id)
+    orden = (supabase.table("reparaciones").select("id, vehiculo, estado")
+             .eq("id", reparacion_id).eq("taller_id", taller_id).limit(1).execute()).data
+    if not orden:
+        raise HTTPException(status_code=404, detail="No se encontró la orden en este taller.")
+    if orden[0].get("estado") != "Pendiente":
+        raise HTTPException(status_code=409, detail=f"La orden ya estaba cerrada ({orden[0].get('estado')}).")
+
+    try:
+        actualizada = (
+            supabase.table("reparaciones").update({
+                "estado": ESTADO_CERRADO_SIN_COBRO,
+                "motivo_cierre": MOTIVOS_CIERRE_SIN_COBRO[datos.motivo],
+                "detalle_cierre": detalle,
+                "cobro": 0,
+                "fecha_salida": ahora_utc_str(),
+            })
+            .eq("id", reparacion_id).eq("taller_id", taller_id)
+            .eq("estado", "Pendiente")          # evita cerrar dos veces si hay dos clics a la vez
+            .execute()
+        ).data
+    except APIError as e:
+        if "motivo_cierre" in str(e) or "detalle_cierre" in str(e) or "estado_check" in str(e):
+            raise HTTPException(status_code=500, detail="Falta ejecutar en Supabase la migración sql/2026-09-23d_cierre_sin_cobro.sql.")
+        raise
+    if not actualizada:
+        raise HTTPException(status_code=409, detail="La orden ya fue cerrada por otra persona.")
+
+    return {"status": "ok", "vehiculo": orden[0].get("vehiculo"), "motivo": MOTIVOS_CIERRE_SIN_COBRO[datos.motivo]}
+
+
 @app.get("/vehiculos-pendientes")
 def listar_pendientes(request: Request):
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
@@ -2078,7 +2360,7 @@ def listar_pendientes(request: Request):
     pendientes = (
         # Cliente admin: el JOIN a reparacion_detalles/inventario no tiene política RLS de SELECT
         supabase.table("reparaciones")
-        .select("id, vehiculo, cliente, cedula, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, banco, fecha_hora, estado, fecha_salida, oficial, reparacion_detalles(cantidad, precio_unitario, inventario(codigo, nombre))")
+        .select("*, reparacion_detalles(cantidad, precio_unitario, inventario(codigo, nombre))")
         .eq("taller_id", taller_id)
         .eq("estado", "Pendiente")
         .execute()
@@ -2086,7 +2368,7 @@ def listar_pendientes(request: Request):
 
     terminados_hoy = (
         supabase.table("reparaciones")
-        .select("id, vehiculo, cliente, cedula, telefono, modelo, color, anio, cilindraje, motivo, trabajo_realizado, cobro, metodo_pago, banco, fecha_hora, estado, fecha_salida, oficial, reparacion_detalles(cantidad, precio_unitario, inventario(codigo, nombre))")
+        .select("*, reparacion_detalles(cantidad, precio_unitario, inventario(codigo, nombre))")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
         .gte("fecha_salida", hoy_inicio)
@@ -2094,7 +2376,31 @@ def listar_pendientes(request: Request):
         .execute()
     ).data
 
-    return {"vehiculos": pendientes + terminados_hoy}
+    # Cerrados sin cobro hoy (se muestran en la pestaña "Terminados hoy").
+    # Consulta aparte: si la migración aún no se ejecutó, simplemente no hay.
+    try:
+        sin_cobro_hoy = (
+            supabase.table("reparaciones")
+            .select("id, vehiculo, cliente, modelo, color, anio, cilindraje, telefono, motivo, oficial, "
+                    "estado, fecha_hora, fecha_salida, motivo_cierre, detalle_cierre")
+            .eq("taller_id", taller_id)
+            .eq("estado", ESTADO_CERRADO_SIN_COBRO)
+            .gte("fecha_salida", hoy_inicio)
+            .lte("fecha_salida", hoy_fin)
+            .execute()
+        ).data or []
+    except Exception:
+        sin_cobro_hoy = []
+
+    # Pendientes con garantía de un trabajo anterior (se marca en la tarjeta).
+    # Una sola consulta para todos los vehículos del taller.
+    previas = buscar_garantias_lote(taller_id, [v.get("vehiculo") for v in pendientes])
+    for v in pendientes:
+        g = _evaluar_garantia(previas.get(v.get("vehiculo")), normalizar_kilometraje(v.get("kilometraje")))
+        if g and g["orden_id"] != v.get("id"):
+            v["garantia_previa"] = g
+
+    return {"vehiculos": pendientes + terminados_hoy + sin_cobro_hoy}
 # --- IMPORTAR INVENTARIO (carga masiva desde Excel) ---------------------
 # Regla de negocio: si el código YA existe, SUMA la cantidad nueva al stock
 # y SOBREESCRIBE costo/precio_venta con los del archivo (igual criterio que
@@ -2498,22 +2804,58 @@ def plantilla_inventario(request: Request):
 class NuevoServicio(BaseModel):
     nombre_servicio: str
     precio_base: float
+    # None = usar la garantía por defecto del taller; 0 días = sin garantía
+    garantia_dias: int | None = Field(default=None, ge=0, le=3650)
+    garantia_km: int | None = Field(default=None, ge=0, le=500000)
+
+class GarantiaServicio(BaseModel):
+    garantia_dias: int | None = Field(default=None, ge=0, le=3650)
+    garantia_km: int | None = Field(default=None, ge=0, le=500000)
 
 @app.get("/servicios")
 def listar_servicios(request: Request):
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
     data = cliente_seguro.table("servicios").select("*").eq("taller_id", taller_id).order("nombre_servicio").execute().data
-    return {"servicios": data}
+    dias, km = obtener_garantia_taller(taller_id)
+    return {"servicios": data, "garantia_defecto": {"dias": dias, "km": km}}
 
 @app.post("/servicios")
 def agregar_servicio(datos: NuevoServicio, request: Request):
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
-    cliente_seguro.table("servicios").insert({
-        "taller_id": taller_id,
-        "nombre_servicio": datos.nombre_servicio.strip(),
-        "precio_base": datos.precio_base
-    }).execute()
+    fila = {"taller_id": taller_id, "nombre_servicio": datos.nombre_servicio.strip(), "precio_base": datos.precio_base}
+    if datos.garantia_dias is not None:
+        fila["garantia_dias"] = datos.garantia_dias
+    if datos.garantia_km is not None:
+        fila["garantia_km"] = datos.garantia_km
+    cliente_seguro.table("servicios").insert(fila).execute()
     return {"status": "ok", "mensaje": "Servicio agregado exitosamente"}
+
+class GarantiaTaller(BaseModel):
+    dias: int = Field(ge=0, le=3650)
+    km: int = Field(ge=0, le=500000)
+
+@app.put("/garantia-taller")
+def actualizar_garantia_taller(datos: GarantiaTaller, request: Request):
+    """El dueño define la garantía por defecto de SU taller."""
+    _, taller_id = obtener_cliente_seguro(request)
+    try:
+        # Cliente admin filtrado por el taller del JWT (talleres puede no tener política de UPDATE)
+        supabase.table("talleres").update({"garantia_dias_defecto": datos.dias, "garantia_km_defecto": datos.km}).eq("id", taller_id).execute()
+    except APIError as e:
+        if "garantia" in str(e):
+            raise HTTPException(status_code=500, detail="Falta ejecutar en Supabase la migración sql/2026-09-23e_garantias_kilometraje.sql.")
+        raise
+    return {"status": "ok"}
+
+@app.patch("/servicios/{servicio_id}/garantia")
+def actualizar_garantia_servicio(servicio_id: str, datos: GarantiaServicio, request: Request):
+    cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    res = (cliente_seguro.table("servicios")
+           .update({"garantia_dias": datos.garantia_dias, "garantia_km": datos.garantia_km})
+           .eq("id", servicio_id).eq("taller_id", taller_id).execute())
+    if not res.data:
+        raise HTTPException(status_code=404, detail="No se encontró el servicio en este taller.")
+    return {"status": "ok"}
 
 @app.delete("/servicios/{servicio_id}")
 def eliminar_servicio(servicio_id: str, request: Request):

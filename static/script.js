@@ -204,7 +204,10 @@ async function manejarRespuestaRegistro(res, data, desdeModal) {
 
     if (data.status === "éxito") {
         inputTexto.value = "";
-        if (desdeModal) {
+        if (data.garantia) {
+            mostrarModal({ tipo: data.garantia.vigente ? 'warning' : 'info', titulo: 'Orden registrada',
+                           mensaje: avisoGarantiaHTML(data.garantia) });
+        } else if (desdeModal) {
             mostrarModal({ tipo: 'success', titulo: 'Orden registrada',
                            mensaje: 'Los datos están completos. La orden se está guardando.' });
         }
@@ -404,7 +407,7 @@ document.addEventListener('keydown', (e) => {
     if (!overlay || !overlay.classList.contains('visible')) return;
     if (overlay.dataset.modo === 'formulario') {
         if (e.key === 'Escape') { e.preventDefault(); document.getElementById('modal-btn-cancelar').click(); }
-        else if (e.key === 'Enter' && e.target.tagName !== 'SELECT') { e.preventDefault(); document.getElementById('modal-btn-ok').click(); }
+        else if (e.key === 'Enter' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); document.getElementById('modal-btn-ok').click(); }
         return;
     }
     if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); cerrarModal(); }
@@ -417,8 +420,9 @@ document.addEventListener('keydown', (e) => {
 const BANCOS_SUGERIDOS = ['Pichincha', 'Guayaquil', 'Produbanco', 'Pacífico', 'Bolivariano',
                           'Internacional', 'Austro', 'Loja', 'Machala', 'JEP', 'Jardín Azuayo'];
 const EJEMPLOS_CAMPO = {
-    vehiculo: 'Ej. PXY9876', modelo: 'Ej. Chevrolet Sail', cliente: 'Ej. Juan Pérez',
+    vehiculo: 'Ej. PXY9876', modelo: 'Ej. Chevrolet Sail', kilometraje: 'Ej. 85400', cliente: 'Ej. Juan Pérez',
     cedula: 'Ej. 0912345678', telefono: 'Ej. 0991234567', motivo: 'Ej. Ruido en la suspensión delantera',
+    trabajo_realizado: 'Ej. Cambio de pastillas delanteras y rectificación de discos',
     banco: 'Ej. Pichincha'
 };
 
@@ -444,7 +448,7 @@ function campoFaltanteHTML(f, tecnicos) {
                        <input name="banco" list="lista-bancos" placeholder="Banco de la transferencia (ej. Pichincha)" autocomplete="off">
                    </div>`;
     } else {
-        const extra = f.campo === 'cedula' || f.campo === 'telefono' ? 'inputmode="numeric"' : '';
+        const extra = ['cedula', 'telefono', 'kilometraje'].includes(f.campo) ? 'inputmode="numeric"' : '';
         const lista = f.campo === 'banco' ? 'list="lista-bancos"' : '';
         control = `<input name="${e(f.campo)}" value="${e(f.valor || '')}" placeholder="${e(EJEMPLOS_CAMPO[f.campo] || '')}"
                           autocomplete="off" required ${extra} ${lista}>`;
@@ -478,6 +482,7 @@ function mostrarFormularioFaltantes(data) {
                     .filter(Boolean).join(' · ');
     document.getElementById('modal-mensaje').innerHTML =
         `<div class="resumen-orden">${tipoOrden}${resumen ? ': ' + resumen : ''}</div>
+         ${avisoGarantiaHTML(ctx.garantia)}
          Completa estos datos para registrar la orden. <b>No se guardó nada todavía.</b>`;
 
     const formulario = document.getElementById('modal-formulario');
@@ -500,6 +505,124 @@ function mostrarFormularioFaltantes(data) {
 
     const primero = formulario.querySelector('input, select');
     if (primero) setTimeout(() => primero.focus(), 50);
+}
+
+// ==============================================================================
+// CERRAR ORDEN SIN COBRO (botón "Cerrar orden" en la tarjeta del vehículo)
+// ==============================================================================
+let motivosCierreCache = null;
+
+async function obtenerMotivosCierre() {
+    if (motivosCierreCache) return motivosCierreCache;
+    const res = await fetch('/motivos-cierre', { headers: { 'Authorization': `Bearer ${localStorage.getItem("taller_token")}` } });
+    if (!res.ok) throw new Error('motivos');
+    motivosCierreCache = (await res.json()).motivos || [];
+    return motivosCierreCache;
+}
+
+// Abre el modal con la lista de motivos. 'boton' trae id, placa y cliente en data-*
+async function abrirCerrarOrden(boton) {
+    const { id, placa, cliente } = boton.dataset;
+    const e = escaparHTML;
+    let motivos;
+    try {
+        motivos = await obtenerMotivosCierre();
+    } catch (err) {
+        mostrarModal({ tipo: 'error', titulo: 'No se pudo abrir', mensaje: 'No se pudieron cargar los motivos de cierre. Revisa tu conexión.' });
+        return;
+    }
+
+    const overlay = document.getElementById('modal-aviso');
+    mostrarModal({ tipo: 'info', titulo: 'Cerrar orden sin cobro' });
+    overlay.dataset.modo = 'formulario';
+
+    document.getElementById('modal-mensaje').innerHTML =
+        `<div class="resumen-orden"><b>${e(placa)}</b>${cliente ? ' · ' + e(cliente) : ''} · Orden N° ${e(id)}</div>
+         El vehículo sale del taller <b>sin registrar ningún cobro</b>.
+         <div class="nota-cierre">Si se cobró algo (aunque sea un diagnóstico), no uses esta opción: regístralo por el chat como un trabajo terminado.</div>`;
+
+    const formulario = document.getElementById('modal-formulario');
+    formulario.innerHTML = `
+        <label class="campo-faltante">
+            <span class="campo-etiqueta">Motivo del cierre</span>
+            <select name="motivo" required onchange="ajustarDetalleCierre(this)">
+                <option value="">Selecciona el motivo...</option>
+                ${motivos.map(m => `<option value="${e(m.clave)}" data-obligatorio="${m.detalle_obligatorio ? 1 : 0}">${e(m.texto)}</option>`).join('')}
+            </select>
+            <span class="campo-aviso" hidden>Este dato es obligatorio</span>
+        </label>
+        <label class="campo-faltante">
+            <span class="campo-etiqueta" id="etiqueta-detalle-cierre">Detalle (opcional)</span>
+            <textarea name="detalle" placeholder="Ej. El cliente volverá cuando tenga el presupuesto"></textarea>
+            <span class="campo-aviso" hidden>Este dato es obligatorio</span>
+        </label>`;
+    formulario.hidden = false;
+
+    const btnCancelar = document.getElementById('modal-btn-cancelar');
+    btnCancelar.hidden = false;
+    btnCancelar.onclick = () => { overlay.dataset.modo = ''; cerrarModal(); };
+
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Cerrar orden';
+    btnOk.onclick = () => confirmarCerrarOrden(id, placa);
+    setTimeout(() => formulario.querySelector('select').focus(), 50);
+}
+
+// Cambia la etiqueta/placeholder del detalle según el motivo elegido
+function ajustarDetalleCierre(select) {
+    const opcion = select.selectedOptions[0];
+    const obligatorio = opcion && opcion.dataset.obligatorio === '1';
+    const textarea = document.querySelector('#modal-formulario textarea[name="detalle"]');
+    const etiqueta = document.getElementById('etiqueta-detalle-cierre');
+    textarea.required = obligatorio;
+    if (select.value === 'garantia') {
+        etiqueta.textContent = '¿Qué se hizo bajo garantía?';
+        textarea.placeholder = 'Ej. Se reajustó el embrague cambiado en la orden N° 1520';
+    } else if (select.value === 'otro') {
+        etiqueta.textContent = 'Describe el motivo';
+        textarea.placeholder = 'Ej. El cliente retiró el vehículo sin autorizar el trabajo';
+    } else {
+        etiqueta.textContent = 'Detalle (opcional)';
+        textarea.placeholder = 'Ej. El cliente volverá cuando tenga el presupuesto';
+    }
+}
+
+async function confirmarCerrarOrden(id, placa) {
+    const formulario = document.getElementById('modal-formulario');
+    const motivo = formulario.querySelector('select[name="motivo"]');
+    const detalle = formulario.querySelector('textarea[name="detalle"]');
+    let completo = true;
+    [motivo, detalle].forEach(ctrl => {
+        const falta = ctrl.required && ctrl.value.trim().length < (ctrl.tagName === 'TEXTAREA' ? 3 : 1);
+        ctrl.classList.toggle('invalido', falta);
+        ctrl.closest('.campo-faltante').querySelector('.campo-aviso').hidden = !falta;
+        if (falta) completo = false;
+    });
+    if (!completo) return;
+
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.disabled = true;
+    btnOk.textContent = 'Cerrando...';
+    try {
+        const res = await fetch(`/reparaciones/${encodeURIComponent(id)}/cerrar-sin-cobro`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem("taller_token")}` },
+            body: JSON.stringify({ motivo: motivo.value, detalle: detalle.value.trim() })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            mostrarModal({ tipo: 'error', titulo: 'No se pudo cerrar la orden', mensaje: escaparHTML(data.detail || `Error ${res.status}`) });
+            return;
+        }
+        mostrarModal({ tipo: 'success', titulo: 'Orden cerrada',
+                       mensaje: `<b>${escaparHTML(placa)}</b> se cerró sin cobro. Motivo: ${escaparHTML(data.motivo || '')}.` });
+        cargarVehiculosPendientes(typeof filtroEstadoActual !== 'undefined' ? filtroEstadoActual : 'Pendiente');
+        cargarCuadreCaja(true);
+    } catch (err) {
+        btnOk.disabled = false;
+        btnOk.textContent = 'Cerrar orden';
+        mostrarNotificacion("Error de conexión al cerrar la orden. Inténtalo de nuevo.", "error");
+    }
 }
 
 // Valida en pantalla y reenvía al backend junto con el borrador firmado
@@ -799,6 +922,26 @@ function renderizarCuadreDeCaja(data) {
             <tr class="fila-total"><td colspan="6">Total cobrado</td><td class="num">${dinero(data.total_ingresos)}</td></tr>`
         : `<tr><td colspan="7" class="vacio">Sin órdenes cerradas hoy.</td></tr>`;
 
+    // ---------- Cerrados sin cobro (garantías, sin presupuesto, etc.) ----------
+    const sinCobro = data.cerrados_sin_cobro || [];
+    const bloqueSinCobro = sinCobro.length ? `
+            <h4>Cerrados sin cobro (${sinCobro.length})</h4>
+            <div class="tabla-scroll">
+                <table class="tabla-caja">
+                    <thead><tr><th>Hora</th><th>Placa</th><th>Cliente</th><th>Técnico</th><th>Motivo</th><th>Detalle</th></tr></thead>
+                    <tbody>${sinCobro.map(c => `
+                        <tr>
+                            <td>${e(c.hora || '-')}</td>
+                            <td><b>${e(c.vehiculo)}</b>${c.modelo ? `<div class="sub">${e(c.modelo)}</div>` : ''}</td>
+                            <td>${e(c.cliente)}</td>
+                            <td>${e(c.oficial)}</td>
+                            <td>${e(c.motivo)}</td>
+                            <td class="celda-trabajo" title="${e(c.detalle)}">${e(c.detalle || '-')}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>` : '';
+
     // ---------- Egresos ----------
     const egresos = data.egresos || [];
     const filasEgresos = egresos.length ? egresos.map(g => `
@@ -863,7 +1006,7 @@ function renderizarCuadreDeCaja(data) {
             <div class="linea-detalle">
                 Mano de obra <b>${dinero(data.total_mano_obra)}</b> · Repuestos <b>${dinero(data.total_repuestos)}</b> · Comisiones <b>${dinero(data.total_comisiones)}</b>
                 <span class="separador">|</span>
-                Vehículos: <b>${v.ingresados_hoy || 0}</b> ingresaron · <b>${v.entregados_hoy || 0}</b> entregados · <b>${v.pendientes_en_taller || 0}</b> en taller
+                Vehículos: <b>${v.ingresados_hoy || 0}</b> ingresaron · <b>${v.entregados_hoy || 0}</b> entregados${v.cerrados_sin_cobro ? ` · <b>${v.cerrados_sin_cobro}</b> sin cobro` : ''} · <b>${v.pendientes_en_taller || 0}</b> en taller
             </div>
 
             ${bloqueAlertas}
@@ -896,6 +1039,8 @@ function renderizarCuadreDeCaja(data) {
                     <tbody>${filasOrdenes}</tbody>
                 </table>
             </div>
+
+            ${bloqueSinCobro}
 
             <h4>Egresos de hoy (${egresos.length})</h4>
             ${bloqueResponsables}
@@ -964,7 +1109,10 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
         }
 
         const listaVehiculos = data.vehiculos || [];
-        const vehiculosFiltrados = listaVehiculos.filter(v => v.estado === filtroEstadoActual);
+        // "Terminados hoy" también muestra los cerrados sin cobro del día
+        const vehiculosFiltrados = listaVehiculos.filter(v => filtroEstadoActual === 'Terminado'
+            ? (v.estado === 'Terminado' || v.estado === 'Cerrado sin cobro')
+            : v.estado === filtroEstadoActual);
 
         // NUEVA ESTRUCTURA HTML: Usando las clases limpias de CSS
         let html = `
@@ -981,11 +1129,18 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
         if (vehiculosFiltrados.length > 0) {
             vehiculosFiltrados.forEach(v => {
                 // Detecta qué colores aplicar
-                let claseEstado = v.estado === 'Pendiente' ? 'estado-pendiente' : 'estado-terminado';
-                
-                let detalleExtra = v.estado === 'Terminado' 
-                    ? `<div class="info-cobro">Cobro: $${v.cobro || 0} (${v.metodo_pago || 'Efectivo'})</div>` 
-                    : `<div class="info-taller-item"><strong>Falla / Motivo:</strong> ${v.motivo || 'No especificado'}</div>`;
+                let claseEstado = v.estado === 'Pendiente' ? 'estado-pendiente'
+                                 : (v.estado === 'Cerrado sin cobro' ? 'estado-sin-cobro' : 'estado-terminado');
+
+                let detalleExtra;
+                if (v.estado === 'Terminado') {
+                    detalleExtra = `<div class="info-cobro">Cobro: $${v.cobro || 0} (${v.metodo_pago || 'Efectivo'})</div>`;
+                } else if (v.estado === 'Cerrado sin cobro') {
+                    detalleExtra = `<div class="info-taller-item"><strong>Motivo de cierre:</strong> ${escaparHTML(v.motivo_cierre || '-')}</div>`
+                        + (v.detalle_cierre ? `<div class="info-taller-item"><strong>Detalle:</strong> ${escaparHTML(v.detalle_cierre)}</div>` : '');
+                } else {
+                    detalleExtra = `<div class="info-taller-item"><strong>Falla / Motivo:</strong> ${v.motivo || 'No especificado'}</div>`;
+                }
 
                 const partesVehiculo = [v.modelo, v.color, v.anio, v.cilindraje ? `${v.cilindraje}cc` : ''].filter(Boolean);
                 const infoVehiculo = partesVehiculo.length > 0
@@ -1008,6 +1163,14 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                     `;
                 }
 
+                // Botón corto "Cerrar orden" (sin cobro) solo en vehículos pendientes
+                const botonCerrar = v.estado === 'Pendiente'
+                    ? `<button class="btn-cerrar-orden" title="Cerrar la orden sin cobro (garantía, sin presupuesto...)"
+                               data-id="${escaparHTML(String(v.id))}" data-placa="${escaparHTML(v.vehiculo || '')}"
+                               data-cliente="${escaparHTML(v.cliente || '')}"
+                               onclick="event.stopPropagation(); abrirCerrarOrden(this)">Cerrar orden</button>`
+                    : '';
+
                 // Extraer el ID de la base de datos para mostrarlo como Número de Orden
                 let numOrden = v.id || v.id_orden || '---';
 
@@ -1024,7 +1187,9 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                         ${infoVehiculo}
                         ${infoTelefono}
                         ${detalleExtra}
+                        ${marcaGarantia(v.garantia_previa)}
                         ${botonDescarga}
+                        ${botonCerrar}
                     </div>
                 `;
             });
@@ -1036,6 +1201,29 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
     } catch (e) {
         console.error("Error al cargar vehículos:", e);
     }
+}
+
+// Marca en la tarjeta si el vehículo tiene (o tuvo hace poco) garantía de otro trabajo
+function marcaGarantia(g) {
+    if (!g) return '';
+    const vence = new Date(g.vence + 'T12:00:00').toLocaleDateString('es-EC');
+    const texto = g.vigente
+        ? `En garantía hasta ${vence} (orden N° ${g.orden_id})`
+        : `Garantía vencida ${g.motivo_vencida} (orden N° ${g.orden_id})`;
+    return `<div class="marca-garantia ${g.vigente ? 'vigente' : 'vencida'}" title="${escaparHTML(g.trabajo)}">${escaparHTML(texto)}</div>`;
+}
+
+// Texto del aviso de garantía (modal de ingreso / confirmación)
+function avisoGarantiaHTML(g) {
+    if (!g) return '';
+    const e = escaparHTML;
+    const vence = new Date(g.vence + 'T12:00:00').toLocaleDateString('es-EC');
+    const km = g.km_limite ? ` o ${Number(g.km_limite).toLocaleString('es-EC')} km` : '';
+    return g.vigente
+        ? `<div class="aviso-garantia vigente"><b>Este vehículo tiene garantía vigente</b> por la orden N° ${e(g.orden_id)}:
+             ${e(g.trabajo || 'trabajo anterior')}${g.tecnico ? ` (técnico: ${e(g.tecnico)})` : ''}. Válida hasta el ${vence}${km}.</div>`
+        : `<div class="aviso-garantia vencida"><b>Garantía vencida ${e(g.motivo_vencida)}</b> de la orden N° ${e(g.orden_id)}:
+             ${e(g.trabajo || 'trabajo anterior')}. Venció el ${vence}${km}. El taller decide si la cubre.</div>`;
 }
 
 function usarPlaca(placa) {
@@ -1109,6 +1297,8 @@ function llenarPlantillaOrden(datos) {
     document.getElementById('orden-cedula').innerText = (cedulaLimpia !== '' && cedulaLimpia !== 'null' && cedulaLimpia !== 'undefined') ? cedulaLimpia : 'No registrada';
     
     document.getElementById('orden-telefono').innerText = datos.telefono || 'No registrado';
+    const elKm = document.getElementById('orden-kilometraje');
+    if (elKm) elKm.innerText = datos.kilometraje ? `${Number(datos.kilometraje).toLocaleString('es-EC')} km` : 'No registrado';
 
     // 3. Fechas y Equipo
     let fechaLimpia = datos.fecha_hora ? new Date(datos.fecha_hora).toLocaleDateString() : '---';
@@ -1152,9 +1342,31 @@ function llenarPlantillaOrden(datos) {
         etiquetaTotal.innerText = estado === 'Terminado' ? 'Valor Cancelado:' : 'Valor a Pagar:';
     }
 
-    const cobroManoObra = parseFloat(datos.cobro || 0);
-    const totalFinal = totalRepuestos + cobroManoObra;
+    // El "cobro" registrado YA incluye los repuestos (así se calcula el cuadre y
+    // la comisión: mano de obra = cobro - repuestos). Antes aquí se sumaban los
+    // repuestos otra vez y el total salía inflado.
+    const cobro = parseFloat(datos.cobro || 0);
+    const totalFinal = cobro > 0 ? cobro : totalRepuestos;
     document.getElementById('orden-total').innerText = totalFinal.toFixed(2);
+
+    // Garantía entregada con este trabajo
+    const cajaGarantia = document.getElementById('orden-garantia');
+    if (cajaGarantia) {
+        if (estado === 'Terminado' && datos.garantia_vence) {
+            const vence = new Date(datos.garantia_vence + 'T12:00:00').toLocaleDateString('es-EC');
+            const km = datos.garantia_km ? ` o ${Number(datos.garantia_km).toLocaleString('es-EC')} km` : '';
+            const kmLimite = datos.garantia_km_limite ? ` o hasta los ${Number(datos.garantia_km_limite).toLocaleString('es-EC')} km` : '';
+            cajaGarantia.innerHTML = `<strong>Garantía: ${datos.garantia_dias} días${km}</strong> — válida hasta el ${vence}${kmLimite}, lo que ocurra primero.
+                <br><span style="font-size: 11px;">Cubre el trabajo realizado en esta orden. No cubre mal uso, golpes ni manipulación por terceros. Presente esta orden para hacerla válida.</span>`;
+            cajaGarantia.style.display = 'block';
+        } else if (estado === 'Terminado' && datos.garantia_dias === 0) {
+            cajaGarantia.innerHTML = '<strong>Este trabajo no incluye garantía.</strong>';
+            cajaGarantia.style.display = 'block';
+        } else {
+            cajaGarantia.style.display = 'none';
+            cajaGarantia.innerHTML = '';
+        }
+    }
 
     // 7. CORRECCIÓN BANCO Y MÉTODO DE PAGO
     const metodo = String(datos.metodo_pago || '').trim();
@@ -1375,9 +1587,6 @@ function renderizarRankingAnual(data) {
                 <tbody>${filas}</tbody>
             </table>
         </div>
-        ${data.excluidos && data.excluidos.trabajos > 0
-            ? `<p class="nota-ranking">${data.excluidos.trabajos} trabajo(s) del año (${dinero(data.excluidos.monto)}) no tienen un técnico registrado y no cuentan en el ranking.</p>`
-            : ''}
     `;
 }
 // ==============================================================================
@@ -1543,124 +1752,199 @@ function renderChartServicios(datos) {
 // ==========================================================================
 // CATÁLOGO DE SERVICIOS
 // ==========================================================================
+// ==============================================================================
+// CATÁLOGO DE SERVICIOS + GARANTÍAS (cada taller define las suyas)
+// Nota: antes había dos copias de guardarServicio/eliminarServicio y las de
+// abajo usaban una clave de token equivocada ('as_token'), así que agregar y
+// eliminar servicios fallaba sin avisar. Queda una sola versión.
+// ==============================================================================
+let garantiaTallerActual = { dias: 30, km: 1000 };
+
+function textoGarantia(dias, km) {
+    if (dias === 0) return 'Sin garantía';
+    const partes = [`${dias} días`];
+    if (km) partes.push(`${Number(km).toLocaleString('es-EC')} km`);
+    return partes.join(' o ');
+}
+
+function cabeceraAuth(json = false) {
+    const h = { 'Authorization': `Bearer ${localStorage.getItem("taller_token")}` };
+    if (json) h['Content-Type'] = 'application/json';
+    return h;
+}
+
 async function cargarServicios() {
-    const token = localStorage.getItem("taller_token"); // ¡Corregido!
-    if (!token) return;
-
+    if (!localStorage.getItem("taller_token")) return;
+    const e = escaparHTML;
     try {
-        const res = await fetch("/servicios", { headers: { "Authorization": `Bearer ${token}` } });
+        const res = await fetch("/servicios", { headers: cabeceraAuth() });
         const data = await res.json();
-        
-        const tbody = document.getElementById('tabla-servicios');
-        tbody.innerHTML = '';
+        garantiaTallerActual = data.garantia_defecto || garantiaTallerActual;
 
-        if (!data.servicios || data.servicios.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="padding: 15px; text-align: center; color: var(--texto-tenue);">No hay servicios registrados.</td></tr>';
-            return;
+        // Garantía por defecto del taller (la define el dueño)
+        const nota = document.getElementById('nota-garantia-defecto');
+        if (nota) {
+            nota.innerHTML = `<b>Garantía por defecto de tu taller: ${textoGarantia(garantiaTallerActual.dias, garantiaTallerActual.km)}</b>
+                <button class="btn-link" onclick="editarGarantiaTaller()">Cambiar</button><br>
+                Se aplica a los servicios que no tienen garantía propia. En cada trabajo también puedes indicarla al cerrar
+                (ej. "...se le dio garantía de 3 meses"), y esa tiene prioridad.`;
         }
 
-        data.servicios.forEach(s => {
-            tbody.innerHTML += `
+        const tbody = document.getElementById('tabla-servicios');
+        const servicios = data.servicios || [];
+        if (!servicios.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="vacio">No hay servicios registrados.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = servicios.map(s => {
+            const propia = s.garantia_dias !== null && s.garantia_dias !== undefined;
+            const dias = propia ? s.garantia_dias : garantiaTallerActual.dias;
+            const km = (s.garantia_km !== null && s.garantia_km !== undefined) ? s.garantia_km : garantiaTallerActual.km;
+            return `
                 <tr>
-                    <td style="padding: 12px; border-bottom: 1px solid var(--borde);">${s.nombre_servicio}</td>
-                    <td style="padding: 12px; border-bottom: 1px solid var(--borde); text-align: right;">$${s.precio_base.toFixed(2)}</td>
-                    <td style="padding: 12px; border-bottom: 1px solid var(--borde); text-align: center;">
-                        <button onclick="eliminarServicio('${s.id}')" style="background: none; border: none; color: #ff5555; cursor: pointer; display: inline-flex; padding: 4px;" title="Eliminar" aria-label="Eliminar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
+                    <td>${e(s.nombre_servicio)}</td>
+                    <td class="num">$${Number(s.precio_base || 0).toFixed(2)}</td>
+                    <td>${e(textoGarantia(dias, km))}${propia ? '' : ' <span class="sub">(del taller)</span>'}
+                        <button class="btn-link" onclick='editarGarantiaServicio(${JSON.stringify(String(s.id))}, ${JSON.stringify(s.nombre_servicio)}, ${JSON.stringify(s.garantia_dias)}, ${JSON.stringify(s.garantia_km)})'>Editar</button>
                     </td>
-                </tr>
-            `;
-        });
+                    <td class="centro">
+                        <button onclick='eliminarServicio(${JSON.stringify(String(s.id))})' class="btn-icono-eliminar" title="Eliminar" aria-label="Eliminar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
+                    </td>
+                </tr>`;
+        }).join('');
     } catch (error) {
         console.error("Error cargando servicios:", error);
     }
 }
 
-async function guardarServicio() {
-    const nombre = document.getElementById('nuevo-servicio-nombre').value;
-    const precio = document.getElementById('nuevo-servicio-precio').value;
-    const token = localStorage.getItem("taller_token"); // ¡Corregido!
+// Lee un número entero opcional de un input (vacío -> null)
+function enteroOpcional(id) {
+    const v = document.getElementById(id).value.trim();
+    return v === '' ? null : Math.max(0, parseInt(v, 10));
+}
 
-    if (!nombre || !precio) {
-        alert("Por favor ingresa un nombre y un precio válido.");
+async function guardarServicio() {
+    const nombre = document.getElementById('nuevo-servicio-nombre').value.trim();
+    const precio = document.getElementById('nuevo-servicio-precio').value;
+    if (!nombre || precio === '' || isNaN(parseFloat(precio))) {
+        mostrarModal({ tipo: 'warning', titulo: 'Faltan datos', mensaje: 'Ingresa el nombre del servicio y un precio válido.' });
         return;
     }
-
     try {
         const res = await fetch("/servicios", {
             method: "POST",
-            headers: { 
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}` 
-            },
-            body: JSON.stringify({ nombre_servicio: nombre, precio_base: parseFloat(precio) })
+            headers: cabeceraAuth(true),
+            body: JSON.stringify({
+                nombre_servicio: nombre,
+                precio_base: parseFloat(precio),
+                garantia_dias: enteroOpcional('nuevo-servicio-garantia-dias'),
+                garantia_km: enteroOpcional('nuevo-servicio-garantia-km')
+            })
         });
-        
-        if (res.ok) {
-            document.getElementById('nuevo-servicio-nombre').value = '';
-            document.getElementById('nuevo-servicio-precio').value = '';
-            cargarServicios(); // Recargar la tabla
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            mostrarModal({ tipo: 'error', titulo: 'No se pudo agregar', mensaje: escaparHTML(typeof err.detail === 'string' ? err.detail : `Error ${res.status}`) });
+            return;
         }
+        ['nuevo-servicio-nombre', 'nuevo-servicio-precio', 'nuevo-servicio-garantia-dias', 'nuevo-servicio-garantia-km']
+            .forEach(id => document.getElementById(id).value = '');
+        cargarServicios();
     } catch (error) {
-        console.error("Error al guardar:", error);
+        mostrarNotificacion("Error de conexión al guardar el servicio.", "error");
     }
 }
 
 async function eliminarServicio(id) {
     if (!confirm("¿Estás seguro de eliminar este servicio?")) return;
-    
-    const token = localStorage.getItem("taller_token"); // ¡Corregido!
     try {
-        const res = await fetch(`/servicios/${id}`, {
-            method: "DELETE",
-            headers: { "Authorization": `Bearer ${token}` }
-        });
+        const res = await fetch(`/servicios/${encodeURIComponent(id)}`, { method: "DELETE", headers: cabeceraAuth() });
         if (res.ok) cargarServicios();
+        else mostrarModal({ tipo: 'error', titulo: 'No se pudo eliminar', mensaje: `Error ${res.status}` });
     } catch (error) {
-        console.error("Error al eliminar:", error);
+        mostrarNotificacion("Error de conexión al eliminar el servicio.", "error");
     }
 }
 
-async function guardarServicio() {
-    const nombre = document.getElementById('nuevo-servicio-nombre').value;
-    const precio = document.getElementById('nuevo-servicio-precio').value;
-    const token = localStorage.getItem("as_token");
+// Modal genérico para editar días/km de garantía
+function abrirModalGarantia({ titulo, descripcion, dias, km, permitirVacio, alGuardar }) {
+    const overlay = document.getElementById('modal-aviso');
+    mostrarModal({ tipo: 'info', titulo });
+    overlay.dataset.modo = 'formulario';
+    document.getElementById('modal-mensaje').innerHTML = descripcion;
 
-    if (!nombre || !precio) {
-        alert("Por favor ingresa un nombre y un precio válido.");
-        return;
-    }
+    const valor = v => (v === null || v === undefined) ? '' : v;
+    const formulario = document.getElementById('modal-formulario');
+    formulario.innerHTML = `
+        <label class="campo-faltante">
+            <span class="campo-etiqueta">Garantía en días (0 = sin garantía)</span>
+            <input name="dias" type="number" min="0" inputmode="numeric" value="${valor(dias)}" placeholder="${permitirVacio ? 'Vacío = la del taller' : 'Ej. 30'}">
+            <span class="campo-aviso" hidden>Ingresa un número de días</span>
+        </label>
+        <label class="campo-faltante">
+            <span class="campo-etiqueta">Garantía en kilómetros (0 = sin límite de km)</span>
+            <input name="km" type="number" min="0" inputmode="numeric" value="${valor(km)}" placeholder="${permitirVacio ? 'Vacío = la del taller' : 'Ej. 1000'}">
+            <span class="campo-aviso" hidden>Ingresa un número de kilómetros</span>
+        </label>`;
+    formulario.hidden = false;
 
-    try {
-        const res = await fetch("/servicios", {
-            method: "POST",
-            headers: { 
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}` 
-            },
-            body: JSON.stringify({ nombre_servicio: nombre, precio_base: parseFloat(precio) })
-        });
-        
-        if (res.ok) {
-            document.getElementById('nuevo-servicio-nombre').value = '';
-            document.getElementById('nuevo-servicio-precio').value = '';
-            cargarServicios(); // Recargar la tabla
+    const btnCancelar = document.getElementById('modal-btn-cancelar');
+    btnCancelar.hidden = false;
+    btnCancelar.onclick = () => { overlay.dataset.modo = ''; cerrarModal(); };
+
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Guardar';
+    btnOk.onclick = async () => {
+        const campos = { dias: formulario.querySelector('[name=dias]'), km: formulario.querySelector('[name=km]') };
+        const datos = {};
+        let ok = true;
+        for (const [k, input] of Object.entries(campos)) {
+            const v = input.value.trim();
+            const falta = !permitirVacio && v === '';
+            input.classList.toggle('invalido', falta);
+            input.closest('.campo-faltante').querySelector('.campo-aviso').hidden = !falta;
+            if (falta) ok = false;
+            datos[k] = v === '' ? null : Math.max(0, parseInt(v, 10));
         }
-    } catch (error) {
-        console.error("Error al guardar:", error);
-    }
+        if (!ok) return;
+        btnOk.disabled = true;
+        try {
+            await alGuardar(datos);
+        } finally {
+            btnOk.disabled = false;
+        }
+    };
+    setTimeout(() => formulario.querySelector('input').focus(), 50);
 }
 
-async function eliminarServicio(id) {
-    if (!confirm("¿Estás seguro de eliminar este servicio?")) return;
-    
-    const token = localStorage.getItem("as_token");
-    try {
-        const res = await fetch(`/servicios/${id}`, {
-            method: "DELETE",
-            headers: { "Authorization": `Bearer ${token}` }
-        });
-        if (res.ok) cargarServicios();
-    } catch (error) {
-        console.error("Error al eliminar:", error);
-    }
+function editarGarantiaTaller() {
+    abrirModalGarantia({
+        titulo: 'Garantía por defecto del taller',
+        descripcion: 'Se aplica a todos los servicios que no tienen una garantía propia. Solo afecta a los trabajos que se cierren desde ahora.',
+        dias: garantiaTallerActual.dias, km: garantiaTallerActual.km, permitirVacio: false,
+        alGuardar: async (d) => {
+            const res = await fetch('/garantia-taller', { method: 'PUT', headers: cabeceraAuth(true), body: JSON.stringify(d) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { mostrarModal({ tipo: 'error', titulo: 'No se pudo guardar', mensaje: escaparHTML(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`) }); return; }
+            mostrarModal({ tipo: 'success', titulo: 'Garantía actualizada', mensaje: `Nueva garantía por defecto: <b>${textoGarantia(d.dias, d.km)}</b>.` });
+            cargarServicios();
+        }
+    });
+}
+
+function editarGarantiaServicio(id, nombre, dias, km) {
+    abrirModalGarantia({
+        titulo: 'Garantía del servicio',
+        descripcion: `<div class="resumen-orden">${escaparHTML(nombre)}</div>Déjalo vacío para usar la garantía por defecto del taller (${textoGarantia(garantiaTallerActual.dias, garantiaTallerActual.km)}).`,
+        dias, km, permitirVacio: true,
+        alGuardar: async (d) => {
+            const res = await fetch(`/servicios/${encodeURIComponent(id)}/garantia`, {
+                method: 'PATCH', headers: cabeceraAuth(true),
+                body: JSON.stringify({ garantia_dias: d.dias, garantia_km: d.km })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { mostrarModal({ tipo: 'error', titulo: 'No se pudo guardar', mensaje: escaparHTML(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`) }); return; }
+            const overlay = document.getElementById('modal-aviso'); overlay.dataset.modo = ''; cerrarModal();
+            cargarServicios();
+        }
+    });
 }
