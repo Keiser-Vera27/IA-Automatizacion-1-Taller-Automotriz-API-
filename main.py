@@ -516,6 +516,9 @@ class TrabajoLinea(BaseModel):
     """Un trabajo/servicio dentro de una orden (se van agregando mientras está abierta)."""
     descripcion: str = ""
     precio: float = 0.0
+    # Servicio del catálogo que coincide (lo pone el backend, no la IA): sirve
+    # para descontar sus materiales. int o uuid según la tabla servicios.
+    servicio_id: int | str | None = None
 
     @field_validator("precio", mode="before")
     @classmethod
@@ -533,6 +536,8 @@ class TrabajoTaller(BaseModel):
     anio: str = Field(default="")
     cilindraje: str = Field(default="")
     kilometraje: str = Field(default="", description="Kilometraje del vehículo, solo números")
+    # Cilindros del motor (para materiales "por cilindro", ej. 2 o-rings por inyector)
+    cilindros: str = Field(default="")
     # Garantía indicada EXPLÍCITAMENTE en el mensaje (tiene prioridad sobre catálogo y taller)
     garantia_dias: str = Field(default="")
     garantia_km: str = Field(default="")
@@ -735,6 +740,7 @@ def construir_prompt_extraccion(taller_id, texto: str, nombres_tecnicos: list[st
           "anio": "Año (ej. 2023)",
           "cilindraje": "Cilindraje (ej. 1.4)",
           "kilometraje": "Kilometraje del odómetro SOLO en números, sin puntos ni 'km' (ej. 'ingresa con 85.400 km' -> 85400). Vacío si no se menciona.",
+          "cilindros": "Número de cilindros del motor SOLO si se menciona (ej. 'V6' -> 6, '4 cilindros' -> 4). Vacío si no.",
           "garantia_dias": "SOLO si el mensaje indica la garantía entregada: en DÍAS (ej. '3 meses de garantía' -> 90, '1 año' -> 365, 'sin garantía' -> 0). Vacío si no se menciona.",
           "garantia_km": "SOLO si el mensaje indica garantía en kilómetros (ej. 'o 5.000 km' -> 5000). Vacío si no se menciona.",
           "cliente": "Nombre del cliente",
@@ -959,7 +965,7 @@ def buscar_garantias_lote(taller_id, placas: list[str]) -> dict[str, dict]:
 # Columnas nuevas de garantía/kilometraje: si la migración aún no se ejecutó,
 # se guarda la orden sin ellas en lugar de fallar.
 COLUMNAS_GARANTIA = ("kilometraje", "garantia_dias", "garantia_km", "garantia_vence",
-                     "garantia_km_limite", "garantia_servicio", "trabajos")
+                     "garantia_km_limite", "garantia_servicio", "trabajos", "cilindros")
 
 def guardar_reparacion(operacion: str, datos: dict, id_orden=None):
     def ejecutar(payload):
@@ -1035,7 +1041,7 @@ def normalizar_trabajos_nuevos(d: dict, taller_id) -> list[dict]:
     if not nuevos:
         return []
     try:
-        catalogo = (supabase.table("servicios").select("nombre_servicio, precio_base")
+        catalogo = (supabase.table("servicios").select("id, nombre_servicio, precio_base")
                     .eq("taller_id", taller_id).execute().data) or []
     except Exception:
         catalogo = []
@@ -1043,14 +1049,145 @@ def normalizar_trabajos_nuevos(d: dict, taller_id) -> list[dict]:
     for t in nuevos:
         desc = re.sub(r"\s+", " ", str(t.get("descripcion"))).strip()[:200]
         precio = float(t.get("precio") or 0)
-        if precio <= 0:
-            desc_n = _sin_tildes(desc)
-            coincidencias = [c for c in catalogo if _sin_tildes(c.get("nombre_servicio")) and _sin_tildes(c.get("nombre_servicio")) in desc_n]
-            if coincidencias:
-                # el nombre más largo es la coincidencia más específica
-                precio = float(max(coincidencias, key=lambda c: len(c["nombre_servicio"])).get("precio_base") or 0)
-        resultado.append({"descripcion": desc, "precio": round(precio, 2)})
+        desc_n = _sin_tildes(desc)
+        coincidencias = [c for c in catalogo if _sin_tildes(c.get("nombre_servicio")) and _sin_tildes(c.get("nombre_servicio")) in desc_n]
+        # el nombre más largo es la coincidencia más específica
+        servicio = max(coincidencias, key=lambda c: len(c["nombre_servicio"])) if coincidencias else None
+        if precio <= 0 and servicio:
+            precio = float(servicio.get("precio_base") or 0)
+        linea = {"descripcion": desc, "precio": round(precio, 2)}
+        if servicio:
+            linea["servicio_id"] = servicio.get("id")   # para descontar sus materiales
+        resultado.append(linea)
     return resultado
+
+# ------------------------------------------------------------------------------
+# MATERIALES POR SERVICIO (kits que se descuentan solos del inventario)
+# ------------------------------------------------------------------------------
+CILINDROS_SUPUESTOS = 4   # si no se conoce el motor y un material es "por cilindro"
+
+def normalizar_cilindros(valor) -> int | None:
+    n = _entero_o_none(valor)
+    return n if n and 1 <= n <= 16 else None
+
+def calcular_materiales(taller_id, lineas: list[dict], modelo: str, cilindros,
+                        repuestos_manuales: list[dict] | None = None) -> dict:
+    """Materiales que consumen los trabajos 'lineas' (según su servicio del catálogo),
+    más los repuestos nombrados en el mensaje. Devuelve:
+      {"items": [{inventario_id, codigo, nombre, cantidad, precio_unitario, incluido,
+                  origen, trabajo, stock}], "avisos": [...], "cilindros_supuestos": bool}
+    Reglas:
+      - Materiales con modelo vacío: todos los vehículos. Con modelo: solo si el
+        modelo del vehículo lo contiene; la variante más específica gana.
+      - "por cilindro": cantidad x cilindros del motor (4 si no se conoce).
+      - Si el mensaje nombra un material del kit, manda la cantidad del mensaje.
+      - Incluido en el precio: se registra a COSTO (la comisión no cuenta
+        materiales) y no se suma al total. Aparte: a precio de venta y se cobra."""
+    repuestos_manuales = [r for r in (repuestos_manuales or []) if r.get("codigo")]
+    items, avisos, supuesto = [], [], False
+    servicio_ids = sorted({l.get("servicio_id") for l in lineas if l.get("servicio_id") is not None}, key=str)
+
+    kit_rows, incluidos = [], {}
+    if servicio_ids:
+        try:
+            kit_rows = (supabase.table("servicio_materiales").select("*")
+                        .eq("taller_id", taller_id).in_("servicio_id", servicio_ids).execute().data) or []
+            for sv in (supabase.table("servicios").select("id, materiales_incluidos")
+                       .eq("taller_id", taller_id).in_("id", servicio_ids).execute().data or []):
+                incluidos[str(sv["id"])] = sv.get("materiales_incluidos") is not False
+        except Exception as e:
+            print(f"Materiales por servicio no disponibles (¿falta la migración 2026-09-24?): {e}")
+            kit_rows = []
+
+    # Inventario involucrado (kit + manuales), en una sola consulta por tipo de clave
+    inv_por_id, inv_por_codigo = {}, {}
+    ids_inv = sorted({r["inventario_id"] for r in kit_rows}, key=str)
+    if ids_inv:
+        for f in (supabase.table("inventario").select("id, codigo, nombre, cantidad, costo, precio_venta")
+                  .eq("taller_id", taller_id).in_("id", ids_inv).execute().data or []):
+            inv_por_id[str(f["id"])] = f
+    codigos = sorted({str(r["codigo"]) for r in repuestos_manuales})
+    if codigos:
+        for f in (supabase.table("inventario").select("id, codigo, nombre, cantidad, costo, precio_venta")
+                  .eq("taller_id", taller_id).in_("codigo", codigos).execute().data or []):
+            inv_por_codigo[str(f["codigo"])] = f
+            inv_por_id.setdefault(str(f["id"]), f)
+    ids_manuales = {str(inv_por_codigo[str(r["codigo"])]["id"]) for r in repuestos_manuales if str(r["codigo"]) in inv_por_codigo}
+
+    n_cil = normalizar_cilindros(cilindros)
+    modelo_n = _sin_tildes(modelo)
+    for linea in lineas:
+        sid = linea.get("servicio_id")
+        if sid is None:
+            continue
+        filas = [r for r in kit_rows if str(r["servicio_id"]) == str(sid)]
+        generales = [r for r in filas if not str(r.get("modelo") or "").strip()]
+        variantes = [r for r in filas if str(r.get("modelo") or "").strip() and _sin_tildes(r["modelo"]).strip() in modelo_n]
+        if variantes:
+            mas_especifica = max(len(_sin_tildes(r["modelo"]).strip()) for r in variantes)
+            variantes = [r for r in variantes if len(_sin_tildes(r["modelo"]).strip()) == mas_especifica]
+        elegidas = {str(r["inventario_id"]): r for r in generales}
+        elegidas.update({str(r["inventario_id"]): r for r in variantes})   # la variante gana
+        incluido = incluidos.get(str(sid), True)
+        for inv_id, r in elegidas.items():
+            if inv_id in ids_manuales:
+                continue   # el mensaje dijo otra cantidad: manda el mensaje
+            inv = inv_por_id.get(inv_id)
+            if not inv:
+                continue
+            cantidad = float(r.get("cantidad") or 0)
+            if r.get("por_cilindro"):
+                if not n_cil:
+                    supuesto = True
+                cantidad *= (n_cil or CILINDROS_SUPUESTOS)
+            cantidad = int(round(cantidad))
+            if cantidad <= 0:
+                continue
+            items.append({
+                "inventario_id": inv["id"], "codigo": inv.get("codigo", ""), "nombre": inv.get("nombre", ""),
+                "cantidad": cantidad, "incluido": incluido, "origen": "kit", "trabajo": linea["descripcion"],
+                "precio_unitario": float((inv.get("costo") if incluido else inv.get("precio_venta")) or 0),
+                "stock": inv.get("cantidad"),
+            })
+
+    for r in repuestos_manuales:
+        inv = inv_por_codigo.get(str(r["codigo"]))
+        if not inv:
+            continue
+        items.append({
+            "inventario_id": inv["id"], "codigo": inv.get("codigo", ""), "nombre": inv.get("nombre", ""),
+            "cantidad": int(r.get("cantidad") or 0), "incluido": False, "origen": "manual", "trabajo": None,
+            "precio_unitario": float(inv.get("precio_venta") or 0), "stock": inv.get("cantidad"),
+        })
+
+    # Avisos de stock (no bloquean el trabajo)
+    necesario: dict[str, int] = {}
+    for it in items:
+        necesario[str(it["inventario_id"])] = necesario.get(str(it["inventario_id"]), 0) + it["cantidad"]
+    for inv_id, cant in necesario.items():
+        inv = inv_por_id.get(inv_id) or {}
+        stock = inv.get("cantidad")
+        if stock is not None and cant > stock:
+            avisos.append(f"Solo quedan {stock} de {inv.get('nombre') or inv.get('codigo')} ({inv.get('codigo')}); se necesitan {cant}.")
+    if supuesto:
+        avisos.append(f"No se conoce el número de cilindros: se calcularon materiales para {CILINDROS_SUPUESTOS}.")
+    return {"items": items, "avisos": avisos, "cilindros_supuestos": supuesto}
+
+def total_materiales_cobrables(items: list[dict]) -> float:
+    """Suma de materiales que se cobran aparte (los incluidos no suman al total)."""
+    return round(sum(float(i.get("precio_unitario") or 0) * float(i.get("cantidad") or 0)
+                     for i in items if not i.get("incluido")), 2)
+
+def insertar_detalle_repuesto(fila: dict):
+    """Inserta en reparacion_detalles; si faltan las columnas nuevas (migración
+    2026-09-24 sin ejecutar), guarda sin ellas."""
+    try:
+        return supabase.table("reparacion_detalles").insert(fila).execute()
+    except APIError as e:
+        if any(c in str(e) for c in ("origen", "trabajo", "incluido")):
+            return supabase.table("reparacion_detalles").insert(
+                {k: v for k, v in fila.items() if k not in ("origen", "trabajo", "incluido")}).execute()
+        raise
 
 def unir_trabajos(existentes: list[dict], nuevos: list[dict]) -> list[dict]:
     """Agrega los nuevos sin repetir (misma descripción = mismo trabajo)."""
@@ -1113,9 +1250,34 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str], tex
     else:
         d["trabajos_nuevos"] = normalizar_trabajos_nuevos(d, taller_id)
 
-    # Trabajos que tendrá la orden (los ya registrados + los de este mensaje) y su total
-    trabajos_orden = unir_trabajos(trabajos_de_orden(ultima) if pendiente else [], d["trabajos_nuevos"])
-    total_orden = float(d.get("cobro") or 0) or total_trabajos(trabajos_orden)
+    # Trabajos que tendrá la orden (los ya registrados + los de este mensaje)
+    existentes_orden = trabajos_de_orden(ultima) if pendiente else []
+    trabajos_orden = unir_trabajos(existentes_orden, d["trabajos_nuevos"])
+    claves_existentes = {_sin_tildes(t["descripcion"]).strip() for t in existentes_orden}
+    lineas_nuevas = [t for t in d["trabajos_nuevos"] if _sin_tildes(t["descripcion"]).strip() not in claves_existentes]
+
+    # Materiales: los ya usados en la orden + los que consumirán los trabajos
+    # nuevos (kits del catálogo) y los repuestos nombrados en el mensaje
+    materiales_previos = []
+    if pendiente:
+        try:
+            for r in (supabase.table("reparacion_detalles").select("*, inventario(codigo, nombre)")
+                      .eq("reparacion_id", ultima["id"]).execute().data or []):
+                inv = r.get("inventario") or {}
+                materiales_previos.append({"codigo": inv.get("codigo", ""), "nombre": inv.get("nombre", ""),
+                                           "cantidad": r.get("cantidad") or 0, "precio_unitario": float(r.get("precio_unitario") or 0),
+                                           "incluido": bool(r.get("incluido")), "origen": r.get("origen") or "manual",
+                                           "trabajo": r.get("trabajo"), "ya_registrado": True})
+        except Exception as e:
+            print(f"No se pudieron leer los materiales de la orden: {e}")
+    cilindros_vehiculo = d.get("cilindros") or (ultima or {}).get("cilindros")
+    vista_materiales = calcular_materiales(
+        taller_id, lineas_nuevas, d.get("modelo") or (ultima or {}).get("modelo") or "",
+        cilindros_vehiculo, [r for r in (d.get("repuestos_usados") or []) if isinstance(r, dict)])
+    materiales_orden = materiales_previos + vista_materiales["items"]
+
+    # Total: el cobro dicho en el mensaje o la suma de trabajos + materiales que se cobran aparte
+    total_orden = float(d.get("cobro") or 0) or round(total_trabajos(trabajos_orden) + total_materiales_cobrables(materiales_orden), 2)
 
     def efectivo(campo):
         """Valor que quedará guardado: el nuevo o, si no viene, el heredado."""
@@ -1216,6 +1378,9 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str], tex
         "cliente": efectivo("cliente"), "modelo": efectivo("modelo"),
         "trabajo": texto_trabajos(trabajos_orden), "cobro": d.get("cobro") or 0,
         "trabajos": trabajos_orden, "total": round(total_orden, 2),
+        "materiales": [{k: m.get(k) for k in ("codigo", "nombre", "cantidad", "precio_unitario", "incluido", "origen", "trabajo")}
+                       for m in materiales_orden],
+        "avisos_materiales": vista_materiales["avisos"],
         "cobro_indicado": float(d.get("cobro") or 0) > 0,
         "cierre_descartado": cierre_descartado,
         "tecnico": canonizar_tecnico(efectivo("oficial"), mapa_tecnicos) or "",
@@ -1377,8 +1542,11 @@ async def trabajador_silencioso():
             # (evita "Ninguno registrado", "jordy" vs "Jordy", nombres inventados)
             d["oficial"] = canonizar_tecnico(d.get("oficial"), mapa_tecnicos)
             nuevos = [{"descripcion": t["descripcion"], "precio": float(t.get("precio") or 0),
-                       "mensaje_id": str(id_msj), "fecha": tiempo_actual}
+                       "mensaje_id": str(id_msj), "fecha": tiempo_actual,
+                       **({"servicio_id": t["servicio_id"]} if t.get("servicio_id") is not None else {})}
                       for t in (d.get("trabajos_nuevos") or []) if str(t.get("descripcion") or "").strip()]
+            # Trabajos que ESTE mensaje agrega de verdad (sus materiales se descuentan)
+            lineas_para_kit, lista_final = [], []
 
             ultima_orden = None
             if placa and placa != "S/C":
@@ -1404,6 +1572,9 @@ async def trabajador_silencioso():
                 existentes = trabajos_de_orden(ultima_orden)
                 ya_aplicado = any(str(t.get("mensaje_id")) == str(id_msj) for t in existentes)
                 lista_trabajos = existentes if ya_aplicado else unir_trabajos(existentes, nuevos)
+                claves_previas = {_sin_tildes(t["descripcion"]).strip() for t in existentes}
+                lineas_para_kit = [] if ya_aplicado else [t for t in nuevos if _sin_tildes(t["descripcion"]).strip() not in claves_previas]
+                lista_final = lista_trabajos
                 trabajo_final = texto_trabajos(lista_trabajos)
 
                 motivo_bd = ultima_orden.get("motivo", "") or ""
@@ -1429,6 +1600,7 @@ async def trabajador_silencioso():
                     "anio": _heredar_o_actualizar("anio", d.get("anio")),
                     "cilindraje": _heredar_o_actualizar("cilindraje", d.get("cilindraje")),
                     "kilometraje": normalizar_kilometraje(d.get("kilometraje")) or ultima_orden.get("kilometraje"),
+                    "cilindros": normalizar_cilindros(d.get("cilindros")) or ultima_orden.get("cilindros"),
                     "metodo_pago": _heredar_o_actualizar("metodo_pago", d.get("metodo_pago")),
                     "banco": _heredar_o_actualizar("banco", banco_extraido),
                 }
@@ -1446,12 +1618,14 @@ async def trabajador_silencioso():
 
                 guardar_reparacion("update", datos_actualizar, ultima_orden["id"])
                 reparacion_id_actual = ultima_orden["id"]
+                modelo_final, cilindros_final = datos_actualizar["modelo"], datos_actualizar["cilindros"]
             else:
                 # ---- No hay orden abierta: se crea una nueva ----
                 estado_nuevo = 'Terminado' if cierra else 'Pendiente'
                 fecha_sal = tiempo_actual if cierra else None
                 trabajo_final = texto_trabajos(nuevos) or (str(d.get("trabajo_realizado") or "") if cierra else "")
                 cobro_final = (float(d.get("cobro") or 0) or total_trabajos(nuevos)) if cierra else 0.0
+                lineas_para_kit, lista_final = nuevos, nuevos
 
                 def _heredar(campo, valor_nuevo):
                     val_str = str(valor_nuevo or "").strip()
@@ -1471,6 +1645,7 @@ async def trabajador_silencioso():
                         "anio": _heredar("anio", d.get("anio")),
                         "cilindraje": _heredar("cilindraje", d.get("cilindraje")),
                         "kilometraje": normalizar_kilometraje(d.get("kilometraje")),
+                        "cilindros": normalizar_cilindros(d.get("cilindros")) or (ultima_orden or {}).get("cilindros"),
                         "cliente": _heredar("cliente", d.get("cliente")),
                         "cedula": _heredar("cedula", cedula_extraida),
                         "telefono": _heredar("telefono", d.get("telefono")),
@@ -1501,27 +1676,53 @@ async def trabajador_silencioso():
             # el precio de venta de cada repuesto al momento de usarlo. Ese detalle
             # es lo que alimenta el PNG de la orden y el descuento de repuestos al
             # calcular comisión (antes de esto, reparacion_detalles nunca se llenaba).
-            # Repuestos: se descuentan en cualquier etapa (un avance también puede
-            # usar repuestos, ej. "se cambia la bobina"), ligados a esta orden.
-            if reparacion_id_actual and d.get("repuestos_usados"):
-                for repuesto in d.get("repuestos_usados", []):
+            # Materiales y repuestos: se descuentan en cualquier etapa (cuando se
+            # registra el trabajo), ligados a esta orden:
+            #   - kits del catálogo de los trabajos que agrega este mensaje
+            #   - repuestos nombrados en el mensaje (si nombra uno del kit, manda el mensaje)
+            if reparacion_id_actual:
+                if not ultima_orden or ultima_orden.get("estado") != "Pendiente":
+                    modelo_final = d.get("modelo") or (ultima_orden or {}).get("modelo") or ""
+                    cilindros_final = normalizar_cilindros(d.get("cilindros")) or (ultima_orden or {}).get("cilindros")
+                materiales = calcular_materiales(taller_id, lineas_para_kit, modelo_final, cilindros_final,
+                                                 [r for r in (d.get("repuestos_usados") or []) if isinstance(r, dict)])
+                if materiales["items"]:
                     try:
-                        inv_res = supabase.table("inventario").select("id, cantidad, precio_venta").eq("codigo", repuesto.get("codigo")).eq("taller_id", taller_id).execute()
-                        if inv_res.data:
-                            inv_item = inv_res.data[0]
-                            cantidad_usada = repuesto.get("cantidad", 0)
-                            nueva_cant = max(0, inv_item["cantidad"] - cantidad_usada)
-                            supabase.table("inventario").update({"cantidad": nueva_cant}).eq("id", inv_item["id"]).execute()
-                            supabase.table("reparacion_detalles").insert({
+                        ya_en_orden = supabase.table("reparacion_detalles").select("*").eq("reparacion_id", reparacion_id_actual).execute().data or []
+                    except Exception:
+                        ya_en_orden = []
+                    for it in materiales["items"]:
+                        try:
+                            # Idempotencia: el mismo material del mismo trabajo no se descuenta dos veces
+                            if it["origen"] == "kit" and any(
+                                    str(x.get("inventario_id")) == str(it["inventario_id"]) and x.get("origen") == "kit"
+                                    and _sin_tildes(x.get("trabajo")) == _sin_tildes(it["trabajo"]) for x in ya_en_orden):
+                                continue
+                            inv_actual = (supabase.table("inventario").select("cantidad").eq("id", it["inventario_id"])
+                                          .eq("taller_id", taller_id).limit(1).execute().data or [{}])[0]
+                            nueva_cant = max(0, int(inv_actual.get("cantidad") or 0) - int(it["cantidad"]))
+                            supabase.table("inventario").update({"cantidad": nueva_cant}).eq("id", it["inventario_id"]).eq("taller_id", taller_id).execute()
+                            insertar_detalle_repuesto({
                                 "reparacion_id": reparacion_id_actual,
-                                "inventario_id": inv_item["id"],
-                                "cantidad": cantidad_usada,
-                                "precio_unitario": inv_item.get("precio_venta", 0) or 0
-                            }).execute()
-                    except Exception as e_repuesto:
-                        # No dejamos que un repuesto con problema tumbe el resto del mensaje
-                        # (cierre de la orden, cédula, banco, etc. ya se guardaron arriba).
-                        print(f"No se pudo registrar el repuesto {repuesto.get('codigo')} de la orden {reparacion_id_actual}: {e_repuesto}")
+                                "inventario_id": it["inventario_id"],
+                                "cantidad": it["cantidad"],
+                                "precio_unitario": it["precio_unitario"],
+                                "origen": it["origen"], "trabajo": it["trabajo"], "incluido": it["incluido"],
+                            })
+                        except Exception as e_repuesto:
+                            # Un material con problema no tumba el resto del mensaje
+                            print(f"No se pudo registrar el material {it.get('codigo')} de la orden {reparacion_id_actual}: {e_repuesto}")
+
+                # Al cerrar sin monto dicho: cobro = trabajos + materiales que se cobran aparte
+                if cierra and not float(d.get("cobro") or 0):
+                    try:
+                        detalles = supabase.table("reparacion_detalles").select("*").eq("reparacion_id", reparacion_id_actual).execute().data or []
+                        cobro_total = round(total_trabajos(lista_final) + total_materiales_cobrables(
+                            [{**x, "incluido": bool(x.get("incluido"))} for x in detalles]), 2)
+                        if cobro_total > 0:
+                            supabase.table("reparaciones").update({"cobro": cobro_total}).eq("id", reparacion_id_actual).eq("taller_id", taller_id).execute()
+                    except Exception as e_cobro:
+                        print(f"No se pudo recalcular el cobro de la orden {reparacion_id_actual}: {e_cobro}")
 
 
         elif tipo == "gasto" and resultado.get("gasto"):
@@ -2908,7 +3109,7 @@ def listar_pendientes(request: Request):
     pendientes = (
         # Cliente admin: el JOIN a reparacion_detalles/inventario no tiene política RLS de SELECT
         supabase.table("reparaciones")
-        .select("*, reparacion_detalles(cantidad, precio_unitario, inventario(codigo, nombre))")
+        .select("*, reparacion_detalles(*, inventario(codigo, nombre))")
         .eq("taller_id", taller_id)
         .eq("estado", "Pendiente")
         .execute()
@@ -2916,7 +3117,7 @@ def listar_pendientes(request: Request):
 
     terminados_hoy = (
         supabase.table("reparaciones")
-        .select("*, reparacion_detalles(cantidad, precio_unitario, inventario(codigo, nombre))")
+        .select("*, reparacion_detalles(*, inventario(codigo, nombre))")
         .eq("taller_id", taller_id)
         .eq("estado", "Terminado")
         .gte("fecha_salida", hoy_inicio)
@@ -3365,6 +3566,14 @@ def listar_servicios(request: Request):
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
     data = cliente_seguro.table("servicios").select("*").eq("taller_id", taller_id).order("nombre_servicio").execute().data
     dias, km = obtener_garantia_taller(taller_id)
+    try:
+        conteo: dict[str, int] = {}
+        for f in (supabase.table("servicio_materiales").select("servicio_id").eq("taller_id", taller_id).execute().data or []):
+            conteo[str(f["servicio_id"])] = conteo.get(str(f["servicio_id"]), 0) + 1
+        for sv in data:
+            sv["n_materiales"] = conteo.get(str(sv["id"]), 0)
+    except Exception:
+        pass   # migración de materiales aún no ejecutada
     return {"servicios": data, "garantia_defecto": {"dias": dias, "km": km}}
 
 @app.post("/servicios")
@@ -3393,6 +3602,95 @@ def actualizar_garantia_taller(datos: GarantiaTaller, request: Request):
         if "garantia" in str(e):
             raise HTTPException(status_code=500, detail="Falta ejecutar en Supabase la migración sql/2026-09-23e_garantias_kilometraje.sql.")
         raise
+    return {"status": "ok"}
+
+# --- MATERIALES POR SERVICIO (configuración desde el Catálogo de Servicios) ---
+class NuevoMaterialServicio(BaseModel):
+    codigo: str = Field(min_length=1, max_length=60)          # código del inventario
+    cantidad: int = Field(ge=1, le=1000)                       # unidades enteras (el inventario cuenta unidades)
+    por_cilindro: bool = False
+    modelo: str = Field(default="", max_length=60)             # vacío = todos los vehículos
+
+class ConfigMaterialesServicio(BaseModel):
+    materiales_incluidos: bool
+
+def _servicio_del_taller(servicio_id: str, taller_id) -> dict:
+    fila = (supabase.table("servicios").select("*").eq("id", servicio_id).eq("taller_id", taller_id)
+            .limit(1).execute()).data
+    if not fila:
+        raise HTTPException(status_code=404, detail="No se encontró el servicio en este taller.")
+    return fila[0]
+
+def _error_migracion_materiales(e: Exception):
+    if "servicio_materiales" in str(e) or "materiales_incluidos" in str(e):
+        raise HTTPException(status_code=500, detail="Falta ejecutar en Supabase la migración sql/2026-09-24_materiales_por_servicio.sql.")
+    raise e
+
+@app.get("/inventario/opciones")
+def opciones_inventario(request: Request):
+    """Códigos del inventario del taller (para elegir materiales)."""
+    _, taller_id = obtener_cliente_seguro(request)
+    filas = (supabase.table("inventario").select("codigo, nombre, cantidad").eq("taller_id", taller_id)
+             .order("codigo").limit(3000).execute()).data or []
+    return {"repuestos": filas}
+
+@app.get("/servicios/{servicio_id}/materiales")
+def listar_materiales_servicio(servicio_id: str, request: Request):
+    _, taller_id = obtener_cliente_seguro(request)
+    servicio = _servicio_del_taller(servicio_id, taller_id)
+    try:
+        filas = (supabase.table("servicio_materiales").select("*, inventario(codigo, nombre, cantidad)")
+                 .eq("taller_id", taller_id).eq("servicio_id", servicio_id).order("id").execute()).data or []
+    except Exception as e:
+        _error_migracion_materiales(e)
+    return {
+        "servicio": {"id": servicio["id"], "nombre": servicio.get("nombre_servicio"),
+                     "materiales_incluidos": servicio.get("materiales_incluidos") is not False},
+        "materiales": [{"id": f["id"], "codigo": (f.get("inventario") or {}).get("codigo", ""),
+                        "nombre": (f.get("inventario") or {}).get("nombre", ""),
+                        "stock": (f.get("inventario") or {}).get("cantidad"),
+                        "cantidad": float(f.get("cantidad") or 0), "por_cilindro": bool(f.get("por_cilindro")),
+                        "modelo": f.get("modelo") or ""} for f in filas],
+    }
+
+@app.post("/servicios/{servicio_id}/materiales")
+def agregar_material_servicio(servicio_id: str, datos: NuevoMaterialServicio, request: Request):
+    _, taller_id = obtener_cliente_seguro(request)
+    _servicio_del_taller(servicio_id, taller_id)
+    inv = (supabase.table("inventario").select("id").eq("taller_id", taller_id)
+           .eq("codigo", datos.codigo.strip()).limit(1).execute()).data
+    if not inv:
+        raise HTTPException(status_code=400, detail=f"El código '{datos.codigo.strip()}' no existe en el inventario de este taller.")
+    try:
+        supabase.table("servicio_materiales").insert({
+            "taller_id": taller_id, "servicio_id": servicio_id, "inventario_id": inv[0]["id"],
+            "cantidad": datos.cantidad, "por_cilindro": datos.por_cilindro,
+            "modelo": re.sub(r"\s+", " ", datos.modelo).strip() or None,
+        }).execute()
+    except APIError as e:
+        if e.code == "23505":
+            raise HTTPException(status_code=409, detail="Ese material ya está en esta variante del servicio.")
+        _error_migracion_materiales(e)
+    return {"status": "ok"}
+
+@app.delete("/servicios/{servicio_id}/materiales/{material_id}")
+def eliminar_material_servicio(servicio_id: str, material_id: str, request: Request):
+    _, taller_id = obtener_cliente_seguro(request)
+    res = (supabase.table("servicio_materiales").delete().eq("id", material_id)
+           .eq("servicio_id", servicio_id).eq("taller_id", taller_id).execute()).data
+    if not res:
+        raise HTTPException(status_code=404, detail="No se encontró el material en este servicio.")
+    return {"status": "ok"}
+
+@app.patch("/servicios/{servicio_id}/materiales-config")
+def configurar_materiales_servicio(servicio_id: str, datos: ConfigMaterialesServicio, request: Request):
+    _, taller_id = obtener_cliente_seguro(request)
+    _servicio_del_taller(servicio_id, taller_id)
+    try:
+        supabase.table("servicios").update({"materiales_incluidos": datos.materiales_incluidos}) \
+            .eq("id", servicio_id).eq("taller_id", taller_id).execute()
+    except APIError as e:
+        _error_migracion_materiales(e)
     return {"status": "ok"}
 
 @app.patch("/servicios/{servicio_id}/garantia")
@@ -3511,4 +3809,4 @@ def exportar_inventario(request: Request):
 if __name__ == "__main__":
     import uvicorn
     puerto = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=puerto, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=puerto, reload=False)

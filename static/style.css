@@ -872,3 +872,20 @@ hr {
 .trabajos-tarjeta .total-parcial { margin-top: 4px; }
 .trabajos-tarjeta .total-parcial b { color: var(--texto); }
 
+/* ==========================================================================
+   MATERIALES POR SERVICIO
+   ========================================================================== */
+.materiales-orden { margin-top: 6px; font-size: 0.85rem; color: var(--texto-tenue); text-align: left; }
+.materiales-orden strong { color: var(--texto); }
+.materiales-orden ul { margin: 4px 0 0 16px; padding: 0; }
+.materiales-orden .precio-material { color: var(--texto); font-weight: 600; margin-left: 4px; }
+.materiales-orden .avisos-stock { list-style: none; margin: 6px 0 0; padding: 6px 10px; border-radius: 8px;
+    background: var(--bg-pendiente); color: var(--text-pendiente); }
+.tabla-materiales { margin: 10px 0; text-align: left; min-width: 0; }
+.fila-nuevo-material { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+.check-incluidos { display: flex; gap: 8px; align-items: flex-start; font-size: 0.85rem; color: var(--texto-tenue);
+    text-align: left; margin-top: 10px; cursor: pointer; }
+.check-incluidos b { color: var(--texto); }
+.check-incluidos input { flex: 0 0 auto; margin-top: 3px; }
+.check-incluidos span { flex: 1 1 auto; }
+

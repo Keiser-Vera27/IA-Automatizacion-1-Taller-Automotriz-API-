@@ -180,17 +180,19 @@ function cerrarSesion() {
 function resumenTrabajosHTML(ctx) {
     const e = escaparHTML;
     const trabajos = ctx.trabajos || [];
-    if (!trabajos.length) return '';
+    const materiales = listaMaterialesHTML(ctx.materiales, ctx.avisos_materiales);
+    if (!trabajos.length) return materiales;
     const filas = trabajos.map(t => `<tr><td>${e(t.descripcion)}</td><td class="num">${t.precio > 0 ? dinero(t.precio) : '—'}</td></tr>`).join('');
     const suma = trabajos.reduce((s, t) => s + (Number(t.precio) || 0), 0);
     const notaTotal = ctx.cobro_indicado && Math.abs(suma - ctx.total) > 0.009
-        ? `<div class="sub">Monto indicado en el mensaje (la suma de los trabajos es ${dinero(suma)})</div>` : '';
+        ? `<div class="sub">Monto indicado en el mensaje (la suma de los trabajos es ${dinero(suma)})</div>`
+        : (Math.abs(suma - ctx.total) > 0.009 ? `<div class="sub">Incluye materiales que se cobran aparte</div>` : '');
     return `<table class="tabla-caja tabla-resumen-cierre">
                 <thead><tr><th>Trabajos de la orden</th><th style="text-align:right;">Precio</th></tr></thead>
                 <tbody>${filas}
                     <tr class="fila-total"><td>Total a cobrar${notaTotal}</td><td class="num">${dinero(ctx.total)}</td></tr>
                 </tbody>
-            </table>`;
+            </table>${materiales}`;
 }
 
 // Punto 4: ventana "¿Cerrar la orden?" con el resumen. Nada se guarda hasta decidir.
@@ -261,12 +263,15 @@ async function enviarDecisionCierre(borrador, decision) {
 // Lista de trabajos en la tarjeta de un vehículo pendiente
 function trabajosTarjetaHTML(v) {
     const trabajos = Array.isArray(v.trabajos) ? v.trabajos.filter(t => t && t.descripcion) : [];
-    if (!trabajos.length) return '';
+    const materiales = listaMaterialesHTML((v.reparacion_detalles || []).map(d => ({
+        codigo: d.inventario?.codigo || '', nombre: d.inventario?.nombre || '', cantidad: d.cantidad,
+        precio_unitario: d.precio_unitario, incluido: !!d.incluido })));
+    if (!trabajos.length) return materiales;
     const e = escaparHTML;
     const total = trabajos.reduce((s, t) => s + (Number(t.precio) || 0), 0);
     return `<div class="trabajos-tarjeta"><strong>Trabajos:</strong>
         <ul>${trabajos.map(t => `<li>${e(t.descripcion)}${t.precio > 0 ? ` <span>${dinero(t.precio)}</span>` : ''}</li>`).join('')}</ul>
-        ${total > 0 ? `<div class="total-parcial">Total parcial: <b>${dinero(total)}</b></div>` : ''}</div>`;
+        ${total > 0 ? `<div class="total-parcial">Total parcial: <b>${dinero(total)}</b></div>` : ''}</div>${materiales}`;
 }
 
 // Punto 5: reabrir una orden cerrada hoy por error
@@ -1737,8 +1742,8 @@ function llenarPlantillaOrden(datos) {
                     <td style="border: 1px solid #ddd; padding: 8px;">${detalle.inventario?.codigo || 'N/A'}</td>
                     <td style="border: 1px solid #ddd; padding: 8px;">${detalle.inventario?.nombre || 'Genérico'}</td>
                     <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${detalle.cantidad}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">$${(detalle.precio_unitario || 0).toFixed(2)}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">$${subtotal.toFixed(2)}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${detalle.incluido ? 'Incluido' : '$' + (detalle.precio_unitario || 0).toFixed(2)}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${detalle.incluido ? '—' : '$' + subtotal.toFixed(2)}</td>
                 </tr>
             `;
         });
@@ -2168,6 +2173,144 @@ function renderChartServicios(datos) {
 // CATÁLOGO DE SERVICIOS
 // ==========================================================================
 // ==============================================================================
+// MATERIALES POR SERVICIO (kits): editor en el catálogo y vistas en órdenes
+// ==============================================================================
+let opcionesInventarioCache = null;
+
+async function obtenerOpcionesInventario() {
+    if (opcionesInventarioCache) return opcionesInventarioCache;
+    const res = await fetch('/inventario/opciones', { headers: cabeceraAuth() });
+    const data = await res.json().catch(() => ({}));
+    opcionesInventarioCache = res.ok ? (data.repuestos || []) : [];
+    return opcionesInventarioCache;
+}
+
+// Lista de materiales (ventanas de cierre y tarjetas). 'items' con codigo,
+// nombre, cantidad, precio_unitario, incluido.
+function listaMaterialesHTML(items, avisos = []) {
+    const e = escaparHTML;
+    if ((!items || !items.length) && (!avisos || !avisos.length)) return '';
+    const filas = (items || []).map(m => `<li>${Number(m.cantidad)} × ${e(m.nombre || m.codigo)} <span class="sub">(${e(m.codigo)})</span>
+        <span class="precio-material">${m.incluido ? 'incluido' : dinero((m.precio_unitario || 0) * (m.cantidad || 0))}</span></li>`).join('');
+    const alertas = (avisos || []).map(a => `<li>${e(a)}</li>`).join('');
+    return `<div class="materiales-orden">
+        ${filas ? `<strong>Materiales y repuestos:</strong><ul>${filas}</ul>` : ''}
+        ${alertas ? `<ul class="avisos-stock">${alertas}</ul>` : ''}</div>`;
+}
+
+// Editor de materiales de un servicio del catálogo
+async function abrirMaterialesServicio(servicioId) {
+    const overlay = document.getElementById('modal-aviso');
+    const e = escaparHTML;
+    let data;
+    try {
+        const res = await fetch(`/servicios/${encodeURIComponent(servicioId)}/materiales`, { headers: cabeceraAuth() });
+        data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+    } catch (err) {
+        mostrarModal({ tipo: 'error', titulo: 'No se pudieron cargar los materiales', mensaje: e(err.message) });
+        return;
+    }
+    const opciones = await obtenerOpcionesInventario();
+    const sv = data.servicio;
+
+    mostrarModal({ tipo: 'info', titulo: `Materiales: ${sv.nombre}` });
+    overlay.dataset.modo = 'formulario';
+
+    const filas = data.materiales.map(m => `<tr>
+        <td><b>${e(m.codigo)}</b><div class="sub">${e(m.nombre)} · stock ${m.stock ?? '—'}</div></td>
+        <td class="centro">${Number(m.cantidad)}${m.por_cilindro ? ' <span class="sub">por cilindro</span>' : ''}</td>
+        <td>${m.modelo ? e(m.modelo) : '<span class="sub">Todos</span>'}</td>
+        <td class="centro"><button type="button" class="btn-icono-eliminar" title="Quitar" aria-label="Quitar"
+            onclick='quitarMaterialServicio(${JSON.stringify(String(sv.id))}, ${JSON.stringify(String(m.id))})'><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td></tr>`).join('');
+
+    document.getElementById('modal-mensaje').innerHTML = `
+        Se descuentan solos del inventario cada vez que se registra este servicio en una orden.
+        Los de <b>“Todos”</b> se usan en cualquier vehículo; los de un modelo, solo si el vehículo coincide
+        (la variante más específica gana, ej. “Spark GT” antes que “Spark”).
+        <div class="tabla-scroll"><table class="tabla-caja tabla-materiales">
+            <thead><tr><th>Material</th><th style="text-align:center;">Cantidad</th><th>Vehículo</th><th></th></tr></thead>
+            <tbody>${filas || '<tr><td colspan="4" class="vacio">Este servicio aún no tiene materiales.</td></tr>'}</tbody>
+        </table></div>
+        <label class="check-incluidos">
+            <input type="checkbox" id="chk-materiales-incluidos" ${sv.materiales_incluidos ? 'checked' : ''}
+                   onchange='cambiarMaterialesIncluidos(${JSON.stringify(String(sv.id))}, this.checked)'>
+            <span>Los materiales van <b>incluidos en el precio</b> del servicio (si lo desmarcas, se cobran aparte y se suman al total)</span>
+        </label>`;
+
+    const formulario = document.getElementById('modal-formulario');
+    formulario.innerHTML = `
+        <div class="fila-nuevo-material">
+            <label class="campo-faltante"><span class="campo-etiqueta">Código del inventario</span>
+                <input name="codigo" list="lista-inventario-materiales" placeholder="Ej. #O01" autocomplete="off" required>
+                <datalist id="lista-inventario-materiales">${opciones.map(o => `<option value="${e(o.codigo)}">${e(o.nombre)} (stock ${o.cantidad ?? 0})</option>`).join('')}</datalist>
+                <span class="campo-aviso" hidden>Este dato es obligatorio</span></label>
+            <label class="campo-faltante"><span class="campo-etiqueta">Cantidad</span>
+                <input name="cantidad" type="number" min="1" step="1" inputmode="numeric" placeholder="Ej. 2" required>
+                <span class="campo-aviso" hidden>Este dato es obligatorio</span></label>
+        </div>
+        <label class="campo-faltante"><span class="campo-etiqueta">Solo para el modelo (vacío = todos los vehículos)</span>
+            <input name="modelo" placeholder="Ej. Spark, D-Max 3.0" autocomplete="off"></label>
+        <label class="check-incluidos"><input type="checkbox" name="por_cilindro">
+            <span>Cantidad <b>por cilindro</b> (ej. 2 o-rings por inyector: se multiplica por los cilindros del motor)</span></label>`;
+    formulario.hidden = false;
+
+    const btnCancelar = document.getElementById('modal-btn-cancelar');
+    btnCancelar.hidden = false;
+    btnCancelar.textContent = 'Cerrar';
+    btnCancelar.onclick = () => { overlay.dataset.modo = ''; cerrarModal(); cargarServicios(); };
+
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Agregar material';
+    btnOk.onclick = async () => {
+        const codigo = formulario.querySelector('[name=codigo]');
+        const cantidad = formulario.querySelector('[name=cantidad]');
+        let ok = true;
+        [codigo, cantidad].forEach(c => {
+            const falta = !c.value.trim() || (c === cantidad && !(parseInt(c.value, 10) >= 1));
+            c.classList.toggle('invalido', falta);
+            c.closest('.campo-faltante').querySelector('.campo-aviso').hidden = !falta;
+            if (falta) ok = false;
+        });
+        if (!ok) return;
+        btnOk.disabled = true;
+        try {
+            const res = await fetch(`/servicios/${encodeURIComponent(sv.id)}/materiales`, {
+                method: 'POST', headers: cabeceraAuth(true),
+                body: JSON.stringify({
+                    codigo: codigo.value.trim(), cantidad: parseInt(cantidad.value, 10),
+                    por_cilindro: formulario.querySelector('[name=por_cilindro]').checked,
+                    modelo: formulario.querySelector('[name=modelo]').value.trim()
+                })
+            });
+            const r = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                mostrarNotificacion(escaparHTML(typeof r.detail === 'string' ? r.detail : `Error ${res.status}`), "warning");
+                return;
+            }
+            abrirMaterialesServicio(sv.id);   // recarga la lista
+        } finally {
+            btnOk.disabled = false;
+        }
+    };
+    setTimeout(() => formulario.querySelector('[name=codigo]').focus(), 50);
+}
+
+async function quitarMaterialServicio(servicioId, materialId) {
+    const res = await fetch(`/servicios/${encodeURIComponent(servicioId)}/materiales/${encodeURIComponent(materialId)}`,
+                            { method: 'DELETE', headers: cabeceraAuth() });
+    if (!res.ok) mostrarNotificacion("No se pudo quitar el material.", "warning");
+    abrirMaterialesServicio(servicioId);
+}
+
+async function cambiarMaterialesIncluidos(servicioId, incluidos) {
+    const res = await fetch(`/servicios/${encodeURIComponent(servicioId)}/materiales-config`, {
+        method: 'PATCH', headers: cabeceraAuth(true), body: JSON.stringify({ materiales_incluidos: incluidos })
+    });
+    if (!res.ok) mostrarNotificacion("No se pudo guardar el cambio.", "warning");
+}
+
+// ==============================================================================
 // CATÁLOGO DE SERVICIOS + GARANTÍAS (cada taller define las suyas)
 // Nota: antes había dos copias de guardarServicio/eliminarServicio y las de
 // abajo usaban una clave de token equivocada ('as_token'), así que agregar y
@@ -2208,7 +2351,7 @@ async function cargarServicios() {
         const tbody = document.getElementById('tabla-servicios');
         const servicios = data.servicios || [];
         if (!servicios.length) {
-            tbody.innerHTML = '<tr><td colspan="4" class="vacio">No hay servicios registrados.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="vacio">No hay servicios registrados.</td></tr>';
             return;
         }
         tbody.innerHTML = servicios.map(s => {
@@ -2221,6 +2364,9 @@ async function cargarServicios() {
                     <td class="num">$${Number(s.precio_base || 0).toFixed(2)}</td>
                     <td>${e(textoGarantia(dias, km))}${propia ? '' : ' <span class="sub">(del taller)</span>'}
                         <button class="btn-link" onclick='editarGarantiaServicio(${JSON.stringify(String(s.id))}, ${JSON.stringify(s.nombre_servicio)}, ${JSON.stringify(s.garantia_dias)}, ${JSON.stringify(s.garantia_km)})'>Editar</button>
+                    </td>
+                    <td class="centro">
+                        <button class="btn-link" onclick='abrirMaterialesServicio(${JSON.stringify(String(s.id))})'>${s.n_materiales ? `Materiales (${s.n_materiales})` : 'Agregar materiales'}</button>
                     </td>
                     <td class="centro">
                         <button onclick='eliminarServicio(${JSON.stringify(String(s.id))})' class="btn-icono-eliminar" title="Eliminar" aria-label="Eliminar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
