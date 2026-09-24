@@ -857,3 +857,18 @@ hr {
 .estado-reclamo.pendiente { background: var(--bg-pendiente); color: var(--text-pendiente); }
 .estado-reclamo.aprobado  { background: rgba(22, 163, 74, 0.15); color: #16A34A; }
 .estado-reclamo.rechazado { background: rgba(220, 38, 38, 0.12); color: #DC2626; }
+
+/* ==========================================================================
+   CIERRE DE ÓRDENES: resumen, trabajos en tarjeta
+   ========================================================================== */
+.tabla-resumen-cierre { margin: 10px 0; text-align: left; min-width: 0; }
+.tabla-resumen-cierre .num { text-align: right; white-space: nowrap; }
+.datos-cierre { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 0.9rem; color: var(--texto-tenue); margin: 6px 0; }
+.datos-cierre b { color: var(--texto); }
+.trabajos-tarjeta { margin-top: 6px; font-size: 0.85rem; color: var(--texto-tenue); }
+.trabajos-tarjeta strong { color: var(--texto); }
+.trabajos-tarjeta ul { margin: 4px 0 0 16px; padding: 0; }
+.trabajos-tarjeta li span { color: var(--texto); font-weight: 600; }
+.trabajos-tarjeta .total-parcial { margin-top: 4px; }
+.trabajos-tarjeta .total-parcial b { color: var(--texto); }
+

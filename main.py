@@ -512,6 +512,20 @@ class RepuestoUsado(BaseModel):
 
 
 
+class TrabajoLinea(BaseModel):
+    """Un trabajo/servicio dentro de una orden (se van agregando mientras está abierta)."""
+    descripcion: str = ""
+    precio: float = 0.0
+
+    @field_validator("precio", mode="before")
+    @classmethod
+    def _precio_numero(cls, v):
+        try:
+            return max(0.0, float(str(v).replace("$", "").replace(",", ".").strip() or 0))
+        except (TypeError, ValueError):
+            return 0.0
+
+
 class TrabajoTaller(BaseModel):
     vehiculo: str = Field(description="OBLIGATORIO: Extrae ÚNICAMENTE la placa del vehículo (ej: PXY9876, GPU340). NUNCA incluyas la marca o color aquí.")
     modelo: str = Field(default="", description="Marca y modelo del vehículo, ej: 'Toyota Corolla'. Vacío si no se menciona.")
@@ -532,6 +546,20 @@ class TrabajoTaller(BaseModel):
     metodo_pago: str = ""
     banco: str = ""
     repuestos_usados: list[RepuestoUsado] = Field(default=[])
+    # Etapa del mensaje: "ingreso" (llega el vehículo), "avance" (se agrega un
+    # trabajo/hallazgo a la orden abierta) o "cierre" (trabajo terminado/cobrado).
+    etapa: str = ""
+    # Trabajos NUEVOS que este mensaje agrega a la orden (con su precio)
+    trabajos_nuevos: list[TrabajoLinea] = Field(default=[])
+    # Decisión final de cierre: la fija el backend (nunca la IA) después de la
+    # doble verificación y la confirmación del usuario. None = no decidido.
+    cierra: bool | None = None
+
+    @field_validator("etapa", mode="before")
+    @classmethod
+    def _etapa_valida(cls, v):
+        v = str(v or "").strip().lower()
+        return v if v in ("ingreso", "avance", "cierre") else ""
 
     @field_validator("vehiculo", mode="before")
     @classmethod
@@ -604,6 +632,8 @@ class SolicitudUnificada(BaseModel):
     # Segundo paso del modal "faltan datos": borrador firmado + datos completados
     borrador: str | None = None
     datos_confirmados: dict[str, str] | None = None
+    # Respuesta a la ventana "¿Cerrar la orden?": "cerrar" o "abierta"
+    decision_cierre: Literal["cerrar", "abierta"] | None = None
 
 
 class RouterIntencion(BaseModel):
@@ -657,7 +687,7 @@ def construir_prompt_extraccion(taller_id, texto: str, nombres_tecnicos: list[st
     Analiza el siguiente mensaje y clasifícalo ESTRICTAMENTE en una de estas 4 categorías: 'reparacion', 'gasto', 'inventario' o 'devolucion'.
 
     REGLA DE VENTAS DIRECTAS AL MOSTRADOR:
-    Si el mensaje describe la venta de un repuesto a un cliente que no ingresó su vehículo (ej. "se le vendió...", "compró...", "llevó un repuesto"), OBLIGATORIAMENTE es una 'reparacion'. 
+    Si el mensaje describe la venta de un repuesto a un cliente que no ingresó su vehículo (ej. "se le vendió...", "compró...", "llevó un repuesto"), OBLIGATORIAMENTE es una 'reparacion' con etapa "cierre".
     - Escribe "Venta de repuestos al mostrador" en el campo 'trabajo_realizado'.
     - En el campo 'motivo', escribe "Compra de repuesto".
     - Pon la placa del vehículo obligatoriamente como "S/C" (Sin Código).
@@ -674,10 +704,26 @@ def construir_prompt_extraccion(taller_id, texto: str, nombres_tecnicos: list[st
     'repuestos_usados'. Si el repuesto mencionado no se parece a ninguno del catálogo, NO lo 
     inventes: omítelo de 'repuestos_usados' (mejor dejarlo fuera que inventar un código que no existe).
 
-    REGLAS DE COBRO PARA REPARACIONES:
-    1. Si el trabajo mencionado coincide con un servicio del catálogo, usa automáticamente su 'precio_base' en el campo 'cobro'.
-    2. EXCEPCIÓN: Si en el mensaje se menciona explícitamente un precio cobrado distinto, un descuento o una rebaja, IGNORA el catálogo y respeta SIEMPRE el precio mencionado en el mensaje.
-    3. Si el trabajo no está en el catálogo y no se menciona precio, pon el cobro en 0.0.
+    ETAPA DE LA ORDEN (campo "etapa", OBLIGATORIO en reparaciones). Es la regla MÁS IMPORTANTE:
+    - "ingreso": el vehículo LLEGA al taller. Lo que el cliente PIDE o el problema que reporta
+      (ej. "quiere mantenimiento a inyectores", "llega por ruido en frenos") va SOLO en 'motivo'.
+      En un ingreso: trabajos_nuevos = [], trabajo_realizado = "", cobro = 0. Aunque lo pedido
+      coincida con un servicio del catálogo, SIGUE SIENDO el motivo, NO un trabajo hecho.
+    - "avance": el vehículo YA está en el taller y se reporta un trabajo adicional, un hallazgo
+      o un repuesto a cambiar (ej. "se encontró la bobina 2 dañada, se cambia", "también se le
+      hace ABC"). Cada trabajo va como un elemento de trabajos_nuevos. cobro = 0.
+    - "cierre": SOLO si el mensaje dice EXPLÍCITAMENTE que se terminó, está listo, se entregó,
+      se cobró o el cliente pagó / retiró el vehículo. Si hay duda, NO es cierre.
+    - Un mismo mensaje puede traer ingreso y cierre juntos (ej. "llegó Juan con el Spark, se le
+      cambió el aceite y se cobraron 35") -> etapa "cierre", con motivo y trabajos_nuevos.
+
+    PRECIOS DE LOS TRABAJOS (trabajos_nuevos):
+    1. Si el mensaje menciona el precio de ese trabajo, usa ese precio.
+    2. Si no, y el trabajo coincide con un servicio del catálogo, usa su 'precio_base'.
+    3. Si no, precio 0.0.
+
+    COBRO: SOLO en etapa "cierre" y SOLO si el mensaje menciona el monto total cobrado o pagado
+    (respeta descuentos o rebajas). Si no se menciona, cobro = 0.0 (el sistema sumará los trabajos).
 
     Responde en JSON con esta estructura EXACTA:
     {{
@@ -695,9 +741,13 @@ def construir_prompt_extraccion(taller_id, texto: str, nombres_tecnicos: list[st
           "cedula": "Número de cédula, RUC o CI en texto plano (ej. 1205888769)",
           "telefono": "Número de teléfono (si se menciona)",
           "motivo": "Razón de ingreso o fallo reportado (ej. 'fallo de cilindro').",
-          "trabajo_realizado": "Describe el trabajo hecho (usa el nombre del catálogo si coincide). Si recién ingresa, déjalo vacío.",
+          "etapa": "ingreso" | "avance" | "cierre",
+          "trabajos_nuevos": [
+              {{"descripcion": "Trabajo hecho o por hacer en ESTE mensaje (nombre del catálogo si coincide). Vacío [] en un ingreso.", "precio": 0.0}}
+          ],
+          "trabajo_realizado": "Resumen de los trabajos hechos SOLO en avance o cierre. En un ingreso, SIEMPRE vacío.",
           "oficial": "DEBES elegir estrictamente uno de esta lista: [{lista_tecnicos_str}]. Si el mensaje no menciona un técnico o no coincide con ninguno, déjalo vacío (\"\"). NUNCA inventes un nombre.",
-          "cobro": 0.0,
+          "cobro": "0.0 salvo en un cierre que mencione el monto cobrado",
           "metodo_pago": "efectivo, transferencia, tarjeta, etc.",
           "banco": "Nombre exacto del banco si es transferencia (ej. Pichincha, Guayaquil, Produbanco, Pacifico)",
           "repuestos_usados": [
@@ -909,7 +959,7 @@ def buscar_garantias_lote(taller_id, placas: list[str]) -> dict[str, dict]:
 # Columnas nuevas de garantía/kilometraje: si la migración aún no se ejecutó,
 # se guarda la orden sin ellas en lugar de fallar.
 COLUMNAS_GARANTIA = ("kilometraje", "garantia_dias", "garantia_km", "garantia_vence",
-                     "garantia_km_limite", "garantia_servicio")
+                     "garantia_km_limite", "garantia_servicio", "trabajos")
 
 def guardar_reparacion(operacion: str, datos: dict, id_orden=None):
     def ejecutar(payload):
@@ -948,9 +998,78 @@ CAMPOS_SOLO_INGRESO = {c for c, _ in CAMPOS_OBLIGATORIOS_INGRESO}
 # Campos que el usuario puede dejar vacíos en el modal de ingreso (dato opcional mal escrito)
 CAMPOS_VACIABLES_ORDEN = {c for c, _ in CAMPOS_OBLIGATORIOS_AL_CIERRE}
 # Datos que el usuario puede completar desde el modal
-CAMPOS_EDITABLES_ORDEN = {c for c, _ in CAMPOS_OBLIGATORIOS_ORDEN} | {"trabajo_realizado", "metodo_pago", "banco"}
+CAMPOS_EDITABLES_ORDEN = {c for c, _ in CAMPOS_OBLIGATORIOS_ORDEN} | {"trabajo_realizado", "cobro", "metodo_pago", "banco"}
 
-def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> tuple[dict, list[dict], dict]:
+# ------------------------------------------------------------------------------
+# CIERRE DE ÓRDENES: doble candado + lista de trabajos
+# ------------------------------------------------------------------------------
+# Candado 2 (determinístico): además de que la IA diga "cierre", el TEXTO debe
+# contener una señal clara de trabajo terminado o cobrado. Si falta, la orden
+# NO se cierra (queda abierta y se agregan los trabajos como avance).
+_SENALES_CIERRE = re.compile(
+    r"\b(termin\w*|finaliz\w*|conclu\w*|listo|lista|entreg\w*|cobr\w*|pag[oóa]\w*|cancel[oóa]\w*|"
+    r"retir\w*|se\s+(fue|llev\w*)|despach\w*|factur\w*|vend\w*|abon\w*)\b",
+    re.IGNORECASE,
+)
+
+def hay_senal_cierre(texto: str) -> bool:
+    return bool(_SENALES_CIERRE.search(_sin_tildes(texto or "")))
+
+def trabajos_de_orden(orden: dict | None) -> list[dict]:
+    """Trabajos ya registrados en una orden (lista jsonb). Órdenes antiguas sin
+    lista: su texto de trabajo_realizado cuenta como un solo trabajo."""
+    if not orden:
+        return []
+    lista = orden.get("trabajos")
+    if isinstance(lista, list) and lista:
+        return [t for t in lista if isinstance(t, dict) and str(t.get("descripcion") or "").strip()]
+    texto = str(orden.get("trabajo_realizado") or "").strip()
+    return [{"descripcion": texto, "precio": 0.0}] if texto else []
+
+def normalizar_trabajos_nuevos(d: dict, taller_id) -> list[dict]:
+    """Trabajos que agrega este mensaje, con precio del catálogo si no se dijo.
+    Si la IA solo llenó 'trabajo_realizado' (avance/cierre), se usa como un trabajo."""
+    nuevos = [t for t in (d.get("trabajos_nuevos") or []) if str((t or {}).get("descripcion") or "").strip()]
+    if not nuevos and d.get("etapa") in ("avance", "cierre") and str(d.get("trabajo_realizado") or "").strip():
+        nuevos = [{"descripcion": str(d["trabajo_realizado"]).strip(), "precio": 0.0}]
+    if not nuevos:
+        return []
+    try:
+        catalogo = (supabase.table("servicios").select("nombre_servicio, precio_base")
+                    .eq("taller_id", taller_id).execute().data) or []
+    except Exception:
+        catalogo = []
+    resultado = []
+    for t in nuevos:
+        desc = re.sub(r"\s+", " ", str(t.get("descripcion"))).strip()[:200]
+        precio = float(t.get("precio") or 0)
+        if precio <= 0:
+            desc_n = _sin_tildes(desc)
+            coincidencias = [c for c in catalogo if _sin_tildes(c.get("nombre_servicio")) and _sin_tildes(c.get("nombre_servicio")) in desc_n]
+            if coincidencias:
+                # el nombre más largo es la coincidencia más específica
+                precio = float(max(coincidencias, key=lambda c: len(c["nombre_servicio"])).get("precio_base") or 0)
+        resultado.append({"descripcion": desc, "precio": round(precio, 2)})
+    return resultado
+
+def unir_trabajos(existentes: list[dict], nuevos: list[dict]) -> list[dict]:
+    """Agrega los nuevos sin repetir (misma descripción = mismo trabajo)."""
+    vistos = {_sin_tildes(t["descripcion"]).strip() for t in existentes}
+    lista = list(existentes)
+    for t in nuevos:
+        clave = _sin_tildes(t["descripcion"]).strip()
+        if clave and clave not in vistos:
+            vistos.add(clave)
+            lista.append(t)
+    return lista
+
+def texto_trabajos(lista: list[dict]) -> str:
+    return " | ".join(t["descripcion"] for t in lista)
+
+def total_trabajos(lista: list[dict]) -> float:
+    return round(sum(float(t.get("precio") or 0) for t in lista), 2)
+
+def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str], texto: str = "") -> tuple[dict, list[dict], dict]:
     """Revisa una orden (ingreso o cierre) ANTES de guardarla.
     - INGRESO: solo exige placa, marca/modelo, nombre y apellido del cliente y
       motivo. Los demás datos pueden quedar pendientes; si se escribieron pero
@@ -959,12 +1078,15 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> 
       que no se escribieron al ingresar. Sin ellos la orden no se cierra.
     - Considera lo que el vehículo ya tiene en su última orden (el trabajador
       hereda esos datos), así al cerrar no se vuelve a pedir lo ya registrado.
+    - CIERRE solo con doble candado: la IA dice etapa "cierre" Y el texto tiene
+      una señal clara (terminó, listo, cobró, pagó...). O bien, el usuario ya
+      decidió en la ventana de confirmación (d["cierra"] True/False).
     - Devuelve (orden_normalizada, faltantes, contexto)."""
     d = dict(d)
     placa = str(d.get("vehiculo") or "").strip()
     texto_trabajo = f"{d.get('trabajo_realizado', '')} {d.get('motivo', '')}".lower()
     es_mostrador = placa in ("", "S/C") and ("mostrador" in texto_trabajo or "compra de repuesto" in texto_trabajo)
-    se_cierra = (d.get("cobro") or 0) > 0 or str(d.get("trabajo_realizado") or "").strip() != ""
+
 
     ultima = None
     if placa and placa != "S/C":
@@ -972,6 +1094,28 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> 
                .eq("taller_id", taller_id).order("id", desc=True).limit(1).execute())
         ultima = res.data[0] if res.data else None
     pendiente = bool(ultima and ultima.get("estado") == "Pendiente")
+
+    # ¿Este mensaje cierra la orden? (candado 1: la IA dice "cierre";
+    # candado 2: el texto tiene una señal clara de terminado/cobrado)
+    propone_cierre = d.get("etapa") == "cierre" and hay_senal_cierre(texto)
+    cierre_descartado = d.get("etapa") == "cierre" and not propone_cierre
+    se_cierra = d["cierra"] if isinstance(d.get("cierra"), bool) else propone_cierre
+    if cierre_descartado:
+        # La IA dijo "cierre" pero el texto no lo confirma. Sin orden abierta el
+        # vehículo recién LLEGA (ingreso: lo pedido es el motivo, no un trabajo);
+        # con orden abierta es un avance.
+        d["etapa"] = "avance" if pendiente else "ingreso"
+    # En un ingreso/avance el cobro nunca se toma (evita el precio del catálogo como cobro)
+    if not se_cierra:
+        d["cobro"] = 0.0
+    if d.get("etapa") == "ingreso" and not se_cierra:
+        d["trabajos_nuevos"], d["trabajo_realizado"] = [], ""
+    else:
+        d["trabajos_nuevos"] = normalizar_trabajos_nuevos(d, taller_id)
+
+    # Trabajos que tendrá la orden (los ya registrados + los de este mensaje) y su total
+    trabajos_orden = unir_trabajos(trabajos_de_orden(ultima) if pendiente else [], d["trabajos_nuevos"])
+    total_orden = float(d.get("cobro") or 0) or total_trabajos(trabajos_orden)
 
     def efectivo(campo):
         """Valor que quedará guardado: el nuevo o, si no viene, el heredado."""
@@ -1043,12 +1187,17 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> 
             elif not valor:
                 falta(campo, etiqueta)
 
-    # Al cerrar (hay cobro), es obligatorio decir qué servicio o solución se dio
-    if se_cierra and not es_mostrador and not str(d.get("trabajo_realizado") or "").strip():
+    # Al cerrar, es obligatorio que la orden tenga al menos un trabajo realizado
+    if se_cierra and not es_mostrador and not trabajos_orden:
         falta("trabajo_realizado", "Servicio realizado o solución brindada")
 
+    # Al cerrar, debe haber un valor cobrado (el dicho o la suma de los trabajos).
+    # Si no se cobró nada, se usa el botón "Cerrar orden" (sin cobro).
+    if se_cierra and total_orden <= 0:
+        falta("cobro", "Valor total cobrado ($)")
+
     # Al cobrar, el método de pago es obligatorio para poder cuadrar caja
-    if (d.get("cobro") or 0) > 0:
+    if se_cierra and total_orden > 0:
         categoria, banco = normalizar_metodo_pago(efectivo("metodo_pago"), efectivo("banco"))
         if categoria in ("Sin especificar", "Otro"):
             falta("metodo_pago", "Método de pago", "falta" if categoria == "Sin especificar" else "no reconocido",
@@ -1065,7 +1214,12 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str]) -> 
         "placa": placa, "es_cierre": se_cierra, "es_mostrador": es_mostrador,
         "orden_abierta": pendiente, "garantia": garantia,
         "cliente": efectivo("cliente"), "modelo": efectivo("modelo"),
-        "trabajo": str(d.get("trabajo_realizado") or ""), "cobro": d.get("cobro") or 0,
+        "trabajo": texto_trabajos(trabajos_orden), "cobro": d.get("cobro") or 0,
+        "trabajos": trabajos_orden, "total": round(total_orden, 2),
+        "cobro_indicado": float(d.get("cobro") or 0) > 0,
+        "cierre_descartado": cierre_descartado,
+        "tecnico": canonizar_tecnico(efectivo("oficial"), mapa_tecnicos) or "",
+        "metodo_pago": efectivo("metodo_pago"), "banco": efectivo("banco"),
         # Datos que quedan pendientes y se exigirán al cerrar la orden
         "pendientes_cierre": [] if (se_cierra or es_mostrador) else
             [etq for c, etq in CAMPOS_OBLIGATORIOS_AL_CIERRE
@@ -1194,37 +1348,46 @@ async def trabajador_silencioso():
             await asyncio.sleep(2)
             continue
 
+        # Estado final del mensaje en la cola (puede cambiar si queda algo pendiente)
+        estado_cola_final, nota_cola = "Procesado", None
+
         if tipo == "reparacion" and resultado.get("reparacion"):
             d = resultado["reparacion"]
+            placa = str(d.get("vehiculo", "")).strip()
+            es_venta_mostrador = not placa or placa == "S/C"
+
+            # ¿Se cierra la orden? SOLO si el usuario lo confirmó en la ventana
+            # de cierre (d["cierra"] True). Un mensaje que no pasó por la
+            # validación previa (la IA no respondía al enviarlo) NUNCA cierra:
+            # se aplica como avance y queda marcado para confirmar el cierre.
+            cierra = d.get("cierra") is True
+            if not venia_validado:
+                _, _, ctx_msj = validar_orden_trabajo(d, taller_id, mapa_tecnicos, texto_msj)
+                if ctx_msj.get("es_cierre"):
+                    estado_cola_final = ESTADO_COLA_INCOMPLETO
+                    nota_cola = "El mensaje pedía cerrar la orden, pero llegó sin confirmar: se registró como avance. Vuelve a enviar el cierre."
+                d = {**d, "trabajos_nuevos": normalizar_trabajos_nuevos(d, taller_id)}
+                if d.get("etapa") == "ingreso":
+                    d["trabajos_nuevos"], d["trabajo_realizado"] = [], ""
+                cierra = False
+            if not cierra:
+                d["cobro"] = 0.0     # un ingreso/avance nunca registra cobro
+
             # Solo se guarda un técnico REGISTRADO, con su nombre oficial
             # (evita "Ninguno registrado", "jordy" vs "Jordy", nombres inventados)
-            # Mensaje que NO pasó por la validación previa (la IA no respondía
-            # cuando se envió): si intenta CERRAR la orden sin los datos
-            # obligatorios, no se aplica. La orden sigue Pendiente y el
-            # mensaje queda marcado para que se reenvíe con los datos.
-            if not venia_validado:
-                _, faltantes_msj, ctx_msj = validar_orden_trabajo(d, taller_id, mapa_tecnicos)
-                faltan_cierre = [f for f in faltantes_msj if not f.get("opcional")]
-                if ctx_msj.get("es_cierre") and not ctx_msj.get("es_mostrador") and faltan_cierre:
-                    supabase.table("cola_mensajes").update({
-                        "estado": ESTADO_COLA_INCOMPLETO,
-                        "ultimo_error": "Faltan datos para cerrar la orden: "
-                                        + ", ".join(f["etiqueta"] for f in faltan_cierre),
-                    }).eq("id", id_msj).execute()
-                    continue
-
             d["oficial"] = canonizar_tecnico(d.get("oficial"), mapa_tecnicos)
-            placa = str(d.get("vehiculo", "")).strip()
+            nuevos = [{"descripcion": t["descripcion"], "precio": float(t.get("precio") or 0),
+                       "mensaje_id": str(id_msj), "fecha": tiempo_actual}
+                      for t in (d.get("trabajos_nuevos") or []) if str(t.get("descripcion") or "").strip()]
 
             ultima_orden = None
             if placa and placa != "S/C":
                 res_rep = supabase.table("reparaciones").select("*").eq("vehiculo", placa).eq("taller_id", taller_id).order("id", desc=True).limit(1).execute()
                 ultima_orden = res_rep.data[0] if res_rep.data else None
 
-            if ultima_orden and ultima_orden["estado"] == 'Terminado' and (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != ""):
-                fecha_ultima = ultima_orden["fecha_hora"].split(" ")[0]
-                hoy = tiempo_actual.split(" ")[0]
-                if fecha_ultima == hoy:
+            # Cierre duplicado: el mismo vehículo ya se cerró hoy y no hay orden abierta
+            if cierra and ultima_orden and ultima_orden["estado"] == 'Terminado':
+                if str(ultima_orden.get("fecha_salida") or "")[:10] == tiempo_actual[:10]:
                     supabase.table("cola_mensajes").update({"estado": "Bloqueado (Duplicado)"}).eq("id", id_msj).execute()
                     continue
 
@@ -1232,23 +1395,22 @@ async def trabajador_silencioso():
             cedula_extraida = str(d.get("cedula") or "").strip()
             banco_extraido = str(d.get("banco") or "").strip()
 
-            # id real de la reparación ya guardada (se define en cualquiera de las
-            # dos ramas de abajo). Lo necesitamos para poder dejar el detalle de
-            # repuestos usados en reparacion_detalles, ligado a esta orden.
+            # id real de la reparación ya guardada (para ligar los repuestos usados)
             reparacion_id_actual = None
 
             if ultima_orden and ultima_orden["estado"] == 'Pendiente':
-                se_cierra = d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != ""
+                # ---- Orden ABIERTA: se agregan trabajos (y se cierra solo si se confirmó) ----
+                # Idempotencia: si este mensaje ya se aplicó (reintento), no se duplican trabajos
+                existentes = trabajos_de_orden(ultima_orden)
+                ya_aplicado = any(str(t.get("mensaje_id")) == str(id_msj) for t in existentes)
+                lista_trabajos = existentes if ya_aplicado else unir_trabajos(existentes, nuevos)
+                trabajo_final = texto_trabajos(lista_trabajos)
 
-                motivo_bd = ultima_orden.get("motivo", "")
-                motivo_ia = d.get("motivo", "")
+                motivo_bd = ultima_orden.get("motivo", "") or ""
+                motivo_ia = d.get("motivo", "") or ""
                 motivo_final = f"{motivo_bd} | {motivo_ia}".strip(" |") if motivo_bd and motivo_ia and motivo_ia not in motivo_bd else (motivo_ia or motivo_bd)
 
-                trabajo_bd = ultima_orden.get("trabajo_realizado", "")
-                trabajo_ia = d.get("trabajo_realizado", "")
-                trabajo_final = f"{trabajo_bd} | {trabajo_ia}".strip(" |") if trabajo_bd and trabajo_ia and trabajo_ia not in trabajo_bd else (trabajo_ia or trabajo_bd)
-
-                # FUNCIÓN DE HERENCIA MEJORADA (Prioriza dato nuevo válido)
+                # FUNCIÓN DE HERENCIA (prioriza el dato nuevo válido)
                 def _heredar_o_actualizar(campo, valor_nuevo):
                     val_str = str(valor_nuevo or "").strip()
                     val_antiguo = str(ultima_orden.get(campo) or "").strip()
@@ -1256,6 +1418,7 @@ async def trabajador_silencioso():
 
                 datos_actualizar = {
                     "motivo": motivo_final,
+                    "trabajos": lista_trabajos,
                     "trabajo_realizado": trabajo_final,
                     "cliente": _heredar_o_actualizar("cliente", d.get("cliente")),
                     "cedula": _heredar_o_actualizar("cedula", cedula_extraida),
@@ -1266,14 +1429,15 @@ async def trabajador_silencioso():
                     "anio": _heredar_o_actualizar("anio", d.get("anio")),
                     "cilindraje": _heredar_o_actualizar("cilindraje", d.get("cilindraje")),
                     "kilometraje": normalizar_kilometraje(d.get("kilometraje")) or ultima_orden.get("kilometraje"),
-                    "cobro": d.get("cobro", 0.0) if d.get("cobro", 0) > 0 else ultima_orden.get("cobro", 0.0),
                     "metodo_pago": _heredar_o_actualizar("metodo_pago", d.get("metodo_pago")),
-                    "banco": _heredar_o_actualizar("banco", banco_extraido)
+                    "banco": _heredar_o_actualizar("banco", banco_extraido),
                 }
 
-                if se_cierra:
+                if cierra:
                     datos_actualizar["estado"] = "Terminado"
                     datos_actualizar["fecha_salida"] = tiempo_actual
+                    # Cobro: el dicho en el cierre o, si no, la suma de los trabajos
+                    datos_actualizar["cobro"] = float(d.get("cobro") or 0) or total_trabajos(lista_trabajos)
                     # Garantía que se entrega con este trabajo
                     datos_actualizar.update(calcular_garantia(taller_id, trabajo_final, datos_actualizar["kilometraje"],
                                                               d.get("garantia_dias"), d.get("garantia_km")))
@@ -1283,8 +1447,11 @@ async def trabajador_silencioso():
                 guardar_reparacion("update", datos_actualizar, ultima_orden["id"])
                 reparacion_id_actual = ultima_orden["id"]
             else:
-                estado_nuevo = 'Terminado' if (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") else 'Pendiente'
-                fecha_sal = tiempo_actual if estado_nuevo == 'Terminado' else None
+                # ---- No hay orden abierta: se crea una nueva ----
+                estado_nuevo = 'Terminado' if cierra else 'Pendiente'
+                fecha_sal = tiempo_actual if cierra else None
+                trabajo_final = texto_trabajos(nuevos) or (str(d.get("trabajo_realizado") or "") if cierra else "")
+                cobro_final = (float(d.get("cobro") or 0) or total_trabajos(nuevos)) if cierra else 0.0
 
                 def _heredar(campo, valor_nuevo):
                     val_str = str(valor_nuevo or "").strip()
@@ -1292,10 +1459,9 @@ async def trabajador_silencioso():
                         return val_str
                     return str(ultima_orden.get(campo) or "").strip() if ultima_orden else ""
 
-                es_venta_mostrador = not placa or placa == "S/C"
-                garantia_nueva = (calcular_garantia(taller_id, d.get("trabajo_realizado", ""), d.get("kilometraje"),
+                garantia_nueva = (calcular_garantia(taller_id, trabajo_final, d.get("kilometraje"),
                                                     d.get("garantia_dias"), d.get("garantia_km"))
-                                  if estado_nuevo == "Terminado" and not es_venta_mostrador else {})
+                                  if cierra and not es_venta_mostrador else {})
                 try:
                     insertada = guardar_reparacion("insert", {
                         "taller_id": taller_id,
@@ -1309,11 +1475,12 @@ async def trabajador_silencioso():
                         "cedula": _heredar("cedula", cedula_extraida),
                         "telefono": _heredar("telefono", d.get("telefono")),
                         "motivo": d.get("motivo", ""),
-                        "trabajo_realizado": d.get("trabajo_realizado", ""),
+                        "trabajos": nuevos,
+                        "trabajo_realizado": trabajo_final,
                         "oficial": d.get("oficial", ""),
-                        "cobro": d.get("cobro", 0.0),
-                        "metodo_pago": d.get("metodo_pago", ""),
-                        "banco": banco_extraido,
+                        "cobro": cobro_final,
+                        "metodo_pago": d.get("metodo_pago", "") if cierra else "",
+                        "banco": banco_extraido if cierra else "",
                         "fecha_hora": tiempo_actual,
                         "fecha_salida": fecha_sal,
                         "estado": estado_nuevo,
@@ -1334,7 +1501,9 @@ async def trabajador_silencioso():
             # el precio de venta de cada repuesto al momento de usarlo. Ese detalle
             # es lo que alimenta el PNG de la orden y el descuento de repuestos al
             # calcular comisión (antes de esto, reparacion_detalles nunca se llenaba).
-            if reparacion_id_actual and (d.get("cobro", 0) > 0 or d.get("trabajo_realizado", "") != "") and d.get("repuestos_usados"):
+            # Repuestos: se descuentan en cualquier etapa (un avance también puede
+            # usar repuestos, ej. "se cambia la bobina"), ligados a esta orden.
+            if reparacion_id_actual and d.get("repuestos_usados"):
                 for repuesto in d.get("repuestos_usados", []):
                     try:
                         inv_res = supabase.table("inventario").select("id, cantidad, precio_venta").eq("codigo", repuesto.get("codigo")).eq("taller_id", taller_id).execute()
@@ -1425,7 +1594,10 @@ async def trabajador_silencioso():
             supabase.table("cola_mensajes").update({"estado": "Error (No clasificable)"}).eq("id", id_msj).execute()
             continue
 
-        supabase.table("cola_mensajes").update({"estado": "Procesado"}).eq("id", id_msj).execute()
+        cambios_cola = {"estado": estado_cola_final}
+        if nota_cola:
+            cambios_cola["ultimo_error"] = nota_cola
+        supabase.table("cola_mensajes").update(cambios_cola).eq("id", id_msj).execute()
         await asyncio.sleep(3)
 
 # ==============================================================================
@@ -1856,6 +2028,9 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
                     completados[k] = valor
             # Se revalida con el modelo (normaliza la placa, etc.)
             resultado["reparacion"] = TrabajoTaller.model_validate({**resultado["reparacion"], **completados}).model_dump()
+            # Decisión del usuario en la ventana de confirmación de cierre
+            if solicitud.decision_cierre:
+                resultado["reparacion"]["cierra"] = solicitud.decision_cierre == "cerrar"
     else:
         # Paso 1: la IA extrae los datos AHORA para poder revisarlos antes de guardar
         try:
@@ -1870,9 +2045,10 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
 
     garantia_aviso = None
     pendientes_cierre = []
+    cierre_descartado = False
     if resultado and resultado.get("tipo") == "reparacion" and resultado.get("reparacion"):
         orden, faltantes, contexto = await asyncio.to_thread(
-            validar_orden_trabajo, resultado["reparacion"], taller_id, mapa_tecnicos)
+            validar_orden_trabajo, resultado["reparacion"], taller_id, mapa_tecnicos, texto_usuario)
         resultado["reparacion"] = orden
         garantia_aviso = contexto.get("garantia")
         pendientes_cierre = contexto.get("pendientes_cierre") or []
@@ -1889,6 +2065,19 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
                                "Faltan datos obligatorios para registrar el ingreso del vehículo."),
             }
 
+        # Punto 4: NINGUNA orden se cierra sin que el usuario vea el resumen y
+        # lo confirme. Mientras no confirme, no se guarda nada.
+        if contexto.get("es_cierre") and not isinstance(orden.get("cierra"), bool):
+            return {
+                "status": "confirmar_cierre",
+                "contexto": contexto,
+                "borrador": firmar_borrador(taller_id, texto_usuario, resultado),
+                "mensaje_bd": "Confirma el cierre de la orden.",
+            }
+        # Decisión final explícita para el trabajador de la cola
+        orden["cierra"] = bool(contexto.get("es_cierre"))
+        cierre_descartado = contexto.get("cierre_descartado", False)
+
     encolar_registro(cliente_seguro, taller_id, texto_usuario, tiempo_actual, resultado)
     background_tasks.add_task(trabajador_silencioso)
 
@@ -1898,6 +2087,8 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         "validado": resultado is not None,
         "garantia": garantia_aviso,
         "pendientes_cierre": pendientes_cierre,
+        # La IA creyó que era un cierre pero el mensaje no dice que se terminó/cobró
+        "cierre_descartado": cierre_descartado,
         "mensaje_bd": "¡Recibido en la nube! Procesando registro en segundo plano."
                       if resultado is not None else
                       "Recibido. La IA no está disponible en este momento: el registro se procesará automáticamente cuando vuelva.",
@@ -2455,6 +2646,54 @@ def cerrar_orden_sin_cobro(reparacion_id: str, datos: CierreSinCobro, request: R
         raise HTTPException(status_code=409, detail="La orden ya fue cerrada por otra persona.")
 
     return {"status": "ok", "vehiculo": orden[0].get("vehiculo"), "motivo": MOTIVOS_CIERRE_SIN_COBRO[datos.motivo]}
+
+
+# ==============================================================================
+# REABRIR ORDEN (corrige un cierre por error, solo órdenes cerradas HOY)
+# ==============================================================================
+@app.post("/reparaciones/{reparacion_id}/reabrir")
+def reabrir_orden(reparacion_id: str, request: Request):
+    """Vuelve a poner en Pendiente una orden cerrada hoy (con o sin cobro).
+    - Se conserva la lista de trabajos y los repuestos ya usados (sí se usaron).
+    - Se borra lo que corresponde al cierre: cobro, pago, garantía entregada,
+      motivo de cierre y el reclamo de garantía, que se volverán a registrar
+      al cerrarla de nuevo."""
+    _, taller_id = obtener_cliente_seguro(request)
+    orden = (supabase.table("reparaciones").select("id, vehiculo, estado, fecha_salida")
+             .eq("id", reparacion_id).eq("taller_id", taller_id).limit(1).execute()).data
+    if not orden:
+        raise HTTPException(status_code=404, detail="No se encontró la orden en este taller.")
+    o = orden[0]
+    if o.get("estado") not in ("Terminado", ESTADO_CERRADO_SIN_COBRO):
+        raise HTTPException(status_code=409, detail="La orden ya está abierta.")
+    hoy_inicio, hoy_fin = limites_dia_ecuador()
+    salida = str(o.get("fecha_salida") or "").replace("T", " ")[:19]
+    if not (hoy_inicio <= salida <= hoy_fin):
+        raise HTTPException(status_code=409, detail="Solo se pueden reabrir órdenes cerradas hoy.")
+    # No puede haber dos órdenes abiertas del mismo vehículo
+    abierta = (supabase.table("reparaciones").select("id")
+               .eq("taller_id", taller_id).eq("vehiculo", o.get("vehiculo")).eq("estado", "Pendiente")
+               .limit(1).execute()).data
+    if abierta and o.get("vehiculo") not in ("", "S/C"):
+        raise HTTPException(status_code=409, detail=f"El vehículo ya tiene otra orden abierta (N° {abierta[0]['id']}).")
+
+    cambios = {"estado": "Pendiente", "fecha_salida": None, "cobro": 0, "metodo_pago": "", "banco": ""}
+    # Columnas de migraciones posteriores: se limpian solo si existen
+    opcionales = {
+        "garantia_dias": None, "garantia_km": None, "garantia_vence": None, "garantia_km_limite": None,
+        "garantia_servicio": None, "motivo_cierre": None, "detalle_cierre": None,
+        "garantia_orden_origen": None, "garantia_causa": None, "garantia_costo": 0,
+        "reclamo_proveedor_estado": None, "reclamo_proveedor_nombre": None, "reclamo_proveedor_monto": 0,
+    }
+    try:
+        res = (supabase.table("reparaciones").update({**cambios, **opcionales})
+               .eq("id", reparacion_id).eq("taller_id", taller_id).eq("estado", o["estado"]).execute()).data
+    except APIError:
+        res = (supabase.table("reparaciones").update(cambios)
+               .eq("id", reparacion_id).eq("taller_id", taller_id).eq("estado", o["estado"]).execute()).data
+    if not res:
+        raise HTTPException(status_code=409, detail="La orden cambió mientras se reabría. Actualiza la página.")
+    return {"status": "ok", "vehiculo": o.get("vehiculo")}
 
 
 # ==============================================================================
@@ -3272,4 +3511,4 @@ def exportar_inventario(request: Request):
 if __name__ == "__main__":
     import uvicorn
     puerto = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=puerto, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=puerto, reload=False)

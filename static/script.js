@@ -172,8 +172,140 @@ function cerrarSesion() {
     document.getElementById("texto_reporte").value = "";
 }
 
+// ==============================================================================
+// CIERRE DE ÓRDENES: resumen de trabajos, confirmación y reabrir
+// ==============================================================================
+
+// Tabla con los trabajos de la orden y el total (se usa en las ventanas de cierre)
+function resumenTrabajosHTML(ctx) {
+    const e = escaparHTML;
+    const trabajos = ctx.trabajos || [];
+    if (!trabajos.length) return '';
+    const filas = trabajos.map(t => `<tr><td>${e(t.descripcion)}</td><td class="num">${t.precio > 0 ? dinero(t.precio) : '—'}</td></tr>`).join('');
+    const suma = trabajos.reduce((s, t) => s + (Number(t.precio) || 0), 0);
+    const notaTotal = ctx.cobro_indicado && Math.abs(suma - ctx.total) > 0.009
+        ? `<div class="sub">Monto indicado en el mensaje (la suma de los trabajos es ${dinero(suma)})</div>` : '';
+    return `<table class="tabla-caja tabla-resumen-cierre">
+                <thead><tr><th>Trabajos de la orden</th><th style="text-align:right;">Precio</th></tr></thead>
+                <tbody>${filas}
+                    <tr class="fila-total"><td>Total a cobrar${notaTotal}</td><td class="num">${dinero(ctx.total)}</td></tr>
+                </tbody>
+            </table>`;
+}
+
+// Punto 4: ventana "¿Cerrar la orden?" con el resumen. Nada se guarda hasta decidir.
+function mostrarConfirmacionCierre(data) {
+    const overlay = document.getElementById('modal-aviso');
+    const e = escaparHTML;
+    const ctx = data.contexto || {};
+    mostrarModal({ tipo: 'warning', titulo: '¿Cerrar la orden?' });
+    overlay.dataset.modo = 'confirmacion';   // Escape = cancelar sin guardar (nunca decide solo)
+
+    const pago = [ctx.metodo_pago, ctx.banco].filter(Boolean).join(' · ');
+    const cabecera = [ctx.placa && ctx.placa !== 'S/C' ? `<b>${e(ctx.placa)}</b>` : 'Venta al mostrador',
+                      ctx.modelo ? e(ctx.modelo) : '', ctx.cliente ? e(ctx.cliente) : ''].filter(Boolean).join(' · ');
+    document.getElementById('modal-mensaje').innerHTML = `
+        <div class="resumen-orden">${cabecera}</div>
+        ${resumenTrabajosHTML(ctx)}
+        <div class="datos-cierre">
+            ${ctx.tecnico ? `<span>Técnico: <b>${e(ctx.tecnico)}</b></span>` : ''}
+            ${pago ? `<span>Pago: <b>${e(pago)}</b></span>` : ''}
+        </div>
+        <div class="nota-cierre">Al cerrar, la orden pasa a <b>Terminado</b>, se registra el cobro y la garantía.
+            Si el trabajo aún no termina, elige <b>“No, sigue abierta”</b>: los trabajos se agregan a la orden sin cerrarla.
+            <br><button type="button" class="btn-link" onclick="cancelarConfirmacionCierre()">Cancelar sin guardar nada</button></div>`;
+
+    const formulario = document.getElementById('modal-formulario');
+    formulario.hidden = true; formulario.innerHTML = '';
+
+    const btnNo = document.getElementById('modal-btn-cancelar');
+    btnNo.hidden = false;
+    btnNo.textContent = 'No, sigue abierta';
+    btnNo.onclick = () => enviarDecisionCierre(data.borrador, 'abierta');
+
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Cerrar orden';
+    btnOk.dataset.texto = 'Cerrar orden';
+    btnOk.onclick = () => enviarDecisionCierre(data.borrador, 'cerrar');
+    setTimeout(() => btnOk.focus(), 50);
+}
+
+function cancelarConfirmacionCierre() {
+    const overlay = document.getElementById('modal-aviso');
+    overlay.dataset.modo = '';
+    document.getElementById('modal-btn-cancelar').textContent = 'Cancelar';
+    cerrarModal();
+    mostrarNotificacion("No se guardó nada. Tu mensaje sigue en el cuadro de texto.", "warning");
+}
+
+async function enviarDecisionCierre(borrador, decision) {
+    const btnOk = document.getElementById('modal-btn-ok');
+    const btnNo = document.getElementById('modal-btn-cancelar');
+    btnOk.disabled = btnNo.disabled = true;
+    try {
+        const res = await fetch('/procesar-mensaje', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem("taller_token")}` },
+            body: JSON.stringify({ borrador, decision_cierre: decision })
+        });
+        const data = await res.json().catch(() => ({}));
+        btnNo.textContent = 'Cancelar';
+        await manejarRespuestaRegistro(res, data, true, decision);
+    } catch (err) {
+        mostrarNotificacion("Error de conexión. Inténtalo de nuevo.", "error");
+    } finally {
+        btnOk.disabled = btnNo.disabled = false;
+    }
+}
+
+// Lista de trabajos en la tarjeta de un vehículo pendiente
+function trabajosTarjetaHTML(v) {
+    const trabajos = Array.isArray(v.trabajos) ? v.trabajos.filter(t => t && t.descripcion) : [];
+    if (!trabajos.length) return '';
+    const e = escaparHTML;
+    const total = trabajos.reduce((s, t) => s + (Number(t.precio) || 0), 0);
+    return `<div class="trabajos-tarjeta"><strong>Trabajos:</strong>
+        <ul>${trabajos.map(t => `<li>${e(t.descripcion)}${t.precio > 0 ? ` <span>${dinero(t.precio)}</span>` : ''}</li>`).join('')}</ul>
+        ${total > 0 ? `<div class="total-parcial">Total parcial: <b>${dinero(total)}</b></div>` : ''}</div>`;
+}
+
+// Punto 5: reabrir una orden cerrada hoy por error
+function abrirReabrirOrden(boton) {
+    const { id, placa } = boton.dataset;
+    const overlay = document.getElementById('modal-aviso');
+    mostrarModal({ tipo: 'warning', titulo: 'Reabrir orden' });
+    overlay.dataset.modo = 'formulario';
+    document.getElementById('modal-mensaje').innerHTML =
+        `<div class="resumen-orden"><b>${escaparHTML(placa)}</b> · Orden N° ${escaparHTML(id)}</div>
+         La orden vuelve a <b>Pendiente</b>. Se borran el cobro, la forma de pago, la garantía y el motivo de cierre
+         (se registrarán de nuevo al cerrarla). Se conservan los trabajos y los repuestos ya usados.`;
+    const btnNo = document.getElementById('modal-btn-cancelar');
+    btnNo.hidden = false;
+    btnNo.onclick = () => { overlay.dataset.modo = ''; cerrarModal(); };
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Reabrir';
+    btnOk.onclick = async () => {
+        btnOk.disabled = true;
+        try {
+            const res = await fetch(`/reparaciones/${encodeURIComponent(id)}/reabrir`, { method: 'POST', headers: cabeceraAuth() });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                mostrarModal({ tipo: 'error', titulo: 'No se pudo reabrir', mensaje: escaparHTML(data.detail || `Error ${res.status}`) });
+                return;
+            }
+            mostrarModal({ tipo: 'success', titulo: 'Orden reabierta', mensaje: `<b>${escaparHTML(placa)}</b> está otra vez en Pendientes.` });
+            cargarVehiculosPendientes('Pendiente');
+            cargarCuadreCaja(true);
+        } catch (err) {
+            mostrarNotificacion("Error de conexión al reabrir la orden.", "error");
+        } finally {
+            btnOk.disabled = false;
+        }
+    };
+}
+
 // Maneja la respuesta de /procesar-mensaje (envío normal o confirmación del modal)
-async function manejarRespuestaRegistro(res, data, desdeModal) {
+async function manejarRespuestaRegistro(res, data, desdeModal, decisionCierre = null) {
     const inputTexto = document.getElementById('texto_reporte');
 
     if (!res.ok) {
@@ -188,6 +320,12 @@ async function manejarRespuestaRegistro(res, data, desdeModal) {
     }
 
     // Faltan datos obligatorios: NO se guardó nada, se piden en el modal
+    // Punto 4: el backend detectó un cierre y pide confirmarlo con el resumen
+    if (data.status === "confirmar_cierre") {
+        mostrarConfirmacionCierre(data);
+        return;
+    }
+
     if (data.status === "faltan_datos") {
         mostrarNotificacion(data.mensaje_bd || "Faltan datos obligatorios: complétalos en la ventana.", "warning");
         mostrarFormularioFaltantes(data);
@@ -204,7 +342,15 @@ async function manejarRespuestaRegistro(res, data, desdeModal) {
 
     if (data.status === "éxito") {
         inputTexto.value = "";
-        if (data.garantia) {
+        if (decisionCierre === 'cerrar') {
+            mostrarModal({ tipo: 'success', titulo: 'Orden cerrada', mensaje: 'La orden se está cerrando y el cobro aparecerá en el cuadre de caja.' });
+        } else if (decisionCierre === 'abierta') {
+            mostrarModal({ tipo: 'success', titulo: 'Orden actualizada', mensaje: 'Se agregaron los trabajos y la orden <b>sigue abierta</b>.' });
+        } else if (data.cierre_descartado) {
+            mostrarModal({ tipo: 'info', titulo: 'Registrado sin cerrar la orden',
+                mensaje: 'El mensaje no dice que el trabajo terminó o se cobró, así que la orden <b>sigue abierta</b>. '
+                       + 'Cuando termine, escribe por ejemplo: “listo el ABC123, se cobró 50 en efectivo”.' });
+        } else if (data.garantia) {
             mostrarModal({ tipo: data.garantia.vigente ? 'warning' : 'info', titulo: 'Orden registrada',
                            mensaje: avisoGarantiaHTML(data.garantia) + avisoPendientesCierreHTML(data.pendientes_cierre) });
         } else if (desdeModal) {
@@ -379,7 +525,7 @@ function mostrarModal({ tipo = 'info', titulo = '', mensaje = '', detalles = [],
     const formulario = document.getElementById('modal-formulario');
     if (formulario) { formulario.hidden = true; formulario.innerHTML = ''; }
     const btnCancelar = document.getElementById('modal-btn-cancelar');
-    if (btnCancelar) btnCancelar.hidden = true;
+    if (btnCancelar) { btnCancelar.hidden = true; btnCancelar.textContent = 'Cancelar'; btnCancelar.disabled = false; }
     overlay.dataset.modo = '';
 
     // Mientras carga no se puede cerrar (no hay botón OK)
@@ -407,6 +553,11 @@ function cerrarModal() {
 document.addEventListener('keydown', (e) => {
     const overlay = document.getElementById('modal-aviso');
     if (!overlay || !overlay.classList.contains('visible')) return;
+    if (overlay.dataset.modo === 'confirmacion') {
+        // En "¿Cerrar la orden?" el teclado nunca decide: Escape cancela sin guardar
+        if (e.key === 'Escape') { e.preventDefault(); cancelarConfirmacionCierre(); }
+        return;
+    }
     if (overlay.dataset.modo === 'formulario') {
         if (e.key === 'Escape') { e.preventDefault(); document.getElementById('modal-btn-cancelar').click(); }
         else if (e.key === 'Enter' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); document.getElementById('modal-btn-ok').click(); }
@@ -425,6 +576,7 @@ const EJEMPLOS_CAMPO = {
     vehiculo: 'Ej. PXY9876', modelo: 'Ej. Chevrolet Sail', kilometraje: 'Ej. 85400', cliente: 'Ej. Juan Pérez',
     cedula: 'Ej. 0912345678', telefono: 'Ej. 0991234567', motivo: 'Ej. Ruido en la suspensión delantera',
     trabajo_realizado: 'Ej. Cambio de pastillas delanteras y rectificación de discos',
+    cobro: 'Ej. 85.00',
     banco: 'Ej. Pichincha'
 };
 
@@ -460,7 +612,8 @@ function campoFaltanteHTML(f, tecnicos) {
                        <input name="banco" list="lista-bancos" placeholder="Banco de la transferencia (ej. Pichincha)" autocomplete="off">
                    </div>`;
     } else {
-        const extra = ['cedula', 'telefono', 'kilometraje'].includes(f.campo) ? 'inputmode="numeric"' : '';
+        const extra = ['cedula', 'telefono', 'kilometraje'].includes(f.campo) ? 'inputmode="numeric"'
+                    : (f.campo === 'cobro' ? 'inputmode="decimal"' : '');
         const lista = f.campo === 'banco' ? 'list="lista-bancos"' : '';
         control = `<input name="${e(f.campo)}" value="${e(f.valor || '')}" placeholder="${e(EJEMPLOS_CAMPO[f.campo] || '')}"
                           autocomplete="off" ${req} ${extra} ${lista}>`;
@@ -499,6 +652,7 @@ function mostrarFormularioFaltantes(data) {
     document.getElementById('modal-mensaje').innerHTML =
         `<div class="resumen-orden">${tipoOrden}${resumen ? ': ' + resumen : ''}</div>
          ${avisoGarantiaHTML(ctx.garantia)}
+         ${ctx.es_cierre ? resumenTrabajosHTML(ctx) : ''}
          ${ctx.es_cierre
             ? 'Para cerrar la orden son obligatorios todos los datos del cliente y del vehículo, incluidos los que no se registraron al ingreso.'
             : 'Completa estos datos para registrar el ingreso.'}
@@ -523,7 +677,9 @@ function mostrarFormularioFaltantes(data) {
     btnOk.dataset.texto = textoBoton;
     // Sin técnicos registrados no se puede cerrar una orden (el técnico es obligatorio)
     btnOk.disabled = faltantes.some(f => f.campo === 'oficial' && !f.opcional) && !tecnicos.length;
-    btnOk.onclick = () => confirmarDatosFaltantes(data.borrador);
+    // En un cierre, completar los datos y pulsar "Cerrar orden" ES la confirmación
+    // (la ventana ya muestra los trabajos y el total)
+    btnOk.onclick = () => confirmarDatosFaltantes(data.borrador, ctx.es_cierre ? 'cerrar' : null);
 
     const primero = formulario.querySelector('input, select');
     if (primero) setTimeout(() => primero.focus(), 50);
@@ -865,7 +1021,7 @@ async function confirmarCerrarOrden(id, placa) {
 }
 
 // Valida en pantalla y reenvía al backend junto con el borrador firmado
-async function confirmarDatosFaltantes(borrador) {
+async function confirmarDatosFaltantes(borrador, decisionCierre = null) {
     const formulario = document.getElementById('modal-formulario');
     const datos = {};
     let completo = true;
@@ -890,10 +1046,11 @@ async function confirmarDatosFaltantes(borrador) {
         const res = await fetch('/procesar-mensaje', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem("taller_token")}` },
-            body: JSON.stringify({ borrador: borrador, datos_confirmados: datos })
+            body: JSON.stringify(Object.assign({ borrador: borrador, datos_confirmados: datos },
+                                               decisionCierre ? { decision_cierre: decisionCierre } : {}))
         });
         const data = await res.json().catch(() => ({}));
-        await manejarRespuestaRegistro(res, data, true);
+        await manejarRespuestaRegistro(res, data, true, decisionCierre);
     } catch (err) {
         btnOk.disabled = false;
         btnOk.textContent = btnOk.dataset.texto || 'Registrar orden';
@@ -1410,6 +1567,13 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                                onclick="event.stopPropagation(); abrirCerrarOrden(this)">Cerrar orden</button>`
                     : '';
 
+                // Botón corto "Reabrir" en las órdenes cerradas hoy (corrige un cierre por error)
+                const botonReabrir = (v.estado === 'Terminado' || v.estado === 'Cerrado sin cobro')
+                    ? `<button class="btn-cerrar-orden" title="Volver a abrir esta orden (cerrada por error)"
+                               data-id="${escaparHTML(String(v.id))}" data-placa="${escaparHTML(v.vehiculo || '')}"
+                               onclick="event.stopPropagation(); abrirReabrirOrden(this)">Reabrir</button>`
+                    : '';
+
                 // Extraer el ID de la base de datos para mostrarlo como Número de Orden
                 let numOrden = v.id || v.id_orden || '---';
 
@@ -1426,9 +1590,11 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                         ${infoVehiculo}
                         ${infoTelefono}
                         ${detalleExtra}
+                        ${v.estado === 'Pendiente' ? trabajosTarjetaHTML(v) : ''}
                         ${marcaGarantia(v.garantia_previa)}
                         ${botonDescarga}
                         ${botonCerrar}
+                        ${botonReabrir}
                     </div>
                 `;
             });
@@ -1546,7 +1712,15 @@ function llenarPlantillaOrden(datos) {
 
     // 4. Trabajo Realizado
     document.getElementById('orden-motivo').innerText = datos.motivo || 'No especificado';
-    document.getElementById('orden-trabajo').innerText = datos.trabajo_realizado || 'No especificado';
+    // Trabajos realizados: lista con precio si la orden la tiene; si no, el texto
+    const elTrabajo = document.getElementById('orden-trabajo');
+    const trabajosPNG = Array.isArray(datos.trabajos) ? datos.trabajos.filter(t => t && t.descripcion) : [];
+    if (trabajosPNG.length) {
+        elTrabajo.innerHTML = trabajosPNG.map(t => `<div style="display:flex; justify-content:space-between; gap:12px;">
+            <span>• ${escaparHTML(t.descripcion)}</span><span>${Number(t.precio) > 0 ? '$' + Number(t.precio).toFixed(2) : ''}</span></div>`).join('');
+    } else {
+        elTrabajo.innerText = datos.trabajo_realizado || 'No especificado';
+    }
 
     // 5. Tabla de Repuestos
     const tbody = document.getElementById('orden-repuestos-body');
