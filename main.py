@@ -276,6 +276,11 @@ MODULOS: dict[str, dict] = {
         "descripcion": "Preguntas en lenguaje natural sobre el historial (ej. ¿qué cliente gastó más este mes?).",
         "requiere": [],
     },
+    "cotizaciones": {
+        "nombre": "Cotizaciones",
+        "descripcion": "Presupuestos que el cliente aprueba o rechaza línea por línea desde un link por WhatsApp.",
+        "requiere": [],
+    },
 }
 
 PERIODOS_FACTURACION = ("mensual", "trimestral", "anual")
@@ -1684,6 +1689,47 @@ def materiales_segun_modulos(taller_id, lineas, modelo, cilindros, repuestos_man
                                usar_kits=modulo_activo(taller_id, "materiales_servicio"))
 
 
+def registrar_materiales_en_orden(taller_id, reparacion_id, items: list[dict]):
+    """Descuenta del inventario y liga a la orden los materiales/repuestos dados.
+    Lo usan el trabajador de la cola y la aprobación de cotizaciones.
+    Idempotencia:
+      - un material de kit del mismo trabajo no se descuenta dos veces;
+      - un repuesto que ya entró por una cotización aprobada no se vuelve a
+        descontar si después se menciona en el chat."""
+    if not items:
+        return
+    try:
+        ya_en_orden = supabase.table("reparacion_detalles").select("*").eq("reparacion_id", reparacion_id).execute().data or []
+    except Exception:
+        ya_en_orden = []
+    for it in items:
+        try:
+            mismo = lambda x: str(x.get("inventario_id")) == str(it["inventario_id"])
+            if it["origen"] == "kit" and any(
+                    mismo(x) and x.get("origen") == "kit" and _sin_tildes(x.get("trabajo")) == _sin_tildes(it["trabajo"])
+                    for x in ya_en_orden):
+                continue
+            if it["origen"] == "manual" and any(
+                    mismo(x) and str(x.get("trabajo") or "").startswith("Cotización N°") for x in ya_en_orden):
+                continue
+            inv_actual = (supabase.table("inventario").select("cantidad").eq("id", it["inventario_id"])
+                          .eq("taller_id", taller_id).limit(1).execute().data or [{}])[0]
+            nueva_cant = max(0, int(inv_actual.get("cantidad") or 0) - int(it["cantidad"]))
+            supabase.table("inventario").update({"cantidad": nueva_cant}).eq("id", it["inventario_id"]).eq("taller_id", taller_id).execute()
+            fila = {
+                "reparacion_id": reparacion_id,
+                "inventario_id": it["inventario_id"],
+                "cantidad": it["cantidad"],
+                "precio_unitario": it["precio_unitario"],
+                "origen": it["origen"], "trabajo": it["trabajo"], "incluido": it["incluido"],
+            }
+            insertar_detalle_repuesto(fila)
+            ya_en_orden.append(fila)
+        except Exception as e_repuesto:
+            # Un material con problema no tumba el resto
+            print(f"No se pudo registrar el material {it.get('codigo')} de la orden {reparacion_id}: {e_repuesto}")
+
+
 def total_materiales_cobrables(items: list[dict]) -> float:
     """Suma de materiales que se cobran aparte (los incluidos no suman al total)."""
     return round(sum(float(i.get("precio_unitario") or 0) * float(i.get("cantidad") or 0)
@@ -2205,32 +2251,7 @@ async def trabajador_silencioso():
                     cilindros_final = normalizar_cilindros(d.get("cilindros")) or (ultima_orden or {}).get("cilindros")
                 materiales = materiales_segun_modulos(taller_id, lineas_para_kit, modelo_final, cilindros_final,
                                                       [r for r in (d.get("repuestos_usados") or []) if isinstance(r, dict)])
-                if materiales["items"]:
-                    try:
-                        ya_en_orden = supabase.table("reparacion_detalles").select("*").eq("reparacion_id", reparacion_id_actual).execute().data or []
-                    except Exception:
-                        ya_en_orden = []
-                    for it in materiales["items"]:
-                        try:
-                            # Idempotencia: el mismo material del mismo trabajo no se descuenta dos veces
-                            if it["origen"] == "kit" and any(
-                                    str(x.get("inventario_id")) == str(it["inventario_id"]) and x.get("origen") == "kit"
-                                    and _sin_tildes(x.get("trabajo")) == _sin_tildes(it["trabajo"]) for x in ya_en_orden):
-                                continue
-                            inv_actual = (supabase.table("inventario").select("cantidad").eq("id", it["inventario_id"])
-                                          .eq("taller_id", taller_id).limit(1).execute().data or [{}])[0]
-                            nueva_cant = max(0, int(inv_actual.get("cantidad") or 0) - int(it["cantidad"]))
-                            supabase.table("inventario").update({"cantidad": nueva_cant}).eq("id", it["inventario_id"]).eq("taller_id", taller_id).execute()
-                            insertar_detalle_repuesto({
-                                "reparacion_id": reparacion_id_actual,
-                                "inventario_id": it["inventario_id"],
-                                "cantidad": it["cantidad"],
-                                "precio_unitario": it["precio_unitario"],
-                                "origen": it["origen"], "trabajo": it["trabajo"], "incluido": it["incluido"],
-                            })
-                        except Exception as e_repuesto:
-                            # Un material con problema no tumba el resto del mensaje
-                            print(f"No se pudo registrar el material {it.get('codigo')} de la orden {reparacion_id_actual}: {e_repuesto}")
+                registrar_materiales_en_orden(taller_id, reparacion_id_actual, materiales["items"])
 
                 # Al cerrar sin monto dicho: cobro = trabajos + materiales que se cobran aparte
                 if cierra and not float(d.get("cobro") or 0):
@@ -3801,6 +3822,369 @@ def ficha_vehiculo(placa: str, request: Request):
             "truncado": len(ordenes) >= MAX_ORDENES_FICHA}
 
 
+# ==============================================================================
+# COTIZACIONES CON APROBACIÓN DEL CLIENTE
+# ==============================================================================
+# Flujo:
+#   1. Con el vehículo en el taller (orden abierta), se arma la cotización:
+#      servicios del catálogo, repuestos del inventario u otros, cada uno con
+#      prioridad (urgente / recomendado / opcional).
+#   2. Se envía por WhatsApp un link secreto (token). El cliente lo abre sin
+#      iniciar sesión y aprueba o rechaza CADA línea.
+#   3. Lo aprobado se agrega solo a la orden: trabajos con su precio, materiales
+#      de los servicios (kits) y repuestos cotizados (se descuentan del stock).
+# El cliente responde una sola vez; la cotización queda como constancia de lo
+# que autorizó ("yo no aprobé eso" deja de ser un problema).
+MIGRACION_COTIZACIONES = "sql/2026-10-01_cotizaciones.sql"
+PATRON_TOKEN = re.compile(r"[A-Za-z0-9_\-]{24,64}")
+
+
+class ItemCotizacion(BaseModel):
+    tipo: Literal["servicio", "repuesto", "otro"] = "otro"
+    descripcion: str = Field(default="", max_length=200)
+    servicio_id: int | str | None = None
+    codigo: str | None = Field(default=None, max_length=60)      # repuesto del inventario
+    cantidad: float = Field(gt=0, le=1000)
+    precio_unitario: float = Field(ge=0, le=100000)
+    prioridad: Literal["urgente", "recomendado", "opcional"] = "recomendado"
+
+
+class NuevaCotizacion(BaseModel):
+    items: list[ItemCotizacion] = Field(min_length=1, max_length=40)
+    nota: str = Field(default="", max_length=500)
+    validez_dias: int = Field(default=7, ge=1, le=60)
+
+
+class RespuestaCotizacion(BaseModel):
+    # id de cada línea -> "aprobado" | "rechazado" (todas deben tener respuesta)
+    decisiones: dict[str, Literal["aprobado", "rechazado"]]
+    comentario: str = Field(default="", max_length=500)
+
+
+def _error_cotizaciones(e: Exception):
+    if "cotizacion" in str(e):
+        raise HTTPException(status_code=500, detail=f"Falta ejecutar en Supabase la migración {MIGRACION_COTIZACIONES}.")
+    raise e
+
+
+def url_publica(request: Request) -> str:
+    """Dirección pública del sistema (para los links que se mandan al cliente).
+    Se puede fijar con la variable de entorno URL_PUBLICA; si no, se arma con
+    los encabezados del proxy de Render (https)."""
+    fija = os.getenv("URL_PUBLICA")
+    if fija:
+        return fija.rstrip("/")
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}"
+
+
+def _num(v) -> str:
+    """1.0 -> '1', 2.5 -> '2.5' (para mostrar cantidades)."""
+    v = float(v or 0)
+    return str(int(v)) if v.is_integer() else f"{v:g}"
+
+
+def resumen_cotizacion(cot: dict, items: list[dict], base_url: str | None = None) -> dict:
+    hoy = datetime.now(ZONA_ECUADOR).date().isoformat()
+    aprobados = [i for i in items if i.get("decision") == "aprobado"]
+    r = {
+        "id": cot["id"], "estado": cot["estado"], "vence": str(cot.get("vence") or "")[:10],
+        "vencida": cot["estado"] == "pendiente" and str(cot.get("vence") or "")[:10] < hoy,
+        "total": float(cot.get("total") or 0), "total_aprobado": cot.get("total_aprobado"),
+        "nota": cot.get("nota") or "", "comentario_cliente": cot.get("comentario_cliente") or "",
+        "aplicada_a_orden": bool(cot.get("aplicada_a_orden")),
+        "creado_en": cot.get("creado_en"), "respondido_en": cot.get("respondido_en"),
+        "n_items": len(items), "n_aprobados": len(aprobados),
+        "items": [{"id": i["id"], "tipo": i["tipo"], "descripcion": i["descripcion"],
+                   "cantidad": float(i["cantidad"]), "precio_unitario": float(i["precio_unitario"]),
+                   "subtotal": round(float(i["cantidad"]) * float(i["precio_unitario"]), 2),
+                   "prioridad": i.get("prioridad") or "recomendado", "decision": i.get("decision") or "pendiente"}
+                  for i in sorted(items, key=lambda x: (x.get("orden") or 0, str(x["id"])))],
+    }
+    if base_url:
+        r["link"] = f"{base_url}/web/cotizacion.html?t={cot['token']}"
+    return r
+
+
+def mensaje_cotizacion(nombre_taller: str, orden: dict, cot: dict, link: str) -> str:
+    saludo = f"Hola {str(orden.get('cliente') or '').split(' ')[0]}".strip() if orden.get("cliente") else "Hola"
+    vehiculo = " ".join(x for x in [orden.get("modelo") or "", f"placa {orden.get('vehiculo')}"] if x).strip()
+    return (f"{saludo}, le saluda {nombre_taller}. Le enviamos la cotización para su {vehiculo}: "
+            f"total ${float(cot['total']):,.2f}. Puede revisar y aprobar cada trabajo aquí: {link}")
+
+
+def _nombre_taller(taller_id) -> str:
+    fila = supabase.table("talleres").select("nombre").eq("id", taller_id).limit(1).execute().data or []
+    return (fila[0].get("nombre") if fila else None) or "su taller"
+
+
+@app.post("/reparaciones/{reparacion_id}/cotizaciones")
+def crear_cotizacion(reparacion_id: str, datos: NuevaCotizacion, request: Request):
+    _, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "cotizaciones")
+    import secrets
+    from datetime import timedelta
+
+    orden = (supabase.table("reparaciones").select("id, vehiculo, modelo, cliente, telefono, estado")
+             .eq("id", reparacion_id).eq("taller_id", taller_id).limit(1).execute().data or [None])[0]
+    if not orden:
+        raise HTTPException(status_code=404, detail="Esa orden no existe en este taller.")
+    if orden.get("estado") != "Pendiente":
+        raise HTTPException(status_code=400, detail="Solo se puede cotizar una orden abierta (vehículo en el taller).")
+
+    # Validar y completar cada línea con los datos del taller (nunca de otro taller)
+    servicios = {str(s["id"]): s for s in (supabase.table("servicios").select("id, nombre_servicio")
+                                           .eq("taller_id", taller_id).execute().data or [])}
+    filas_items = []
+    for n, it in enumerate(datos.items):
+        desc = it.descripcion.strip()
+        servicio_id = inventario_id = None
+        if it.tipo == "servicio":
+            sv = servicios.get(str(it.servicio_id)) if it.servicio_id is not None else None
+            if it.servicio_id is not None and not sv:
+                raise HTTPException(status_code=400, detail=f"Línea {n + 1}: ese servicio no está en tu catálogo.")
+            servicio_id = str(sv["id"]) if sv else None
+            desc = desc or (sv["nombre_servicio"] if sv else "")
+        elif it.tipo == "repuesto":
+            if not it.codigo:
+                raise HTTPException(status_code=400, detail=f"Línea {n + 1}: indica el código del repuesto.")
+            exigir_modulo(taller_id, "inventario")
+            inv = (supabase.table("inventario").select("id, nombre").eq("taller_id", taller_id)
+                   .eq("codigo", it.codigo.strip()).limit(1).execute().data or [None])[0]
+            if not inv:
+                raise HTTPException(status_code=400, detail=f"Línea {n + 1}: el código {it.codigo} no está en tu inventario.")
+            inventario_id = str(inv["id"])
+            desc = desc or inv.get("nombre") or it.codigo
+        if not desc:
+            raise HTTPException(status_code=400, detail=f"Línea {n + 1}: falta la descripción.")
+        filas_items.append({"taller_id": taller_id, "tipo": it.tipo, "descripcion": desc[:200],
+                            "servicio_id": servicio_id, "inventario_id": inventario_id,
+                            "cantidad": round(it.cantidad, 2), "precio_unitario": round(it.precio_unitario, 2),
+                            "prioridad": it.prioridad, "decision": "pendiente", "orden": n})
+    total = round(sum(f["cantidad"] * f["precio_unitario"] for f in filas_items), 2)
+
+    try:
+        cot = supabase.table("cotizaciones").insert({
+            "taller_id": taller_id, "reparacion_id": orden["id"], "token": secrets.token_urlsafe(24),
+            "estado": "pendiente", "vehiculo": orden.get("vehiculo"), "cliente": orden.get("cliente"),
+            "nota": datos.nota.strip() or None, "total": total,
+            "vence": (datetime.now(ZONA_ECUADOR).date() + timedelta(days=datos.validez_dias)).isoformat(),
+        }).execute().data[0]
+        items = supabase.table("cotizacion_items").insert(
+            [{**f, "cotizacion_id": cot["id"]} for f in filas_items]).execute().data or []
+    except HTTPException:
+        raise
+    except Exception as e:
+        _error_cotizaciones(e)
+
+    base = url_publica(request)
+    resumen = resumen_cotizacion(cot, items, base)
+    mensaje = mensaje_cotizacion(_nombre_taller(taller_id), orden, cot, resumen["link"])
+    telefono, valido = normalizar_telefono_ec(orden.get("telefono"))
+    from urllib.parse import quote
+    return {
+        "cotizacion": resumen,
+        "mensaje": mensaje,
+        "whatsapp_url": (f"https://wa.me/593{telefono[1:]}?text={quote(mensaje)}"
+                         if valido and telefono.startswith("09") else None),
+    }
+
+
+@app.get("/reparaciones/{reparacion_id}/cotizaciones")
+def listar_cotizaciones(reparacion_id: str, request: Request):
+    _, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "cotizaciones")
+    try:
+        cots = (supabase.table("cotizaciones").select("*").eq("taller_id", taller_id)
+                .eq("reparacion_id", reparacion_id).order("id", desc=True).execute().data or [])
+        ids = [c["id"] for c in cots]
+        items = (supabase.table("cotizacion_items").select("*").in_("cotizacion_id", ids)
+                 .eq("taller_id", taller_id).execute().data or []) if ids else []
+    except Exception as e:
+        _error_cotizaciones(e)
+    base = url_publica(request)
+    resultado = [resumen_cotizacion(c, [i for i in items if str(i["cotizacion_id"]) == str(c["id"])], base) for c in cots]
+    # Para reenviar por WhatsApp una cotización que aún espera respuesta
+    if any(r["estado"] == "pendiente" for r in resultado):
+        from urllib.parse import quote
+        orden = (supabase.table("reparaciones").select("vehiculo, modelo, cliente, telefono").eq("id", reparacion_id)
+                 .eq("taller_id", taller_id).limit(1).execute().data or [{}])[0]
+        telefono, valido = normalizar_telefono_ec(orden.get("telefono"))
+        nombre = _nombre_taller(taller_id)
+        for r, c in zip(resultado, cots):
+            if r["estado"] == "pendiente":
+                r["mensaje"] = mensaje_cotizacion(nombre, orden, c, r["link"])
+                r["whatsapp_url"] = (f"https://wa.me/593{telefono[1:]}?text={quote(r['mensaje'])}"
+                                     if valido and telefono.startswith("09") else None)
+    return {"cotizaciones": resultado}
+
+
+@app.post("/cotizaciones/{cotizacion_id}/anular")
+def anular_cotizacion(cotizacion_id: str, request: Request):
+    _, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "cotizaciones")
+    try:
+        filas = (supabase.table("cotizaciones").update({"estado": "anulada"})
+                 .eq("id", cotizacion_id).eq("taller_id", taller_id).eq("estado", "pendiente").execute().data or [])
+    except Exception as e:
+        _error_cotizaciones(e)
+    if not filas:
+        raise HTTPException(status_code=400, detail="Solo se puede anular una cotización que el cliente aún no responde.")
+    return {"status": "ok"}
+
+
+def resumen_cotizaciones_de_ordenes(taller_id, ids_ordenes: list) -> dict[str, dict]:
+    """Para las tarjetas: la cotización más reciente (no anulada) de cada orden."""
+    if not ids_ordenes:
+        return {}
+    try:
+        cots = (supabase.table("cotizaciones").select("id, reparacion_id, estado, vence, total, total_aprobado, token")
+                .eq("taller_id", taller_id).in_("reparacion_id", ids_ordenes).order("id", desc=True)
+                .execute().data or [])
+        ids = [c["id"] for c in cots if c.get("estado") != "anulada"]
+        items = (supabase.table("cotizacion_items").select("cotizacion_id, decision")
+                 .in_("cotizacion_id", ids).eq("taller_id", taller_id).execute().data or []) if ids else []
+    except Exception:
+        return {}   # migración aún no ejecutada
+    hoy = datetime.now(ZONA_ECUADOR).date().isoformat()
+    por_orden: dict[str, dict] = {}
+    for c in cots:
+        if c.get("estado") == "anulada" or str(c["reparacion_id"]) in por_orden:
+            continue
+        propios = [i for i in items if str(i["cotizacion_id"]) == str(c["id"])]
+        por_orden[str(c["reparacion_id"])] = {
+            "id": c["id"], "estado": c["estado"], "total": float(c.get("total") or 0),
+            "total_aprobado": c.get("total_aprobado"),
+            "vencida": c["estado"] == "pendiente" and str(c.get("vence") or "")[:10] < hoy,
+            "n_items": len(propios), "n_aprobados": sum(1 for i in propios if i.get("decision") == "aprobado"),
+        }
+    return por_orden
+
+
+# ---------------------------- Página pública del cliente ----------------------------
+def _cotizacion_por_token(token: str) -> tuple[dict, list[dict]]:
+    if not PATRON_TOKEN.fullmatch(token or ""):
+        raise HTTPException(status_code=404, detail="Esta cotización no existe.")
+    try:
+        cot = (supabase.table("cotizaciones").select("*").eq("token", token).limit(1).execute().data or [None])[0]
+    except Exception as e:
+        _error_cotizaciones(e)
+    if not cot or cot.get("estado") == "anulada":
+        raise HTTPException(status_code=404, detail="Esta cotización no existe o el taller la anuló.")
+    items = (supabase.table("cotizacion_items").select("*").eq("cotizacion_id", cot["id"])
+             .eq("taller_id", cot["taller_id"]).execute().data or [])
+    return cot, items
+
+
+def vista_publica(cot: dict, items: list[dict]) -> dict:
+    """Lo que ve el cliente: sin teléfonos, cédulas ni datos internos."""
+    orden = (supabase.table("reparaciones").select("modelo, vehiculo").eq("id", cot["reparacion_id"])
+             .eq("taller_id", cot["taller_id"]).limit(1).execute().data or [{}])[0]
+    r = resumen_cotizacion(cot, items)
+    r.pop("aplicada_a_orden", None)
+    return {**r, "taller": _nombre_taller(cot["taller_id"]), "vehiculo": cot.get("vehiculo") or orden.get("vehiculo"),
+            "modelo": orden.get("modelo") or "", "cliente": cot.get("cliente") or ""}
+
+
+@app.get("/publico/cotizaciones/{token}")
+def ver_cotizacion_publica(token: str):
+    cot, items = _cotizacion_por_token(token)
+    return vista_publica(cot, items)
+
+
+@app.post("/publico/cotizaciones/{token}/responder")
+def responder_cotizacion(token: str, datos: RespuestaCotizacion):
+    cot, items = _cotizacion_por_token(token)
+    if cot["estado"] != "pendiente":
+        raise HTTPException(status_code=409, detail="Esta cotización ya fue respondida.")
+    if str(cot.get("vence") or "")[:10] < datetime.now(ZONA_ECUADOR).date().isoformat():
+        raise HTTPException(status_code=410, detail="Esta cotización venció. Pide al taller una nueva.")
+    ids = {str(i["id"]) for i in items}
+    if set(datos.decisiones) != ids:
+        raise HTTPException(status_code=400, detail="Responde todas las líneas (aprobar o rechazar) antes de enviar.")
+
+    aprobados = [i for i in items if datos.decisiones[str(i["id"])] == "aprobado"]
+    total_aprobado = round(sum(float(i["cantidad"]) * float(i["precio_unitario"]) for i in aprobados), 2)
+    # Candado: solo la primera respuesta cuenta (si llegan dos a la vez, la
+    # segunda no encuentra la cotización 'pendiente' y no cambia nada)
+    marcada = (supabase.table("cotizaciones").update({
+        "estado": "respondida", "respondido_en": ahora_utc_str(), "total_aprobado": total_aprobado,
+        "comentario_cliente": datos.comentario.strip() or None,
+    }).eq("id", cot["id"]).eq("estado", "pendiente").execute().data or [])
+    if not marcada:
+        raise HTTPException(status_code=409, detail="Esta cotización ya fue respondida.")
+    for i in items:
+        supabase.table("cotizacion_items").update({"decision": datos.decisiones[str(i["id"])]}) \
+            .eq("id", i["id"]).eq("cotizacion_id", cot["id"]).execute()
+        i["decision"] = datos.decisiones[str(i["id"])]
+
+    aplicada = False
+    if aprobados:
+        try:
+            aplicada = aplicar_cotizacion_a_orden(marcada[0], aprobados)
+        except Exception as e:
+            print(f"No se pudo aplicar la cotización {cot['id']} a su orden: {e}")
+        if aplicada:
+            supabase.table("cotizaciones").update({"aplicada_a_orden": True}).eq("id", cot["id"]).execute()
+    return vista_publica({**marcada[0], "aplicada_a_orden": aplicada}, items)
+
+
+def aplicar_cotizacion_a_orden(cot: dict, aprobados: list[dict]) -> bool:
+    """Agrega lo aprobado a la orden (si sigue abierta): trabajos con su precio,
+    kits de los servicios y repuestos cotizados (ya cobrados en su línea)."""
+    taller_id = cot["taller_id"]
+    orden = (supabase.table("reparaciones").select("*").eq("id", cot["reparacion_id"])
+             .eq("taller_id", taller_id).limit(1).execute().data or [None])[0]
+    if not orden or orden.get("estado") != "Pendiente":
+        return False   # la orden ya se cerró: queda la constancia en la cotización
+
+    lista = [dict(t) for t in trabajos_de_orden(orden)]
+    por_clave = {_sin_tildes(t["descripcion"]).strip(): t for t in lista}
+    lineas_servicio = []
+    for it in aprobados:
+        cant = float(it["cantidad"])
+        desc = it["descripcion"] if cant == 1 or it["tipo"] == "servicio" else f"{it['descripcion']} (x{_num(cant)})"
+        precio = round(cant * float(it["precio_unitario"]), 2)
+        linea = {"descripcion": desc, "precio": precio, "mensaje_id": None,
+                 "fecha": ahora_utc_str(), "cotizacion_id": cot["id"]}
+        if it["tipo"] == "servicio" and it.get("servicio_id"):
+            sid = it["servicio_id"]
+            linea["servicio_id"] = int(sid) if str(sid).isdigit() else sid
+        existente = por_clave.get(_sin_tildes(desc).strip())
+        if existente:
+            # Ya estaba en la orden (ej. se registró por el chat sin precio): toma el precio cotizado
+            if not float(existente.get("precio") or 0):
+                existente["precio"] = precio
+            existente.setdefault("cotizacion_id", cot["id"])
+            if linea.get("servicio_id") and not existente.get("servicio_id"):
+                existente["servicio_id"] = linea["servicio_id"]
+        else:
+            lista.append(linea)
+            por_clave[_sin_tildes(desc).strip()] = linea
+        if linea.get("servicio_id"):
+            lineas_servicio.append({"descripcion": it["descripcion"], "servicio_id": linea["servicio_id"]})
+
+    guardar_reparacion("update", {"trabajos": lista, "trabajo_realizado": texto_trabajos(lista)}, orden["id"])
+
+    # Materiales: kits de los servicios aprobados + repuestos cotizados
+    materiales = materiales_segun_modulos(taller_id, lineas_servicio, orden.get("modelo") or "",
+                                          orden.get("cilindros"), [])["items"]
+    if modulo_activo(taller_id, "inventario"):
+        for it in aprobados:
+            if it["tipo"] == "repuesto" and it.get("inventario_id"):
+                inv = (supabase.table("inventario").select("id, codigo, costo").eq("id", it["inventario_id"])
+                       .eq("taller_id", taller_id).limit(1).execute().data or [None])[0]
+                if inv:
+                    # Su precio ya va en la línea de la cotización: se registra a costo
+                    # e "incluido" para no cobrarlo dos veces ni contarlo en la comisión
+                    materiales.append({"inventario_id": inv["id"], "codigo": inv.get("codigo"),
+                                       "cantidad": float(it["cantidad"]), "precio_unitario": float(inv.get("costo") or 0),
+                                       "incluido": True, "origen": "manual", "trabajo": f"Cotización N° {cot['id']}"})
+    registrar_materiales_en_orden(taller_id, orden["id"], materiales)
+    return True
+
+
 @app.get("/vehiculos-pendientes")
 def listar_pendientes(request: Request):
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
@@ -3848,6 +4232,13 @@ def listar_pendientes(request: Request):
         g = _evaluar_garantia(previas.get(v.get("vehiculo")), normalizar_kilometraje(v.get("kilometraje")))
         if g and g["orden_id"] != v.get("id"):
             v["garantia_previa"] = g
+
+    # Cotización más reciente de cada orden abierta (una sola consulta)
+    if modulo_activo(taller_id, "cotizaciones"):
+        cotizaciones = resumen_cotizaciones_de_ordenes(taller_id, [v["id"] for v in pendientes])
+        for v in pendientes:
+            if str(v["id"]) in cotizaciones:
+                v["cotizacion"] = cotizaciones[str(v["id"])]
 
     return {"vehiculos": pendientes + terminados_hoy + sin_cobro_hoy}
 # --- IMPORTAR INVENTARIO (carga masiva desde Excel) ---------------------
@@ -4335,7 +4726,7 @@ def opciones_inventario(request: Request):
     """Códigos del inventario del taller (para elegir materiales)."""
     _, taller_id = obtener_cliente_seguro(request)
     exigir_modulo(taller_id, "inventario")
-    filas = (supabase.table("inventario").select("codigo, nombre, cantidad").eq("taller_id", taller_id)
+    filas = (supabase.table("inventario").select("codigo, nombre, cantidad, precio_venta").eq("taller_id", taller_id)
              .order("codigo").limit(3000).execute()).data or []
     return {"repuestos": filas}
 

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Cotización</title>
+    <style>
+        /* Página pública que abre el CLIENTE del taller (sin iniciar sesión).
+           Autocontenida: no depende del CSS de la aplicación. */
+        :root {
+            color-scheme: light;
+            --fondo: #f4f3f8; --superficie: #ffffff; --borde: #e4e1ee; --texto: #16132b; --tenue: #5b5675;
+            --marca: #6a2ee8; --marca-texto: #ffffff;
+            --ok: #0b7a2e; --ok-fondo: #e3f5e9; --no: #9a2b2b; --no-fondo: #f8e6e6;
+            --urgente: #b42318; --urgente-fondo: #fde8e6; --recomendado: #8a5a00; --recomendado-fondo: #fdf1d8;
+            --opcional: #4b4868; --opcional-fondo: #ecebf3;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                color-scheme: dark;
+                --fondo: #0f0c1f; --superficie: #1a1631; --borde: #2e2850; --texto: #f2f0ff; --tenue: #aaa3cc;
+                --marca: #8b6cff; --marca-texto: #ffffff;
+                --ok: #7ee2a0; --ok-fondo: #12301f; --no: #f2a3a3; --no-fondo: #3a1919;
+                --urgente: #ff9b8f; --urgente-fondo: #3d1612; --recomendado: #f5c96b; --recomendado-fondo: #3a2c0c;
+                --opcional: #c9c5e3; --opcional-fondo: #2a2645;
+            }
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--fondo); color: var(--texto); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+               font-size: 16px; line-height: 1.45; }
+        main { max-width: 640px; margin: 0 auto; padding: 20px 16px 150px; }
+        h1 { font-size: 1.35rem; margin: 0 0 4px; }
+        .sub { color: var(--tenue); font-size: 14px; }
+        .tarjeta { background: var(--superficie); border: 1px solid var(--borde); border-radius: 16px; padding: 16px; margin-top: 14px; }
+        .nota { border-left: 4px solid var(--marca); }
+        .item-cabecera { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+        .item-desc { font-weight: 600; }
+        .item-precio { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .item-detalle { color: var(--tenue); font-size: 14px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+        .prioridad { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-bottom: 6px; }
+        .prioridad.urgente { background: var(--urgente-fondo); color: var(--urgente); }
+        .prioridad.recomendado { background: var(--recomendado-fondo); color: var(--recomendado); }
+        .prioridad.opcional { background: var(--opcional-fondo); color: var(--opcional); }
+        .decidir { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+        .decidir button { padding: 11px 8px; border-radius: 12px; border: 1.5px solid var(--borde); background: transparent;
+                          color: var(--texto); font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .decidir button[aria-pressed="true"].si { background: var(--ok-fondo); border-color: var(--ok); color: var(--ok); }
+        .decidir button[aria-pressed="true"].no { background: var(--no-fondo); border-color: var(--no); color: var(--no); }
+        .decidir button:focus-visible, .principal:focus-visible, .enlace:focus-visible { outline: 3px solid var(--marca); outline-offset: 2px; }
+        .enlace { background: none; border: none; color: var(--marca); font-weight: 600; font-size: 15px; cursor: pointer; padding: 6px 0; font-family: inherit; }
+        textarea { width: 100%; min-height: 70px; border-radius: 12px; border: 1px solid var(--borde); background: var(--superficie);
+                   color: var(--texto); padding: 10px 12px; font-family: inherit; font-size: 15px; }
+        label.titulo { display: block; font-weight: 600; margin: 18px 0 6px; }
+        .barra { position: fixed; left: 0; right: 0; bottom: 0; background: var(--superficie); border-top: 1px solid var(--borde);
+                 padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 20px rgba(0,0,0,.08); }
+        .barra-interior { max-width: 640px; margin: 0 auto; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+        .barra-total { font-variant-numeric: tabular-nums; }
+        .barra-total b { font-size: 1.15rem; }
+        .principal { padding: 12px 20px; border-radius: 12px; border: none; background: var(--marca); color: var(--marca-texto);
+                     font-weight: 700; font-size: 16px; cursor: pointer; font-family: inherit; }
+        .principal:disabled { opacity: .45; cursor: not-allowed; }
+        .falta { color: var(--tenue); font-size: 13px; width: 100%; }
+        .estado { text-align: center; padding: 30px 16px; }
+        .estado h2 { margin: 10px 0 6px; font-size: 1.25rem; }
+        .icono-grande { width: 56px; height: 56px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+        .icono-grande.ok { background: var(--ok-fondo); color: var(--ok); }
+        .icono-grande.aviso { background: var(--recomendado-fondo); color: var(--recomendado); }
+        .resumen-linea { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--borde); }
+        .resumen-linea:last-child { border-bottom: none; }
+        .marca-dec { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 6px; white-space: nowrap; }
+        .marca-dec.aprobado { background: var(--ok-fondo); color: var(--ok); }
+        .marca-dec.rechazado { background: var(--no-fondo); color: var(--no); }
+        .pie { text-align: center; color: var(--tenue); font-size: 12px; margin-top: 28px; }
+        [hidden] { display: none !important; }
+    </style>
+</head>
+<body>
+<main id="contenido" aria-live="polite"><p class="sub">Cargando cotización...</p></main>
+<div class="barra" id="barra" hidden>
+    <div class="barra-interior">
+        <div class="barra-total">Apruebas <b id="total-aprobado">$0.00</b> <span class="sub">de <span id="total-general">$0.00</span></span></div>
+        <button type="button" class="principal" id="btn-enviar" disabled>Enviar respuesta</button>
+        <div class="falta" id="falta"></div>
+    </div>
+</div>
+<script>
+    // ------------------------------------------------------------------
+    // Cotización pública: el cliente aprueba o rechaza cada línea.
+    // El token del link es la única "llave"; no hay datos personales aquí.
+    // ------------------------------------------------------------------
+    const token = new URLSearchParams(location.search).get('t') || '';
+    const decisiones = {};          // id de línea -> 'aprobado' | 'rechazado'
+    let cot = null;
+    let confirmando = false;
+
+    const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const dinero = v => '$' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fecha = iso => iso ? new Date(String(iso).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+    const cant = n => Number.isInteger(n) ? String(n) : String(n);
+    const PRIORIDAD = { urgente: 'Urgente', recomendado: 'Recomendado', opcional: 'Opcional' };
+    const ICONO_OK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+    const ICONO_AVISO = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="7" x2="12" y2="13"/><circle cx="12" cy="17" r="1"/></svg>';
+
+    function cabecera() {
+        return `<h1>${esc(cot.taller)}</h1>
+            <div class="sub">Cotización N° ${esc(cot.id)} · ${esc([cot.modelo, cot.vehiculo ? 'placa ' + cot.vehiculo : ''].filter(Boolean).join(' · '))}</div>`;
+    }
+
+    function pantallaEstado(tipo, titulo, texto, extra = '') {
+        document.getElementById('barra').hidden = true;
+        document.getElementById('contenido').innerHTML = `${cot ? cabecera() : ''}
+            <div class="tarjeta estado"><span class="icono-grande ${tipo}">${tipo === 'ok' ? ICONO_OK : ICONO_AVISO}</span>
+                <h2>${titulo}</h2><div class="sub">${texto}</div></div>${extra}<p class="pie">Cotización enviada por ${esc(cot ? cot.taller : 'el taller')}</p>`;
+    }
+
+    function resumenRespondida() {
+        const filas = cot.items.map(i => `<div class="resumen-linea"><span>${esc(i.descripcion)}${i.cantidad !== 1 ? ` (x${cant(i.cantidad)})` : ''}
+            <span class="marca-dec ${i.decision}">${i.decision === 'aprobado' ? 'Aprobado' : 'No aprobado'}</span></span>
+            <b>${dinero(i.subtotal)}</b></div>`).join('');
+        return `<div class="tarjeta">${filas}<div class="resumen-linea"><span><b>Total aprobado</b></span><b>${dinero(cot.total_aprobado)}</b></div></div>`;
+    }
+
+    function pintar() {
+        if (cot.estado === 'respondida') {
+            pantallaEstado('ok', '¡Gracias! El taller recibió tu respuesta',
+                `Respondiste el ${fecha(cot.respondido_en)}. Si necesitas cambiar algo, comunícate con el taller.`, resumenRespondida());
+            return;
+        }
+        if (cot.vencida) {
+            pantallaEstado('aviso', 'Esta cotización venció', `Era válida hasta el ${fecha(cot.vence)}. Pide al taller una cotización actualizada.`);
+            return;
+        }
+        const items = cot.items.map(i => `
+            <div class="tarjeta" data-id="${esc(i.id)}">
+                <span class="prioridad ${esc(i.prioridad)}">${PRIORIDAD[i.prioridad] || ''}</span>
+                <div class="item-cabecera"><span class="item-desc">${esc(i.descripcion)}</span><span class="item-precio">${dinero(i.subtotal)}</span></div>
+                ${i.cantidad !== 1 ? `<div class="item-detalle">${cant(i.cantidad)} × ${dinero(i.precio_unitario)}</div>` : ''}
+                <div class="decidir" role="group" aria-label="Decisión para ${esc(i.descripcion)}">
+                    <button type="button" class="si" aria-pressed="${decisiones[i.id] === 'aprobado'}" onclick="decidir('${esc(i.id)}', 'aprobado')">Aprobar</button>
+                    <button type="button" class="no" aria-pressed="${decisiones[i.id] === 'rechazado'}" onclick="decidir('${esc(i.id)}', 'rechazado')">No por ahora</button>
+                </div>
+            </div>`).join('');
+        document.getElementById('contenido').innerHTML = `${cabecera()}
+            <div class="sub">Válida hasta el ${fecha(cot.vence)}</div>
+            ${cot.nota ? `<div class="tarjeta nota">${esc(cot.nota)}</div>` : ''}
+            <p class="sub" style="margin-top:18px;">Elige qué trabajos autorizas. Solo se hará lo que apruebes.</p>
+            <button type="button" class="enlace" onclick="aprobarTodo()">Aprobar todo</button>
+            ${items}
+            <label class="titulo" for="comentario">Comentario para el taller (opcional)</label>
+            <textarea id="comentario" maxlength="500" placeholder="Ej. Lo de la suspensión lo hago el próximo mes"></textarea>
+            <p class="pie">Cotización enviada por ${esc(cot.taller)}</p>`;
+        document.getElementById('barra').hidden = false;
+        document.getElementById('total-general').textContent = dinero(cot.total);
+        actualizarBarra();
+    }
+
+    function decidir(id, valor) {
+        decisiones[id] = valor;
+        confirmando = false;
+        document.querySelectorAll(`[data-id="${CSS.escape(id)}"] .decidir button`).forEach(b =>
+            b.setAttribute('aria-pressed', String((b.classList.contains('si') ? 'aprobado' : 'rechazado') === valor)));
+        actualizarBarra();
+    }
+
+    function aprobarTodo() {
+        cot.items.forEach(i => decidir(String(i.id), 'aprobado'));
+    }
+
+    function actualizarBarra() {
+        const total = cot.items.filter(i => decisiones[i.id] === 'aprobado').reduce((s, i) => s + i.subtotal, 0);
+        const faltan = cot.items.filter(i => !decisiones[i.id]).length;
+        document.getElementById('total-aprobado').textContent = dinero(total);
+        const btn = document.getElementById('btn-enviar');
+        btn.disabled = faltan > 0;
+        btn.textContent = confirmando ? 'Confirmar y enviar' : 'Enviar respuesta';
+        document.getElementById('falta').textContent = faltan
+            ? `Te falta responder ${faltan === 1 ? '1 línea' : faltan + ' líneas'}.`
+            : (confirmando ? `Vas a aprobar ${dinero(total)}. Toca otra vez para confirmar.` : '');
+    }
+
+    async function enviar() {
+        // Primer toque: pide confirmar (evita envíos por accidente)
+        if (!confirmando) { confirmando = true; actualizarBarra(); return; }
+        const btn = document.getElementById('btn-enviar');
+        btn.disabled = true; btn.textContent = 'Enviando...';
+        try {
+            const res = await fetch(`/publico/cotizaciones/${encodeURIComponent(token)}/responder`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ decisiones, comentario: (document.getElementById('comentario').value || '').trim() })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'No se pudo enviar. Intenta de nuevo.');
+            cot = data;
+            pintar();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (e) {
+            confirmando = false;
+            actualizarBarra();
+            document.getElementById('falta').textContent = e.message;
+        }
+    }
+
+    document.getElementById('btn-enviar').addEventListener('click', enviar);
+
+    (async () => {
+        try {
+            const res = await fetch(`/publico/cotizaciones/${encodeURIComponent(token)}`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'No se encontró la cotización.');
+            cot = data;
+            document.title = `Cotización ${cot.vehiculo || ''} · ${cot.taller}`;
+            pintar();
+        } catch (e) {
+            pantallaEstado('aviso', 'No pudimos abrir la cotización', esc(e.message));
+        }
+    })();
+</script>
+</body>
+</html>

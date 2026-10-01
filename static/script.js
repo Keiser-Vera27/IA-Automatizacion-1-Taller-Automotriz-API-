@@ -558,6 +558,9 @@ function mostrarModal({ tipo = 'info', titulo = '', mensaje = '', detalles = [],
     const overlay = document.getElementById('modal-aviso');
     if (!overlay) { mostrarNotificacion(mensaje, tipo); return; }  // respaldo
 
+    const caja = overlay.querySelector('.modal-caja');
+    if (caja) caja.classList.remove('ancho');   // la cotización usa un modal más ancho
+
     const icono = document.getElementById('modal-icono');
     icono.className = `modal-icono ${cargando ? 'info cargando' : tipo}`;
     icono.innerHTML = cargando ? '' : (ICONOS_MODAL[tipo] || ICONOS_MODAL.info);
@@ -1647,11 +1650,15 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                         ${infoTelefono}
                         ${detalleExtra}
                         ${v.estado === 'Pendiente' ? trabajosTarjetaHTML(v) : ''}
+                        ${v.estado === 'Pendiente' ? estadoCotizacionHTML(v) : ''}
                         ${marcaGarantia(v.garantia_previa)}
                         ${botonDescarga}
                         <div class="acciones-tarjeta">
                             ${v.vehiculo && v.vehiculo !== 'S/C' ? `<button class="btn-cerrar-orden" title="Ver todo el historial de este vehículo"
                                 onclick='event.stopPropagation(); abrirFichaVehiculo(${JSON.stringify(v.vehiculo)})'>Ficha</button>` : ''}
+                            ${v.estado === 'Pendiente' && moduloActivo('cotizaciones') ? `<button class="btn-cerrar-orden" title="Armar una cotización para que el cliente la apruebe"
+                                data-id="${escaparHTML(String(v.id))}" data-placa="${escaparHTML(v.vehiculo || '')}" data-cliente="${escaparHTML(v.cliente || '')}"
+                                onclick="event.stopPropagation(); abrirCotizador(this)">Cotizar</button>` : ''}
                             ${botonCerrar}
                             ${botonReabrir}
                         </div>
@@ -2640,6 +2647,274 @@ function ordenHistorialHTML(o) {
 function descargarOrdenFicha(id) {
     const orden = ordenesFichaActual[id];
     if (orden) generarImagenFactura(orden);
+}
+
+// ==========================================================================
+// COTIZACIONES: el taller arma el presupuesto, el cliente aprueba por un link
+// ==========================================================================
+let lineasCotizacion = [];
+let catalogoCotizacion = null;      // servicios del catálogo (con precio)
+let ordenCotizacion = null;         // { id, placa, cliente }
+
+const PRIORIDADES_COT = { urgente: 'Urgente', recomendado: 'Recomendado', opcional: 'Opcional' };
+
+// Estado de la cotización en la tarjeta del vehículo
+function estadoCotizacionHTML(v) {
+    const c = v.cotizacion;
+    if (!c) return '';
+    let texto, clase;
+    if (c.estado === 'respondida') {
+        texto = c.n_aprobados ? `Cliente aprobó ${c.n_aprobados} de ${c.n_items} · ${dinero(c.total_aprobado)}` : 'Cliente rechazó la cotización';
+        clase = c.n_aprobados ? 'aprobada' : 'rechazada';
+    } else if (c.vencida) {
+        texto = 'Cotización vencida sin respuesta'; clase = 'rechazada';
+    } else {
+        texto = `Cotización enviada · ${dinero(c.total)} · esperando respuesta`; clase = 'pendiente';
+    }
+    return `<button type="button" class="marca-cotizacion ${clase}" title="Ver cotizaciones de esta orden"
+        onclick='event.stopPropagation(); verCotizacionesOrden(${JSON.stringify(String(v.id))}, ${JSON.stringify(v.vehiculo || '')})'>${escaparHTML(texto)}</button>`;
+}
+
+async function abrirCotizador(boton) {
+    const { id, placa, cliente } = boton.dataset;
+    ordenCotizacion = { id, placa, cliente };
+    lineasCotizacion = [];
+    try {
+        const [resServ, inv] = await Promise.all([
+            fetch('/servicios', { headers: cabeceraAuth() }).then(r => r.json()),
+            moduloActivo('inventario') ? obtenerOpcionesInventario() : Promise.resolve([])
+        ]);
+        catalogoCotizacion = resServ.servicios || [];
+    } catch (e) {
+        mostrarModal({ tipo: 'error', titulo: 'No se pudo abrir', mensaje: 'No se pudo cargar el catálogo. Revisa tu conexión.' });
+        return;
+    }
+    const overlay = document.getElementById('modal-aviso');
+    mostrarModal({ tipo: 'info', titulo: 'Nueva cotización' });
+    overlay.querySelector('.modal-caja').classList.add('ancho');
+    overlay.dataset.modo = 'formulario';
+    const e = escaparHTML;
+    document.getElementById('modal-mensaje').innerHTML =
+        `<div class="resumen-orden"><b>${e(placa)}</b>${cliente ? ' · ' + e(cliente) : ''} · Orden N° ${e(id)}</div>
+         El cliente recibe un link por WhatsApp y aprueba o rechaza cada línea. Lo que apruebe se agrega solo a la orden.`;
+
+    const opcionesInv = (opcionesInventarioCache || []);
+    const formulario = document.getElementById('modal-formulario');
+    formulario.innerHTML = `
+        <div id="cot-lineas" class="cot-lineas"></div>
+        <div class="cot-agregar">
+            <button type="button" class="dash-chip" onclick="agregarLineaCotizacion('servicio')">+ Servicio</button>
+            ${moduloActivo('inventario') ? `<button type="button" class="dash-chip" onclick="agregarLineaCotizacion('repuesto')">+ Repuesto</button>` : ''}
+            <button type="button" class="dash-chip" onclick="agregarLineaCotizacion('otro')">+ Otro</button>
+        </div>
+        <datalist id="cot-inventario">${opcionesInv.map(o => `<option value="${e(o.codigo)}">${e(o.nombre)} · stock ${o.cantidad ?? 0}</option>`).join('')}</datalist>
+        <div class="cot-total">Total: <b id="cot-total">$0.00</b></div>
+        <label class="campo-faltante"><span class="campo-etiqueta">Nota para el cliente (opcional)</span>
+            <textarea name="nota" maxlength="500" placeholder="Ej. Las pastillas están al 10%, recomendamos cambiarlas pronto."></textarea></label>
+        <label class="campo-faltante"><span class="campo-etiqueta">Válida por</span>
+            <select name="validez"><option value="3">3 días</option><option value="7" selected>7 días</option><option value="15">15 días</option><option value="30">30 días</option></select></label>`;
+    formulario.hidden = false;
+    agregarLineaCotizacion('servicio');
+
+    const btnCancelar = document.getElementById('modal-btn-cancelar');
+    btnCancelar.hidden = false;
+    btnCancelar.onclick = () => { overlay.dataset.modo = ''; cerrarModal(); };
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Crear cotización';
+    btnOk.onclick = guardarCotizacion;
+}
+
+function agregarLineaCotizacion(tipo) {
+    lineasCotizacion.push({ tipo, servicio_id: '', codigo: '', descripcion: '', cantidad: 1, precio_unitario: 0, prioridad: 'recomendado' });
+    pintarLineasCotizacion();
+    const filas = document.querySelectorAll('#cot-lineas .cot-linea');
+    const ultima = filas[filas.length - 1];
+    if (ultima) ultima.querySelector('select, input').focus();
+}
+
+function quitarLineaCotizacion(i) {
+    lineasCotizacion.splice(i, 1);
+    pintarLineasCotizacion();
+}
+
+function pintarLineasCotizacion() {
+    const e = escaparHTML;
+    const cont = document.getElementById('cot-lineas');
+    cont.innerHTML = lineasCotizacion.length ? lineasCotizacion.map((l, i) => {
+        let selector;
+        if (l.tipo === 'servicio') {
+            selector = `<select aria-label="Servicio" onchange="elegirServicioCot(${i}, this.value)">
+                <option value="">Elige un servicio del catálogo...</option>
+                ${catalogoCotizacion.map(s => `<option value="${e(String(s.id))}" ${String(s.id) === String(l.servicio_id) ? 'selected' : ''}>${e(s.nombre_servicio)}</option>`).join('')}
+            </select>`;
+        } else if (l.tipo === 'repuesto') {
+            selector = `<input list="cot-inventario" aria-label="Código del repuesto" placeholder="Código del repuesto (ej. PAS-01)"
+                value="${e(l.codigo)}" onchange="elegirRepuestoCot(${i}, this.value)">`;
+        } else {
+            selector = `<input aria-label="Descripción" maxlength="200" placeholder="Ej. Revisión de suspensión"
+                value="${e(l.descripcion)}" oninput="lineasCotizacion[${i}].descripcion = this.value">`;
+        }
+        const sv = l.tipo === 'servicio' ? catalogoCotizacion.find(s => String(s.id) === String(l.servicio_id)) : null;
+        const avisoAparte = sv && sv.materiales_incluidos === false && sv.n_materiales
+            ? '<div class="cot-aviso">Este servicio tiene materiales que se cobran aparte: se sumarán al cerrar la orden.</div>' : '';
+        const subtitulo = l.tipo === 'repuesto' && l.descripcion ? `<div class="cot-aviso">${e(l.descripcion)}</div>` : '';
+        return `<div class="cot-linea">
+            <div class="cot-linea-tipo">${l.tipo === 'servicio' ? 'Servicio' : l.tipo === 'repuesto' ? 'Repuesto' : 'Otro'}</div>
+            <div class="cot-linea-principal">${selector}
+                <button type="button" class="btn-icono-eliminar" aria-label="Quitar línea" title="Quitar" onclick="quitarLineaCotizacion(${i})">✕</button></div>
+            ${subtitulo}${avisoAparte}
+            <div class="cot-linea-numeros">
+                <label>Cant.<input type="number" min="0.01" step="any" value="${l.cantidad}" oninput="cambiarNumeroCot(${i}, 'cantidad', this.value)"></label>
+                <label>Precio ($)<input type="number" min="0" step="0.01" value="${l.precio_unitario}" oninput="cambiarNumeroCot(${i}, 'precio_unitario', this.value)"></label>
+                <label>Prioridad<select onchange="lineasCotizacion[${i}].prioridad = this.value">
+                    ${Object.entries(PRIORIDADES_COT).map(([k, t]) => `<option value="${k}" ${k === l.prioridad ? 'selected' : ''}>${t}</option>`).join('')}
+                </select></label>
+                <span class="cot-subtotal">${dinero(l.cantidad * l.precio_unitario)}</span>
+            </div>
+        </div>`;
+    }).join('') : '<p class="vacio-vehiculos">Agrega al menos una línea.</p>';
+    actualizarTotalCotizacion();
+}
+
+function elegirServicioCot(i, id) {
+    const s = catalogoCotizacion.find(x => String(x.id) === String(id));
+    Object.assign(lineasCotizacion[i], { servicio_id: id, descripcion: s ? s.nombre_servicio : '', precio_unitario: s ? Number(s.precio_base || 0) : 0 });
+    pintarLineasCotizacion();
+}
+
+function elegirRepuestoCot(i, codigo) {
+    const r = (opcionesInventarioCache || []).find(x => x.codigo === codigo.trim());
+    Object.assign(lineasCotizacion[i], { codigo: codigo.trim(), descripcion: r ? r.nombre : '',
+                                         precio_unitario: r ? Number(r.precio_venta || 0) : lineasCotizacion[i].precio_unitario });
+    pintarLineasCotizacion();
+}
+
+function cambiarNumeroCot(i, campo, valor) {
+    lineasCotizacion[i][campo] = Math.max(0, parseFloat(valor) || 0);
+    // Solo se actualizan el subtotal de la línea y el total (sin repintar: no se pierde el foco)
+    const fila = document.querySelectorAll('#cot-lineas .cot-linea')[i];
+    if (fila) fila.querySelector('.cot-subtotal').textContent = dinero(lineasCotizacion[i].cantidad * lineasCotizacion[i].precio_unitario);
+    actualizarTotalCotizacion();
+}
+
+function actualizarTotalCotizacion() {
+    const total = lineasCotizacion.reduce((s, l) => s + l.cantidad * l.precio_unitario, 0);
+    const el = document.getElementById('cot-total');
+    if (el) el.textContent = dinero(total);
+}
+
+async function guardarCotizacion() {
+    const formulario = document.getElementById('modal-formulario');
+    // Validación antes de enviar (el backend vuelve a validar todo)
+    for (const [n, l] of lineasCotizacion.entries()) {
+        const falta = l.tipo === 'servicio' ? !l.servicio_id : (l.tipo === 'repuesto' ? !l.codigo : !l.descripcion.trim());
+        if (falta || !(l.cantidad > 0)) {
+            mostrarNotificacion(`Completa la línea ${n + 1} (${falta ? 'qué se cotiza' : 'cantidad'}).`, 'warning');
+            return;
+        }
+    }
+    if (!lineasCotizacion.length) { mostrarNotificacion('Agrega al menos una línea.', 'warning'); return; }
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.disabled = true;
+    try {
+        const res = await fetch(`/reparaciones/${encodeURIComponent(ordenCotizacion.id)}/cotizaciones`, {
+            method: 'POST', headers: cabeceraAuth(true),
+            body: JSON.stringify({
+                items: lineasCotizacion.map(l => ({
+                    tipo: l.tipo, servicio_id: l.tipo === 'servicio' ? l.servicio_id : null,
+                    codigo: l.tipo === 'repuesto' ? l.codigo : null, descripcion: l.descripcion.trim(),
+                    cantidad: l.cantidad, precio_unitario: l.precio_unitario, prioridad: l.prioridad
+                })),
+                nota: formulario.querySelector('[name=nota]').value.trim(),
+                validez_dias: parseInt(formulario.querySelector('[name=validez]').value, 10)
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            mostrarNotificacion(escaparHTML(typeof data.detail === 'string' ? data.detail : 'Revisa los datos de la cotización.'), 'warning');
+            return;
+        }
+        mostrarEnvioCotizacion(data.cotizacion, data.whatsapp_url, data.mensaje);
+        cargarVehiculosPendientes('Pendiente');
+    } catch (e) {
+        mostrarNotificacion('Error de conexión al crear la cotización.', 'error');
+    } finally {
+        btnOk.disabled = false;
+    }
+}
+
+// Ventana para mandar el link (recién creada o para reenviar)
+function mostrarEnvioCotizacion(cot, whatsappUrl, mensaje) {
+    const e = escaparHTML;
+    mostrarModal({ tipo: 'success', titulo: `Cotización N° ${cot.id} lista` });
+    document.getElementById('modal-mensaje').innerHTML = `
+        Total: <b>${dinero(cot.total)}</b> · válida hasta ${fechaCorta(cot.vence)}.
+        <div class="cot-envio">
+            ${whatsappUrl ? `<a class="btn-whatsapp" href="${e(whatsappUrl)}" target="_blank" rel="noopener">Enviar por WhatsApp</a>`
+                          : '<div class="cot-aviso">El cliente no tiene un celular válido registrado: copia el link y envíaselo.</div>'}
+            <button type="button" class="dash-chip" onclick='copiarTexto(${JSON.stringify(mensaje || cot.link)}, this)'>Copiar mensaje con link</button>
+        </div>
+        <div class="cot-link">${e(cot.link)}</div>`;
+}
+
+async function copiarTexto(texto, boton) {
+    try {
+        await navigator.clipboard.writeText(texto);
+    } catch (e) {
+        // Respaldo para navegadores sin acceso al portapapeles
+        const t = document.createElement('textarea'); t.value = texto; document.body.appendChild(t); t.select();
+        document.execCommand('copy'); t.remove();
+    }
+    if (boton) { const antes = boton.textContent; boton.textContent = 'Copiado'; setTimeout(() => boton.textContent = antes, 1500); }
+}
+
+// Cotizaciones de una orden: estado, respuesta del cliente, reenviar o anular
+async function verCotizacionesOrden(id, placa) {
+    let data;
+    try {
+        const res = await fetch(`/reparaciones/${encodeURIComponent(id)}/cotizaciones`, { headers: cabeceraAuth() });
+        data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+    } catch (err) {
+        mostrarModal({ tipo: 'error', titulo: 'No se pudieron cargar', mensaje: escaparHTML(err.message) });
+        return;
+    }
+    const e = escaparHTML;
+    window._cotizacionesOrden = data.cotizaciones;
+    const decision = d => d === 'aprobado' ? '<span class="cot-dec aprobado">Aprobado</span>'
+        : d === 'rechazado' ? '<span class="cot-dec rechazado">Rechazado</span>' : '<span class="cot-dec">Sin respuesta</span>';
+    const html = data.cotizaciones.map((c, n) => {
+        const estado = c.estado === 'respondida' ? `Respondida · aprobó ${dinero(c.total_aprobado)} de ${dinero(c.total)}`
+            : c.estado === 'anulada' ? 'Anulada' : (c.vencida ? 'Vencida sin respuesta' : `Esperando respuesta · vence ${fechaCorta(c.vence)}`);
+        return `<div class="cot-historial">
+            <div class="cot-historial-cab"><b>N° ${e(String(c.id))}</b> <span>${e(estado)}</span></div>
+            <ul class="oh-lista">${c.items.map(i => `<li><span>${e(i.descripcion)}${i.cantidad !== 1 ? ` (x${i.cantidad})` : ''}</span>
+                <span class="num">${dinero(i.subtotal)} ${decision(i.decision)}</span></li>`).join('')}</ul>
+            ${c.comentario_cliente ? `<div class="oh-notas">Comentario del cliente: ${e(c.comentario_cliente)}</div>` : ''}
+            ${c.estado === 'respondida' && c.n_aprobados && !c.aplicada_a_orden ? '<div class="oh-notas">La orden ya estaba cerrada: lo aprobado no se agregó.</div>' : ''}
+            ${c.estado === 'pendiente' ? `<div class="cot-envio">
+                ${!c.vencida ? `<button type="button" class="dash-chip" onclick="reenviarCotizacion(${n})">Reenviar</button>` : ''}
+                <button type="button" class="dash-chip" onclick='anularCotizacion(${JSON.stringify(String(c.id))}, ${JSON.stringify(id)}, ${JSON.stringify(placa)})'>Anular</button></div>` : ''}
+        </div>`;
+    }).join('') || '<p class="vacio-vehiculos">Esta orden no tiene cotizaciones.</p>';
+    mostrarModal({ tipo: 'info', titulo: `Cotizaciones · ${placa}` });
+    document.querySelector('#modal-aviso .modal-caja').classList.add('ancho');
+    document.getElementById('modal-mensaje').innerHTML = html;
+}
+
+function reenviarCotizacion(n) {
+    const c = window._cotizacionesOrden[n];
+    mostrarEnvioCotizacion(c, c.whatsapp_url, c.mensaje);
+}
+
+async function anularCotizacion(cotId, ordenId, placa) {
+    const res = await fetch(`/cotizaciones/${encodeURIComponent(cotId)}/anular`, { method: 'POST', headers: cabeceraAuth() });
+    if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        mostrarNotificacion(escaparHTML(d.detail || 'No se pudo anular.'), 'warning');
+    }
+    cargarVehiculosPendientes('Pendiente');
+    verCotizacionesOrden(ordenId, placa);
 }
 
 // ==========================================================================
