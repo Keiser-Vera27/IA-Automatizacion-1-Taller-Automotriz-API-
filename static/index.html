@@ -113,9 +113,9 @@
                 <button onclick="toggleMenu()" style="position: absolute; top: 15px; right: 15px; background: none; border: none; font-size: 20px; color: var(--texto); cursor: pointer; display: flex; padding: 4px;" aria-label="Cerrar menú"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
                 
                 <a href="#" onclick="cambiarVista('vista-chat')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Chat / Operaciones</a>
-                <a href="#" onclick="cambiarVista('vista-dashboard')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Dashboard Analítico</a>
+                <a href="#" data-modulo="dashboard" onclick="cambiarVista('vista-dashboard')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Dashboard Analítico</a>
                 <a href="#" onclick="cambiarVista('vista-servicios')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Catálogo de Servicios</a>
-                <a href="#" onclick="cambiarVista('vista-garantias')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Garantías</a>
+                <a href="#" data-modulo="control_garantias" onclick="cambiarVista('vista-garantias')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Garantías</a>
             </div>
 
             <!-- ========================================== -->
@@ -149,7 +149,7 @@
                     <h2>Panel de Control y Finanzas</h2>
                     
                     <!-- BOTONES DE ACCIÓN RÁPIDA -->
-                    <div class="grupo-botones-reportes">
+                    <div class="grupo-botones-reportes" data-modulo="inventario">
                         <button class="btn-inventario" onclick="descargarInventario()">
                             Descargar Auditoria de Inventario
                         </button>
@@ -168,7 +168,7 @@
                     <div id="panel-cuadre-caja"></div>
 
                     <!-- RANKING ANUAL DE TÉCNICOS -->
-                    <div class="panel-caja" style="margin-top: 30px; border-left: 4px solid var(--magenta);">
+                    <div class="panel-caja" data-modulo="tecnicos" style="margin-top: 30px; border-left: 4px solid var(--magenta);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
                             <div>
                                 <h3 style="margin: 0;">Ranking Anual de Técnicos (En Vivo)</h3>
@@ -186,7 +186,7 @@
                     </div>
 
                     <!-- LIQUIDACIÓN QUINCENAL / PERSONALIZADA -->
-                    <div class="panel-caja" style="margin-top: 20px; border-left: 4px solid var(--morado);">
+                    <div class="panel-caja" data-modulo="tecnicos" style="margin-top: 20px; border-left: 4px solid var(--morado);">
                         <h3>Liquidación de Nómina (Corte por Fechas)</h3>
                         <p style="color: var(--texto-tenue); font-size: 0.85rem; margin-bottom: 15px;">
                             Calcula comisiones netas por mano de obra para pagos quincenales o mensuales ajustados a feriados.
@@ -257,7 +257,7 @@
                                 <th style="text-align: left;">Servicio</th>
                                 <th style="text-align: right;">Precio ($)</th>
                                 <th style="text-align: left;">Garantía</th>
-                                <th style="text-align: center;">Materiales</th>
+                                <th style="text-align: center;" data-modulo="materiales_servicio">Materiales</th>
                                 <th style="text-align: center;">Acción</th>
                             </tr>
                         </thead>

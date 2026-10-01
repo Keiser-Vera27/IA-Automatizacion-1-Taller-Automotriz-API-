@@ -24,8 +24,44 @@ function actualizarIconoTema(tema) {
     texto.innerText = tema === "dark" ? "Oscuro" : "Claro";
 }
 
+// ==========================================================================
+// MÓDULOS DEL PLAN: la página oculta lo que el plan del taller no incluye.
+// (El backend igual lo bloquea; esto es para no mostrar botones que no sirven.)
+// Todo elemento con data-modulo="clave" se muestra solo si ese módulo está activo.
+// ==========================================================================
+let modulosTaller = null;      // null = aún no se sabe -> no se oculta nada
+let promesaModulos = null;     // se resuelve cuando ya se conocen los módulos
+
+function moduloActivo(clave) {
+    return !modulosTaller || modulosTaller.includes(clave);
+}
+
+function aplicarModulos() {
+    document.querySelectorAll('[data-modulo]').forEach(el =>
+        el.classList.toggle('modulo-oculto', !moduloActivo(el.dataset.modulo)));
+    const texto = document.getElementById('texto_reporte');
+    if (texto) {
+        texto.placeholder = moduloActivo('consultas_ia')
+            ? "Escribe aquí un registro (ej: Entró Toyota PXY9876...) o haz una pregunta analítica (ej: ¿Cuál fue el cliente que gastó más?)"
+            : "Escribe aquí un registro (ej: Entró Toyota PXY9876 por falla de frenos...)";
+    }
+    // Mientras no se conocen los módulos, lo marcado con data-modulo no se ve
+    // (evita que aparezca y desaparezca un botón al cargar)
+    document.body.classList.add('modulos-listos');
+}
+
+// Las funciones de un módulo esperan a saber si está activo antes de pedir datos
+async function esperarModulos() {
+    try { await promesaModulos; } catch (e) { /* sin datos: se muestra todo */ }
+}
+
 // Bienvenida personalizada con el nombre del taller (definido por el admin)
-async function cargarBienvenidaTaller() {
+function cargarBienvenidaTaller() {
+    promesaModulos = cargarDatosTaller().finally(aplicarModulos);
+    return promesaModulos;
+}
+
+async function cargarDatosTaller() {
     const token = localStorage.getItem("taller_token");
     const banner = document.getElementById('banner-bienvenida');
     if (!token || !banner) return;
@@ -48,6 +84,8 @@ async function cargarBienvenidaTaller() {
         
         // ¡NUEVA LÍNEA! Guardamos el nombre para usarlo en la factura
         localStorage.setItem("nombre_taller_actual", data.nombre_taller); 
+        // Módulos que incluye el plan del taller
+        modulosTaller = Array.isArray(data.modulos) ? data.modulos : null;
         
         banner.innerHTML = `¡Bienvenido, <span class="nombre-taller-destacado">${data.nombre_taller}</span>! Empecemos a trabajar`;
     } catch (e) {
@@ -130,6 +168,7 @@ async function iniciarSesion() {
             cargarVehiculosPendientes();
             cargarBienvenidaTaller();
             iniciarActualizacionCuadre();   // cuadre de caja siempre visible y en vivo
+            cargarRankingAnual();           // espera a saber si el plan lo incluye
         } else {
             msgError.innerText = data.mensaje;
             msgError.style.display = "block";
@@ -143,6 +182,10 @@ async function iniciarSesion() {
 // Función Logout
 function cerrarSesion() {
     localStorage.removeItem("taller_token");
+    // El próximo usuario puede ser de otro taller con otro plan
+    modulosTaller = null;
+    promesaModulos = null;
+    document.body.classList.remove('modulos-listos');
     document.getElementById("app-container").style.display = "none";
     document.getElementById("login-container").style.display = "block";
     document.getElementById("password_login").value = "";
@@ -334,6 +377,12 @@ async function manejarRespuestaRegistro(res, data, desdeModal, decisionCierre = 
     if (data.status === "faltan_datos") {
         mostrarNotificacion(data.mensaje_bd || "Faltan datos obligatorios: complétalos en la ventana.", "warning");
         mostrarFormularioFaltantes(data);
+        return;
+    }
+
+    // El plan del taller no incluye lo que se intentó registrar (ej. inventario)
+    if (data.status === "modulo_no_disponible") {
+        mostrarModal({ tipo: 'warning', titulo: 'Función no incluida en tu plan', mensaje: escaparHTML(data.mensaje_bd) });
         return;
     }
 
@@ -1948,6 +1997,8 @@ async function cargarRankingAnual() {
     const token = localStorage.getItem("taller_token");
     const contenedor = document.getElementById('resultado-ranking-anual');
     if (!contenedor) return;
+    await esperarModulos();
+    if (!moduloActivo('tecnicos')) return;   // el plan no incluye técnicos
 
     contenedor.innerHTML = `<p style="color: var(--texto-tenue); text-align: center; font-size: 0.9rem; margin: 15px 0;">Cargando posiciones del año...</p>`;
 
@@ -2365,7 +2416,7 @@ async function cargarServicios() {
                     <td>${e(textoGarantia(dias, km))}${propia ? '' : ' <span class="sub">(del taller)</span>'}
                         <button class="btn-link" onclick='editarGarantiaServicio(${JSON.stringify(String(s.id))}, ${JSON.stringify(s.nombre_servicio)}, ${JSON.stringify(s.garantia_dias)}, ${JSON.stringify(s.garantia_km)})'>Editar</button>
                     </td>
-                    <td class="centro">
+                    <td class="centro" data-modulo="materiales_servicio">
                         <button class="btn-link" onclick='abrirMaterialesServicio(${JSON.stringify(String(s.id))})'>${s.n_materiales ? `Materiales (${s.n_materiales})` : 'Agregar materiales'}</button>
                     </td>
                     <td class="centro">
@@ -2373,6 +2424,7 @@ async function cargarServicios() {
                     </td>
                 </tr>`;
         }).join('');
+        aplicarModulos();   // oculta la columna de materiales si el plan no la incluye
     } catch (error) {
         console.error("Error cargando servicios:", error);
     }

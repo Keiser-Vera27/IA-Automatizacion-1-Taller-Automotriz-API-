@@ -70,9 +70,10 @@
                     <div class="metric-card">
                         <h4>Ingresos (MRR)</h4>
                         <div class="metric-main-value" style="color: var(--accent-green);" id="dash-mrr">$0</div>
-                        <div class="metric-sub-stats">
+                        <div class="metric-sub-stats" id="dash-por-plan">
                             <span class="pill-badge pill-plan">Activas: <b id="dash-active-subs">-</b></span>
                         </div>
+                        <button class="btn-ghost" onclick="abrirPlanes()" style="width: 100%; margin-top: 15px; font-size: 12px; padding: 10px;">Planes y módulos</button>
                     </div>
                     
                     <!-- Tarjeta 3: Sistema y Monitor IA -->
@@ -82,7 +83,7 @@
                         <div class="metric-sub-stats">
                             <span class="pill-badge pill-suspendido">Errores: <b id="dash-errors">-</b></span>
                         </div>
-                        <button class="btn-ghost" onclick="abrirMonitorIA()" style="width: 100%; margin-top: 15px; font-size: 12px;">Abrir Monitor de IA</button>
+                        <button class="btn-ghost" onclick="abrirMonitorIA()" style="width: 100%; margin-top: 15px; font-size: 12px; padding: 10px;">Abrir Monitor de IA</button>
                     </div>
 
                 </div> <!-- AQUI SE CIERRA LA CUADRÍCULA -->
@@ -104,10 +105,14 @@
                     <input type="text" id="nuevo_nombre" placeholder="Nombre Taller">
                     <input type="email" id="nuevo_email" placeholder="Email Jefe">
                     <input type="password" id="nuevo_pass" placeholder="Password Jefe">
-                    <select id="nuevo_plan">
-                        <option value="mensual">Plan Mensual</option>
-                        <option value="trimestral">Plan Trimestral</option>
-                        <option value="anual">Plan Anual</option>
+                    <!-- Plan = qué funciones tiene; periodo = cada cuánto paga -->
+                    <select id="nuevo_plan_codigo" title="Plan (qué funciones tiene)">
+                        <option value="">Cargando planes...</option>
+                    </select>
+                    <select id="nuevo_plan" title="Periodo de pago">
+                        <option value="mensual">Pago mensual</option>
+                        <option value="trimestral">Pago trimestral</option>
+                        <option value="anual">Pago anual</option>
                     </select>
                     <button class="btn-primary" onclick="crearTaller()">Crear Taller</button>
                 </div>
@@ -125,6 +130,20 @@
             <button class="btn-ghost" onclick="cerrarVista360()" style="margin-bottom: 25px;">← Volver al panel principal</button>
             <div id="contenido-360">
                 <!-- Cargado dinámicamente por JS -->
+            </div>
+        </div>
+
+        <!-- VISTA: PLANES Y MÓDULOS (qué incluye cada plan y sus precios) -->
+        <div id="vista-planes" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                <button class="btn-ghost" onclick="cerrarPlanes()">← Volver al panel</button>
+            </div>
+            <div class="panel-box">
+                <h3 class="section-title">Planes y módulos</h3>
+                <p class="texto-ayuda">Marca qué módulos incluye cada plan. Los cambios se aplican al instante a todos los talleres de ese plan
+                    (salvo las excepciones que les hayas puesto a cada uno). Chat de registro, órdenes, cuadre de caja, orden PNG y catálogo
+                    de servicios están siempre incluidos.</p>
+                <div id="lista-planes" class="planes-grid"></div>
             </div>
         </div>
 

@@ -889,3 +889,10 @@ hr {
 .check-incluidos input { flex: 0 0 auto; margin-top: 3px; }
 .check-incluidos span { flex: 1 1 auto; }
 
+/* ==========================================================================
+   MÓDULOS DEL PLAN: lo que el plan del taller no incluye no se muestra.
+   Mientras se consulta el plan (body sin .modulos-listos) tampoco, para que
+   nada aparezca y desaparezca al cargar.
+   ========================================================================== */
+.modulo-oculto,
+body:not(.modulos-listos) #app-container [data-modulo] { display: none !important; }

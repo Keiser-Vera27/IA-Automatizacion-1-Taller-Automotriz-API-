@@ -12,7 +12,7 @@ import base64
 import hashlib
 import hmac
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -219,13 +219,163 @@ def obtener_superadmin(request: Request) -> str:
     try:
         user_data = supabase.auth.get_user(token)
         rol = user_data.user.app_metadata.get("rol")
+        email_admin = user_data.user.email
     except Exception as e:
         raise HTTPException(status_code=401, detail="Sesión inválida o expirada")
 
     if rol != "superadmin":
         raise HTTPException(status_code=403, detail="No tienes permisos de administrador")
 
+    # Para el historial de cambios de módulos (quién hizo cada cambio)
+    request.state.admin_email = email_admin
     return token
+
+
+# ==============================================================================
+# MÓDULOS POR TALLER (qué funciones tiene cada taller según su plan)
+# ==============================================================================
+# - La LISTA de módulos vive aquí, porque cada módulo corresponde a código real.
+# - Los PLANES (qué módulos incluye cada uno) y las EXCEPCIONES por taller viven
+#   en la base (planes, plan_modulos, taller_modulos) y se editan desde el panel
+#   admin, sin tocar código.
+# - Las funciones núcleo NO son módulos y nunca se apagan: chat de registro,
+#   órdenes, cuadre de caja, orden en PNG, catálogo de servicios y la garantía
+#   impresa en la orden.
+# - Apagar un módulo NUNCA borra datos: solo los oculta. Si se vuelve a
+#   activar, todo reaparece intacto.
+# - El bloqueo es en el backend (exigir_modulo en cada endpoint y en el
+#   trabajador de la cola); ocultar botones en la página es solo comodidad.
+MODULOS: dict[str, dict] = {
+    "inventario": {
+        "nombre": "Inventario de repuestos",
+        "descripcion": "Stock, carga desde Excel, auditoría y descuento de repuestos en las órdenes.",
+        "requiere": [],
+    },
+    "materiales_servicio": {
+        "nombre": "Materiales por servicio",
+        "descripcion": "Kits de materiales que se descuentan solos al registrar un servicio.",
+        "requiere": ["inventario"],
+    },
+    "control_garantias": {
+        "nombre": "Control de garantías",
+        "descripcion": "Reporte de reclamos, tasa de retorno por técnico/servicio y reclamos a proveedores.",
+        "requiere": [],
+    },
+    "tecnicos": {
+        "nombre": "Ranking y nómina de técnicos",
+        "descripcion": "Ranking anual en vivo y liquidación de comisiones por fechas.",
+        "requiere": [],
+    },
+    "dashboard": {
+        "nombre": "Dashboard analítico",
+        "descripcion": "Gráficos de repuestos, clientes y servicios más vendidos.",
+        "requiere": [],
+    },
+    "consultas_ia": {
+        "nombre": "Consultas con IA",
+        "descripcion": "Preguntas en lenguaje natural sobre el historial (ej. ¿qué cliente gastó más este mes?).",
+        "requiere": [],
+    },
+}
+
+PERIODOS_FACTURACION = ("mensual", "trimestral", "anual")
+MESES_POR_PERIODO = {"mensual": 1, "trimestral": 3, "anual": 12}
+MIGRACION_PLANES = "sql/2026-09-25_planes_y_modulos.sql"
+
+# Caché en memoria: evita 3 consultas extra en cada petición. Un cambio hecho
+# desde el panel se ve al instante en este servidor (se invalida) y, si hubiera
+# varios procesos, como máximo en TTL_CACHE_MODULOS segundos.
+TTL_CACHE_MODULOS = 60
+_cache_modulos: dict[str, tuple[float, frozenset]] = {}
+
+
+def hoy_ecuador_str() -> str:
+    return datetime.now(ZONA_ECUADOR).strftime("%Y-%m-%d")
+
+
+def aplicar_dependencias(activos: set) -> set:
+    """Quita los módulos cuyo requisito no está activo (ej. materiales sin inventario)."""
+    activos = set(activos)
+    cambio = True
+    while cambio:
+        cambio = False
+        for m in list(activos):
+            if any(r not in activos for r in MODULOS.get(m, {}).get("requiere", [])):
+                activos.discard(m)
+                cambio = True
+    return activos
+
+
+def excepcion_vigente(fila: dict, hoy: str) -> bool:
+    """Una excepción con fecha 'hasta' vale hasta ese día inclusive."""
+    hasta = str(fila.get("hasta") or "")[:10]
+    return not hasta or hasta >= hoy
+
+
+def calcular_modulos(modulos_plan, excepciones, hoy: str | None = None) -> set:
+    """Módulos efectivos = los del plan, más/menos las excepciones vigentes, sin
+    los que quedan sin su requisito."""
+    hoy = hoy or hoy_ecuador_str()
+    activos = {m for m in modulos_plan if m in MODULOS}
+    for e in excepciones or []:
+        m = e.get("modulo")
+        if m not in MODULOS or not excepcion_vigente(e, hoy):
+            continue
+        if e.get("habilitado"):
+            activos.add(m)
+        else:
+            activos.discard(m)
+    return aplicar_dependencias(activos)
+
+
+def leer_config_modulos(taller_id) -> tuple[str, list[str], list[dict]]:
+    """(plan del taller, módulos de ese plan, excepciones del taller).
+    Lanza excepción si la migración de planes aún no se ejecutó."""
+    fila = supabase.table("talleres").select("plan_codigo").eq("id", taller_id).limit(1).execute().data or []
+    plan = (fila[0].get("plan_codigo") if fila else None) or "pro"
+    modulos_plan = [f["modulo"] for f in (supabase.table("plan_modulos").select("modulo")
+                                          .eq("plan_codigo", plan).execute().data or [])]
+    excepciones = supabase.table("taller_modulos").select("*").eq("taller_id", taller_id).execute().data or []
+    return plan, modulos_plan, excepciones
+
+
+def modulos_activos(taller_id) -> frozenset:
+    clave = str(taller_id)
+    ahora = time.monotonic()
+    guardado = _cache_modulos.get(clave)
+    if guardado and guardado[0] > ahora:
+        return guardado[1]
+    try:
+        _, modulos_plan, excepciones = leer_config_modulos(taller_id)
+        activos = frozenset(calcular_modulos(modulos_plan, excepciones))
+        _cache_modulos[clave] = (ahora + TTL_CACHE_MODULOS, activos)
+    except Exception as e:
+        # Migración aún no ejecutada o falla puntual de la base: el taller NO
+        # pierde funciones por un problema nuestro. Se reintenta en 10 s.
+        print(f"Módulos no disponibles para el taller {clave} (¿falta {MIGRACION_PLANES}?): {e}")
+        activos = frozenset(MODULOS)
+        _cache_modulos[clave] = (ahora + 10, activos)
+    return activos
+
+
+def modulo_activo(taller_id, modulo: str) -> bool:
+    return modulo in modulos_activos(taller_id)
+
+
+def exigir_modulo(taller_id, modulo: str):
+    """Corta la petición si el plan del taller no incluye el módulo."""
+    if not modulo_activo(taller_id, modulo):
+        raise HTTPException(
+            status_code=403,
+            detail=(f"La función \"{MODULOS[modulo]['nombre']}\" no está incluida en el plan de tu taller. "
+                    "Si la necesitas, comunícate con Keiser para activarla."))
+
+
+def invalidar_cache_modulos(taller_id=None):
+    if taller_id is None:
+        _cache_modulos.clear()
+    else:
+        _cache_modulos.pop(str(taller_id), None)
 
 # ==============================================================================
 # SISTEMA DE AUTENTICACIÓN (LOGIN)
@@ -255,12 +405,18 @@ class NuevoTallerRequest(BaseModel):
     nombre_taller: str
     email_jefe: EmailStr
     password_jefe: str = Field(min_length=6)
+    # 'plan' es el nombre antiguo del periodo (mensual/trimestral/anual); se acepta
+    # para no romper clientes viejos del panel.
     plan: str = "mensual"
+    plan_codigo: str = "pro"
+    periodo_facturacion: Literal["mensual", "trimestral", "anual"] | None = None
 
 class ActualizarTallerRequest(BaseModel):
     plan: str | None = None
     estado_pago: str | None = None
     fecha_vencimiento: str | None = None
+    plan_codigo: str | None = None
+    periodo_facturacion: Literal["mensual", "trimestral", "anual"] | None = None
 
 class NuevoUsuarioTallerRequest(BaseModel):
     email: EmailStr
@@ -272,12 +428,25 @@ class NuevoUsuarioTallerRequest(BaseModel):
 def crear_taller(datos: NuevoTallerRequest, request: Request):
     obtener_superadmin(request)
 
-    resultado_taller = supabase.table("talleres").insert({
+    periodo = datos.periodo_facturacion or (datos.plan if datos.plan in PERIODOS_FACTURACION else "mensual")
+    fila_taller = {
         "nombre": datos.nombre_taller,
         "email": datos.email_jefe,
-        "plan": datos.plan,
+        "plan": periodo,                 # columna antigua: se mantiene como copia del periodo
         "estado_pago": "activo",
-    }).execute()
+    }
+    try:
+        if datos.plan_codigo not in {p["codigo"] for p in leer_planes()}:
+            raise HTTPException(status_code=400, detail=f"El plan '{datos.plan_codigo}' no existe")
+        resultado_taller = supabase.table("talleres").insert(
+            {**fila_taller, "plan_codigo": datos.plan_codigo, "periodo_facturacion": periodo}).execute()
+    except HTTPException:
+        raise
+    except Exception as e:
+        if not es_error_migracion_planes(e):
+            raise
+        # Migración de planes aún no ejecutada: se crea como antes
+        resultado_taller = supabase.table("talleres").insert(fila_taller).execute()
 
     if not resultado_taller.data:
         raise HTTPException(status_code=500, detail="No se pudo crear el registro del taller")
@@ -305,6 +474,22 @@ def crear_taller(datos: NuevoTallerRequest, request: Request):
 def listar_talleres(request: Request):
     obtener_superadmin(request)
     data = supabase.table("talleres").select("*").order("id").execute().data
+    try:
+        # Todo en 3 consultas (no 3 por taller)
+        planes = {p["codigo"]: p for p in leer_planes()}
+        excepciones_por_taller: dict[str, list] = {}
+        for e in supabase.table("taller_modulos").select("*").execute().data or []:
+            excepciones_por_taller.setdefault(str(e["taller_id"]), []).append(e)
+        hoy = hoy_ecuador_str()
+        for t in data:
+            plan = planes.get(t.get("plan_codigo") or "pro") or {"nombre": t.get("plan_codigo"), "modulos": []}
+            excepciones = excepciones_por_taller.get(str(t["id"]), [])
+            t["plan_nombre"] = plan["nombre"]
+            t["periodo"] = t.get("periodo_facturacion") or t.get("plan")
+            t["modulos"] = sorted(calcular_modulos(plan["modulos"], excepciones, hoy))
+            t["n_excepciones"] = sum(1 for e in excepciones if excepcion_vigente(e, hoy))
+    except Exception as e:
+        print(f"Listado de talleres sin datos de planes (¿falta {MIGRACION_PLANES}?): {e}")
     return {"talleres": data}
 
 
@@ -315,7 +500,32 @@ def actualizar_taller(taller_id: str, datos: ActualizarTallerRequest, request: R
     if not cambios:
         raise HTTPException(status_code=400, detail="No enviaste ningún campo para actualizar")
 
-    supabase.table("talleres").update(cambios).eq("id", taller_id).execute()
+    # 'plan' antiguo = periodo. Ambas columnas se mantienen iguales.
+    if cambios.get("plan") in PERIODOS_FACTURACION and "periodo_facturacion" not in cambios:
+        cambios["periodo_facturacion"] = cambios["plan"]
+    if "periodo_facturacion" in cambios:
+        cambios["plan"] = cambios["periodo_facturacion"]
+
+    plan_anterior = None
+    if "plan_codigo" in cambios:
+        try:
+            if cambios["plan_codigo"] not in {p["codigo"] for p in leer_planes()}:
+                raise HTTPException(status_code=400, detail=f"El plan '{cambios['plan_codigo']}' no existe")
+            plan_anterior = leer_config_modulos(taller_id)[0]
+        except HTTPException:
+            raise
+        except Exception as e:
+            error_migracion_planes(e)
+
+    try:
+        supabase.table("talleres").update(cambios).eq("id", taller_id).execute()
+    except Exception as e:
+        error_migracion_planes(e)
+
+    if plan_anterior is not None and plan_anterior != cambios["plan_codigo"]:
+        registrar_historial_modulos(request, [{"taller_id": taller_id, "accion": "cambio_plan",
+                                               "detalle": f"{plan_anterior} -> {cambios['plan_codigo']}"}])
+        invalidar_cache_modulos(taller_id)
     return {"status": "éxito", "mensaje": "Taller actualizado", "cambios": cambios}
 
 
@@ -345,16 +555,28 @@ def get_dashboard_metrics(request: Request):
     
     try:
         # 1. Consultar talleres
-        talleres = supabase.table("talleres").select("id, nombre, estado_pago, plan, fecha_vencimiento").execute().data
+        talleres = supabase.table("talleres").select("*").execute().data
         
         total = len(talleres)
         activos_lista = [t for t in talleres if t.get("estado_pago") == "activo"]
         activos = len(activos_lista)
         suspendidos = sum(1 for t in talleres if t.get("estado_pago") == "suspendido")
 
-        # 2. Consultar MRR
-        precios_planes = {"mensual": 29.99, "trimestral": 79.99, "anual": 299.99}
-        mrr = sum(precios_planes.get(t.get("plan", "mensual"), 0) for t in activos_lista)
+        # 2. MRR (ingreso mensual recurrente): el precio del plan y periodo de
+        # cada taller activo, llevado a mes (trimestral / 3, anual / 12).
+        try:
+            planes = {p["codigo"]: p for p in leer_planes()}
+        except Exception:
+            planes = {}   # migración de planes aún no ejecutada: precios anteriores
+        precios_antiguos = {"mensual": 29.99, "trimestral": 79.99, "anual": 299.99}
+        mrr, por_plan = 0.0, {}
+        for t in activos_lista:
+            periodo = t.get("periodo_facturacion") or (t.get("plan") if t.get("plan") in PERIODOS_FACTURACION else "mensual")
+            plan = planes.get(t.get("plan_codigo") or "pro")
+            precio = float(plan[f"precio_{periodo}"] or 0) if plan else precios_antiguos.get(periodo, 0)
+            mrr += precio / MESES_POR_PERIODO[periodo]
+            nombre_plan = plan["nombre"] if plan else "Sin plan"
+            por_plan[nombre_plan] = por_plan.get(nombre_plan, 0) + 1
         
         # 3. Consultar uso de sistema de hoy
         hoy_inicio, hoy_fin = limites_dia_ecuador() 
@@ -405,7 +627,8 @@ def get_dashboard_metrics(request: Request):
             },
             "subscriptions": {
                 "mrr": round(mrr, 2),
-                "active": activos
+                "active": activos,
+                "por_plan": por_plan
             },
             "system": {
                 "ai_today": ai_today,
@@ -453,6 +676,9 @@ def obtener_ficha_360(taller_id: str, request: Request):
                 "nombre": taller.get("nombre"),
                 "email": taller.get("email"),
                 "plan": taller.get("plan", "N/A"),
+                "plan_codigo": taller.get("plan_codigo"),
+                "periodo": taller.get("periodo_facturacion") or taller.get("plan"),
+                "modulos": [MODULOS[m]["nombre"] for m in MODULOS if m in modulos_activos(taller_id)],
                 "estado_pago": taller.get("estado_pago", "N/A"),
                 "fecha_vencimiento": taller.get("fecha_vencimiento") or "No definida",
                 "created_at": taller.get("created_at", "").split("T")[0] if taller.get("created_at") else "Desconocida"
@@ -473,6 +699,264 @@ def obtener_ficha_360(taller_id: str, request: Request):
     # ==============================================================================
 # MONITOR DE IA Y COLA DE PROCESAMIENTO
 # ==============================================================================
+# ------------------------------------------------------------------------------
+# PLANES Y MÓDULOS (panel admin)
+# ------------------------------------------------------------------------------
+def es_error_migracion_planes(e: Exception) -> bool:
+    texto = str(e)
+    return any(n in texto for n in ("planes", "plan_modulos", "taller_modulos", "modulos_historial",
+                                     "plan_codigo", "periodo_facturacion"))
+
+
+def error_migracion_planes(e: Exception):
+    """Convierte 'tabla/columna no existe' en un mensaje claro para el admin."""
+    if es_error_migracion_planes(e):
+        raise HTTPException(status_code=500, detail=f"Falta ejecutar en Supabase la migración {MIGRACION_PLANES}.")
+    raise e
+
+
+def leer_planes() -> list[dict]:
+    """Planes con sus módulos: [{codigo, nombre, precios..., modulos: [...]}]."""
+    planes = supabase.table("planes").select("*").order("orden").execute().data or []
+    por_plan: dict[str, list] = {}
+    for f in supabase.table("plan_modulos").select("*").execute().data or []:
+        por_plan.setdefault(f["plan_codigo"], []).append(f["modulo"])
+    for p in planes:
+        p["modulos"] = [m for m in MODULOS if m in por_plan.get(p["codigo"], [])]
+    return planes
+
+
+def catalogo_modulos() -> list[dict]:
+    return [{"clave": k, "nombre": v["nombre"], "descripcion": v["descripcion"],
+             "requiere": v["requiere"], "requiere_nombres": [MODULOS[r]["nombre"] for r in v["requiere"]]}
+            for k, v in MODULOS.items()]
+
+
+def registrar_historial_modulos(request: Request, filas: list[dict]):
+    """Deja constancia de cada cambio. Nunca bloquea la operación principal."""
+    if not filas:
+        return
+    email = getattr(request.state, "admin_email", None) or "admin"
+    try:
+        supabase.table("modulos_historial").insert([{**f, "admin_email": email} for f in filas]).execute()
+    except Exception as e:
+        print(f"No se pudo guardar el historial de módulos: {e}")
+
+
+def validar_dependencias(modulos: set) -> str | None:
+    """Mensaje de error si un módulo está sin su requisito, o None."""
+    for m in MODULOS:
+        if m in modulos:
+            faltan = [MODULOS[r]["nombre"] for r in MODULOS[m]["requiere"] if r not in modulos]
+            if faltan:
+                return f"\"{MODULOS[m]['nombre']}\" necesita también: {', '.join(faltan)}."
+    return None
+
+
+class PlanRequest(BaseModel):
+    nombre: str = Field(min_length=2, max_length=40)
+    precio_mensual: float = Field(ge=0, le=100000)
+    precio_trimestral: float = Field(ge=0, le=100000)
+    precio_anual: float = Field(ge=0, le=100000)
+    modulos: list[str] = Field(default_factory=list)
+
+
+class AjusteModulo(BaseModel):
+    modulo: str
+    # plan = sin excepción (manda el plan); activado / desactivado = excepción
+    estado: Literal["plan", "activado", "desactivado"]
+    hasta: date | None = None          # vacío = sin fecha de fin
+    nota: str = Field(default="", max_length=300)
+
+
+class ModulosTallerRequest(BaseModel):
+    plan_codigo: str | None = None
+    ajustes: list[AjusteModulo] = Field(default_factory=list)
+
+
+@app.get("/admin/planes")
+def admin_listar_planes(request: Request):
+    obtener_superadmin(request)
+    try:
+        return {"planes": leer_planes(), "modulos": catalogo_modulos()}
+    except Exception as e:
+        error_migracion_planes(e)
+
+
+@app.put("/admin/planes/{codigo}")
+def admin_actualizar_plan(codigo: str, datos: PlanRequest, request: Request):
+    obtener_superadmin(request)
+    try:
+        actual = next((p for p in leer_planes() if p["codigo"] == codigo), None)
+    except Exception as e:
+        error_migracion_planes(e)
+    if not actual:
+        raise HTTPException(status_code=404, detail="Ese plan no existe")
+
+    nuevos = set(datos.modulos)
+    desconocidos = nuevos - set(MODULOS)
+    if desconocidos:
+        raise HTTPException(status_code=400, detail=f"Módulos desconocidos: {', '.join(sorted(desconocidos))}")
+    problema = validar_dependencias(nuevos)
+    if problema:
+        raise HTTPException(status_code=400, detail=problema)
+
+    supabase.table("planes").update({
+        "nombre": datos.nombre.strip(),
+        "precio_mensual": round(datos.precio_mensual, 2),
+        "precio_trimestral": round(datos.precio_trimestral, 2),
+        "precio_anual": round(datos.precio_anual, 2),
+    }).eq("codigo", codigo).execute()
+
+    antes = set(actual["modulos"])
+    if nuevos != antes:
+        supabase.table("plan_modulos").delete().eq("plan_codigo", codigo).execute()
+        if nuevos:
+            supabase.table("plan_modulos").insert([{"plan_codigo": codigo, "modulo": m} for m in sorted(nuevos)]).execute()
+
+    detalle = []
+    if nuevos - antes:
+        detalle.append("agregó " + ", ".join(MODULOS[m]["nombre"] for m in sorted(nuevos - antes)))
+    if antes - nuevos:
+        detalle.append("quitó " + ", ".join(MODULOS[m]["nombre"] for m in sorted(antes - nuevos)))
+    precios_antes = tuple(float(actual[f"precio_{p}"] or 0) for p in PERIODOS_FACTURACION)
+    precios_nuevos = (datos.precio_mensual, datos.precio_trimestral, datos.precio_anual)
+    if tuple(round(x, 2) for x in precios_nuevos) != tuple(round(x, 2) for x in precios_antes):
+        detalle.append("precios " + " / ".join(f"${x:.2f}" for x in precios_nuevos))
+    if datos.nombre.strip() != actual["nombre"]:
+        detalle.append(f"nombre '{actual['nombre']}' -> '{datos.nombre.strip()}'")
+    if detalle:
+        registrar_historial_modulos(request, [{"plan_codigo": codigo, "accion": "plan_editado", "detalle": "; ".join(detalle)}])
+
+    invalidar_cache_modulos()   # afecta a todos los talleres de ese plan
+    return {"status": "éxito", "planes": leer_planes()}
+
+
+def estado_modulos_taller(taller_id: str) -> dict:
+    """Todo lo que el panel necesita para la ventana 'Módulos' de un taller."""
+    taller = supabase.table("talleres").select("*").eq("id", taller_id).limit(1).execute().data
+    if not taller:
+        raise HTTPException(status_code=404, detail="Ese taller no existe")
+    taller = taller[0]
+    planes = leer_planes()
+    plan_codigo = taller.get("plan_codigo") or "pro"
+    plan = next((p for p in planes if p["codigo"] == plan_codigo), {"modulos": []})
+    excepciones = {e["modulo"]: e for e in supabase.table("taller_modulos").select("*")
+                   .eq("taller_id", taller_id).execute().data or []}
+    hoy = hoy_ecuador_str()
+    efectivos = calcular_modulos(plan["modulos"], excepciones.values(), hoy)
+
+    modulos = []
+    for m in catalogo_modulos():
+        k = m["clave"]
+        e = excepciones.get(k)
+        vigente = bool(e) and excepcion_vigente(e, hoy)
+        pedido = (bool(e["habilitado"]) if vigente else k in plan["modulos"])
+        modulos.append({
+            **m,
+            "en_plan": k in plan["modulos"],
+            "estado": ("activado" if e["habilitado"] else "desactivado") if e else "plan",
+            "hasta": str(e.get("hasta"))[:10] if e and e.get("hasta") else None,
+            "nota": (e or {}).get("nota") or "",
+            "vencida": bool(e) and not vigente,
+            "activo": k in efectivos,
+            # Pedido (por plan o excepción) pero apagado porque falta su requisito
+            "bloqueado": pedido and k not in efectivos,
+        })
+    try:
+        historial = (supabase.table("modulos_historial").select("*").eq("taller_id", taller_id)
+                     .order("fecha", desc=True).limit(15).execute().data or [])
+    except Exception:
+        historial = []
+    return {
+        "taller": {"id": taller["id"], "nombre": taller.get("nombre"), "plan_codigo": plan_codigo,
+                   "periodo": taller.get("periodo_facturacion") or taller.get("plan")},
+        "planes": [{"codigo": p["codigo"], "nombre": p["nombre"], "modulos": p["modulos"]} for p in planes],
+        "modulos": modulos,
+        "historial": historial,
+    }
+
+
+@app.get("/admin/talleres/{taller_id}/modulos")
+def admin_modulos_taller(taller_id: str, request: Request):
+    obtener_superadmin(request)
+    try:
+        return estado_modulos_taller(taller_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_migracion_planes(e)
+
+
+@app.put("/admin/talleres/{taller_id}/modulos")
+def admin_guardar_modulos_taller(taller_id: str, datos: ModulosTallerRequest, request: Request):
+    obtener_superadmin(request)
+    try:
+        actual = estado_modulos_taller(taller_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_migracion_planes(e)
+
+    hoy = hoy_ecuador_str()
+    planes = {p["codigo"]: p for p in actual["planes"]}
+    plan_nuevo = datos.plan_codigo or actual["taller"]["plan_codigo"]
+    if plan_nuevo not in planes:
+        raise HTTPException(status_code=400, detail=f"El plan '{plan_nuevo}' no existe")
+
+    # 1) Validar TODO antes de escribir nada
+    excepciones = {m["clave"]: m for m in actual["modulos"] if m["estado"] != "plan"}
+    nuevas: dict[str, dict | None] = {}          # modulo -> fila nueva (None = quitar excepción)
+    for a in datos.ajustes:
+        if a.modulo not in MODULOS:
+            raise HTTPException(status_code=400, detail=f"Módulo desconocido: {a.modulo}")
+        if a.estado == "plan":
+            nuevas[a.modulo] = None
+            continue
+        if a.hasta and a.hasta.isoformat() < hoy:
+            raise HTTPException(status_code=400, detail=f"La fecha de fin de \"{MODULOS[a.modulo]['nombre']}\" ya pasó.")
+        nuevas[a.modulo] = {"taller_id": taller_id, "modulo": a.modulo, "habilitado": a.estado == "activado",
+                            "hasta": a.hasta.isoformat() if a.hasta else None, "nota": a.nota.strip() or None}
+
+    resultado = {k: v for k, v in excepciones.items()}
+    filas_resultado = [{"modulo": k, "habilitado": v["estado"] == "activado", "hasta": v["hasta"]}
+                       for k, v in resultado.items() if k not in nuevas]
+    filas_resultado += [f for f in nuevas.values() if f]
+    efectivos = calcular_modulos(planes[plan_nuevo]["modulos"], filas_resultado, hoy)
+    for k, f in nuevas.items():
+        if f and f["habilitado"] and k not in efectivos:
+            faltan = [MODULOS[r]["nombre"] for r in MODULOS[k]["requiere"] if r not in efectivos]
+            raise HTTPException(status_code=400, detail=f"\"{MODULOS[k]['nombre']}\" necesita también: {', '.join(faltan)}.")
+
+    # 2) Escribir solo lo que cambió y dejar constancia
+    historial = []
+    if plan_nuevo != actual["taller"]["plan_codigo"]:
+        supabase.table("talleres").update({"plan_codigo": plan_nuevo}).eq("id", taller_id).execute()
+        historial.append({"taller_id": taller_id, "accion": "cambio_plan",
+                          "detalle": f"{planes[actual['taller']['plan_codigo']]['nombre'] if actual['taller']['plan_codigo'] in planes else actual['taller']['plan_codigo']} -> {planes[plan_nuevo]['nombre']}"})
+    for k, f in nuevas.items():
+        previa = excepciones.get(k)
+        if f is None:
+            if previa:
+                supabase.table("taller_modulos").delete().eq("taller_id", taller_id).eq("modulo", k).execute()
+                historial.append({"taller_id": taller_id, "modulo": k, "accion": "segun_plan",
+                                  "detalle": "Se quitó la excepción: manda el plan"})
+            continue
+        if previa and (previa["estado"] == "activado") == f["habilitado"] and previa["hasta"] == f["hasta"] \
+                and (previa["nota"] or None) == f["nota"]:
+            continue   # sin cambios
+        supabase.table("taller_modulos").delete().eq("taller_id", taller_id).eq("modulo", k).execute()
+        supabase.table("taller_modulos").insert(f).execute()
+        partes = [f"hasta {f['hasta']}" if f["hasta"] else "sin fecha de fin"]
+        if f["nota"]:
+            partes.append(f["nota"])
+        historial.append({"taller_id": taller_id, "modulo": k,
+                          "accion": "activado" if f["habilitado"] else "desactivado", "detalle": "; ".join(partes)})
+    registrar_historial_modulos(request, historial)
+    invalidar_cache_modulos(taller_id)
+    return {"status": "éxito", "cambios": len(historial), **estado_modulos_taller(taller_id)}
+
+
 @app.get("/admin/cola")
 def obtener_cola_ia(request: Request, limite: int = 50):
     obtener_superadmin(request)
@@ -675,6 +1159,8 @@ def construir_prompt_extraccion(taller_id, texto: str, nombres_tecnicos: list[st
     # menciona el nombre de la pieza (ej. "usé un filtro de aceite"), y
     # repuestos_usados queda vacío aunque sí se haya usado un repuesto real.
     try:
+        if not modulo_activo(taller_id, "inventario"):
+            raise LookupError("sin módulo de inventario")
         inventario_res = supabase.table("inventario").select("codigo, nombre").eq("taller_id", taller_id).limit(500).execute()
         lista_inventario_str = "No hay repuestos registrados en el inventario aún."
         if inventario_res.data:
@@ -682,6 +1168,9 @@ def construir_prompt_extraccion(taller_id, texto: str, nombres_tecnicos: list[st
                 f"- {i.get('codigo', 'S/C')}: {i.get('nombre', '')}"
                 for i in inventario_res.data
             ])
+    except LookupError:
+        lista_inventario_str = ("Este taller NO lleva inventario: nunca uses los tipos 'inventario' ni 'devolucion' "
+                                "y deja repuestos_usados vacío.")
     except Exception as e:
         print(f"Error interno leyendo el inventario: {e}")
         lista_inventario_str = "Catálogo de inventario no disponible."
@@ -1071,7 +1560,7 @@ def normalizar_cilindros(valor) -> int | None:
     return n if n and 1 <= n <= 16 else None
 
 def calcular_materiales(taller_id, lineas: list[dict], modelo: str, cilindros,
-                        repuestos_manuales: list[dict] | None = None) -> dict:
+                        repuestos_manuales: list[dict] | None = None, usar_kits: bool = True) -> dict:
     """Materiales que consumen los trabajos 'lineas' (según su servicio del catálogo),
     más los repuestos nombrados en el mensaje. Devuelve:
       {"items": [{inventario_id, codigo, nombre, cantidad, precio_unitario, incluido,
@@ -1088,7 +1577,7 @@ def calcular_materiales(taller_id, lineas: list[dict], modelo: str, cilindros,
     servicio_ids = sorted({l.get("servicio_id") for l in lineas if l.get("servicio_id") is not None}, key=str)
 
     kit_rows, incluidos = [], {}
-    if servicio_ids:
+    if servicio_ids and usar_kits:
         try:
             kit_rows = (supabase.table("servicio_materiales").select("*")
                         .eq("taller_id", taller_id).in_("servicio_id", servicio_ids).execute().data) or []
@@ -1172,6 +1661,15 @@ def calcular_materiales(taller_id, lineas: list[dict], modelo: str, cilindros,
     if supuesto:
         avisos.append(f"No se conoce el número de cilindros: se calcularon materiales para {CILINDROS_SUPUESTOS}.")
     return {"items": items, "avisos": avisos, "cilindros_supuestos": supuesto}
+
+def materiales_segun_modulos(taller_id, lineas, modelo, cilindros, repuestos_manuales) -> dict:
+    """Sin inventario: no se toca el stock ni se ligan repuestos a la orden.
+    Sin 'materiales por servicio': solo cuentan los repuestos nombrados en el mensaje."""
+    if not modulo_activo(taller_id, "inventario"):
+        return {"items": [], "avisos": [], "cilindros_supuestos": False}
+    return calcular_materiales(taller_id, lineas, modelo, cilindros, repuestos_manuales,
+                               usar_kits=modulo_activo(taller_id, "materiales_servicio"))
+
 
 def total_materiales_cobrables(items: list[dict]) -> float:
     """Suma de materiales que se cobran aparte (los incluidos no suman al total)."""
@@ -1271,7 +1769,7 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str], tex
         except Exception as e:
             print(f"No se pudieron leer los materiales de la orden: {e}")
     cilindros_vehiculo = d.get("cilindros") or (ultima or {}).get("cilindros")
-    vista_materiales = calcular_materiales(
+    vista_materiales = materiales_segun_modulos(
         taller_id, lineas_nuevas, d.get("modelo") or (ultima or {}).get("modelo") or "",
         cilindros_vehiculo, [r for r in (d.get("repuestos_usados") or []) if isinstance(r, dict)])
     materiales_orden = materiales_previos + vista_materiales["items"]
@@ -1516,6 +2014,14 @@ async def trabajador_silencioso():
         # Estado final del mensaje en la cola (puede cambiar si queda algo pendiente)
         estado_cola_final, nota_cola = "Procesado", None
 
+        # Plan sin inventario: un ingreso/devolución de repuestos no se aplica
+        if tipo in ("inventario", "devolucion") and not modulo_activo(taller_id, "inventario"):
+            supabase.table("cola_mensajes").update({
+                "estado": "Omitido (módulo no incluido)",
+                "ultimo_error": "El plan del taller no incluye Inventario de repuestos.",
+            }).eq("id", id_msj).execute()
+            continue
+
         if tipo == "reparacion" and resultado.get("reparacion"):
             d = resultado["reparacion"]
             placa = str(d.get("vehiculo", "")).strip()
@@ -1684,8 +2190,8 @@ async def trabajador_silencioso():
                 if not ultima_orden or ultima_orden.get("estado") != "Pendiente":
                     modelo_final = d.get("modelo") or (ultima_orden or {}).get("modelo") or ""
                     cilindros_final = normalizar_cilindros(d.get("cilindros")) or (ultima_orden or {}).get("cilindros")
-                materiales = calcular_materiales(taller_id, lineas_para_kit, modelo_final, cilindros_final,
-                                                 [r for r in (d.get("repuestos_usados") or []) if isinstance(r, dict)])
+                materiales = materiales_segun_modulos(taller_id, lineas_para_kit, modelo_final, cilindros_final,
+                                                      [r for r in (d.get("repuestos_usados") or []) if isinstance(r, dict)])
                 if materiales["items"]:
                     try:
                         ya_en_orden = supabase.table("reparacion_detalles").select("*").eq("reparacion_id", reparacion_id_actual).execute().data or []
@@ -2179,6 +2685,14 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         }
 
     # --- CONSULTA ANALÍTICA ---
+    if accion == "consulta" and not modulo_activo(taller_id, "consultas_ia"):
+        return {
+            "status": "éxito_consulta",
+            "tipo_detectado": "consulta",
+            "mensaje_bd": ("Las consultas con IA no están incluidas en el plan de tu taller. "
+                           "Si las necesitas, comunícate con Keiser para activarlas."),
+            "registrado_a_las": tiempo_actual
+        }
     if accion == "consulta":
         try:
             respuesta_analitica = responder_consulta_analitica(cliente_seguro, texto_usuario, taller_id)
@@ -2244,6 +2758,15 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
             print(f"Pre-validación no disponible, se encola sin validar: {e}")
             resultado = None
 
+    # Plan sin inventario: se avisa en lugar de guardar un movimiento de repuestos
+    if resultado and resultado.get("tipo") in ("inventario", "devolucion") and not modulo_activo(taller_id, "inventario"):
+        return {
+            "status": "modulo_no_disponible",
+            "modulo": "inventario",
+            "mensaje_bd": (f"El \"{MODULOS['inventario']['nombre']}\" no está incluido en el plan de tu taller, "
+                           "así que este movimiento de repuestos no se guardó. Si lo necesitas, comunícate con Keiser."),
+        }
+
     garantia_aviso = None
     pendientes_cierre = []
     cierre_descartado = False
@@ -2303,9 +2826,13 @@ def mi_taller(request: Request):
     ingresó el admin al crearlo, para mostrarlo en el saludo de bienvenida.
     """
     _, taller_id = obtener_cliente_seguro(request)
-    data = supabase.table("talleres").select("nombre").eq("id", taller_id).execute().data
-    nombre = data[0]["nombre"] if data and data[0].get("nombre") else "tu taller"
-    return {"nombre_taller": nombre}
+    data = supabase.table("talleres").select("*").eq("id", taller_id).execute().data
+    fila = data[0] if data else {}
+    nombre = fila.get("nombre") or "tu taller"
+    # Módulos activos: la página oculta lo que el plan no incluye
+    # (el backend igual lo bloquea con exigir_modulo)
+    return {"nombre_taller": nombre, "plan": fila.get("plan_codigo"),
+            "modulos": sorted(modulos_activos(taller_id))}
 
 # ==============================================================================
 # CUADRE DE CAJA DIARIO
@@ -2597,6 +3124,7 @@ def ranking_anual(request: Request, anio: int | None = None):
     para mostrar un dashboard de posiciones en vivo ordenado del que más genera.
     """
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "tecnicos")
     
     if not anio:
         anio = datetime.now(ZONA_ECUADOR).year
@@ -2682,6 +3210,7 @@ def reporte_liquidacion(request: Request, fecha_inicio: str, fecha_fin: str):
     Formato esperado de fechas: YYYY-MM-DD
     """
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "tecnicos")
 
     # Usar los límites del día en Ecuador para asegurar precisión exacta de horario
     inicio_utc, _ = limites_dia_ecuador(fecha_inicio)
@@ -2940,6 +3469,7 @@ def reporte_garantias(request: Request, desde: str | None = None, hasta: str | N
     garantías entregadas, reclamos, tasa de retorno y costo, por técnico, por
     servicio, por causa y por repuesto; más los reclamos a proveedores."""
     _, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "control_garantias")
     from datetime import timedelta
     hoy = datetime.now(ZONA_ECUADOR).date()
     try:
@@ -3090,6 +3620,7 @@ class ActualizacionReclamoProveedor(BaseModel):
 @app.patch("/reparaciones/{reparacion_id}/reclamo-proveedor")
 def actualizar_reclamo_proveedor(reparacion_id: str, datos: ActualizacionReclamoProveedor, request: Request):
     _, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "control_garantias")
     res = (supabase.table("reparaciones")
            .update({"reclamo_proveedor_estado": datos.estado,
                     "reclamo_proveedor_monto": round(datos.monto, 2) if datos.estado == "Aprobado" else 0})
@@ -3258,6 +3789,7 @@ def importar_inventario(request: Request, archivo: UploadFile = File(...)):
     # 'def' (no 'async def'): las llamadas a Supabase son bloqueantes; así FastAPI
     # usa el threadpool y no congela el servidor mientras se importa.
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "inventario")
 
     try:
         contenido = archivo.file.read()
@@ -3414,7 +3946,8 @@ COLUMNAS_PLANTILLA_INVENTARIO = [
 
 @app.get("/plantilla-inventario")
 def plantilla_inventario(request: Request):
-    obtener_cliente_seguro(request)  # solo usuarios autenticados
+    _, taller_id = obtener_cliente_seguro(request)  # solo usuarios autenticados
+    exigir_modulo(taller_id, "inventario")
 
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -3567,6 +4100,8 @@ def listar_servicios(request: Request):
     data = cliente_seguro.table("servicios").select("*").eq("taller_id", taller_id).order("nombre_servicio").execute().data
     dias, km = obtener_garantia_taller(taller_id)
     try:
+        if not modulo_activo(taller_id, "materiales_servicio"):
+            raise LookupError("módulo de materiales no incluido")
         conteo: dict[str, int] = {}
         for f in (supabase.table("servicio_materiales").select("servicio_id").eq("taller_id", taller_id).execute().data or []):
             conteo[str(f["servicio_id"])] = conteo.get(str(f["servicio_id"]), 0) + 1
@@ -3630,6 +4165,7 @@ def _error_migracion_materiales(e: Exception):
 def opciones_inventario(request: Request):
     """Códigos del inventario del taller (para elegir materiales)."""
     _, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "inventario")
     filas = (supabase.table("inventario").select("codigo, nombre, cantidad").eq("taller_id", taller_id)
              .order("codigo").limit(3000).execute()).data or []
     return {"repuestos": filas}
@@ -3637,6 +4173,7 @@ def opciones_inventario(request: Request):
 @app.get("/servicios/{servicio_id}/materiales")
 def listar_materiales_servicio(servicio_id: str, request: Request):
     _, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "materiales_servicio")
     servicio = _servicio_del_taller(servicio_id, taller_id)
     try:
         filas = (supabase.table("servicio_materiales").select("*, inventario(codigo, nombre, cantidad)")
@@ -3656,6 +4193,7 @@ def listar_materiales_servicio(servicio_id: str, request: Request):
 @app.post("/servicios/{servicio_id}/materiales")
 def agregar_material_servicio(servicio_id: str, datos: NuevoMaterialServicio, request: Request):
     _, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "materiales_servicio")
     _servicio_del_taller(servicio_id, taller_id)
     inv = (supabase.table("inventario").select("id").eq("taller_id", taller_id)
            .eq("codigo", datos.codigo.strip()).limit(1).execute()).data
@@ -3676,6 +4214,7 @@ def agregar_material_servicio(servicio_id: str, datos: NuevoMaterialServicio, re
 @app.delete("/servicios/{servicio_id}/materiales/{material_id}")
 def eliminar_material_servicio(servicio_id: str, material_id: str, request: Request):
     _, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "materiales_servicio")
     res = (supabase.table("servicio_materiales").delete().eq("id", material_id)
            .eq("servicio_id", servicio_id).eq("taller_id", taller_id).execute()).data
     if not res:
@@ -3685,6 +4224,7 @@ def eliminar_material_servicio(servicio_id: str, material_id: str, request: Requ
 @app.patch("/servicios/{servicio_id}/materiales-config")
 def configurar_materiales_servicio(servicio_id: str, datos: ConfigMaterialesServicio, request: Request):
     _, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "materiales_servicio")
     _servicio_del_taller(servicio_id, taller_id)
     try:
         supabase.table("servicios").update({"materiales_incluidos": datos.materiales_incluidos}) \
@@ -3717,6 +4257,7 @@ def dashboard_stats(request: Request):
     Calcula los Top 5 para el Dashboard Analítico.
     """
     cliente_seguro, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "dashboard")
     
     try:
         # 1. Traer todas las órdenes terminadas con sus detalles
@@ -3774,6 +4315,7 @@ def dashboard_stats(request: Request):
 def exportar_inventario(request: Request):
     try:
         cliente_seguro, taller_id = obtener_cliente_seguro(request)
+        exigir_modulo(taller_id, "inventario")
 
         inv = cliente_seguro.table("inventario").select("*").eq("taller_id", taller_id).execute().data
         df_inventario = pd.DataFrame(inv)
@@ -3800,6 +4342,8 @@ def exportar_inventario(request: Request):
             filename=nombre_archivo
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         return {"status": "error_critico", "motivo_exacto": str(e)}
 
