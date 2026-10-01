@@ -2307,11 +2307,12 @@ function renderTendencia(d) {
     const series = [
         { etiqueta: 'Ingresos', color: colorVar('--serie-ingresos'), datos: s.ingresos, ancho: 2 },
         { etiqueta: 'Egresos', color: colorVar('--serie-egresos'), datos: s.egresos, ancho: 2 },
-        { etiqueta: `Ingresos ${d.anterior.texto}`, color: colorVar('--serie-anterior'), datos: s.ingresos_anterior, ancho: 1.5, punteada: true }
+        { etiqueta: etiquetaPeriodoAnterior(d), color: colorVar('--serie-anterior'), datos: s.ingresos_anterior, ancho: 1.5, punteada: true,
+          titulo: `Ingresos del ${d.anterior.texto}, día por día, para comparar` }
     ];
     // Leyenda propia (texto en tinta normal; el color solo en la muestra)
     document.getElementById('dash-leyenda').innerHTML = series.map(x =>
-        `<span class="dash-leyenda-item"><span class="dash-muestra ${x.punteada ? 'punteada' : ''}" style="--c:${x.color}"></span>${escaparHTML(x.etiqueta)}</span>`).join('');
+        `<span class="dash-leyenda-item"${x.titulo ? ` title="${escaparHTML(x.titulo)}"` : ''}><span class="dash-muestra ${x.punteada ? 'punteada' : ''}" style="--c:${x.color}"></span>${escaparHTML(x.etiqueta)}</span>`).join('');
     if (sinDatos || unPunto || typeof Chart === 'undefined') return;
 
     const tinta = colorVar('--texto-tenue');
@@ -2352,6 +2353,20 @@ function renderTendencia(d) {
     });
 }
 
+// Nombre claro de la línea punteada según el filtro elegido:
+// "Mes anterior (ago)", "Año anterior (2025)", "Semana anterior" o "Período anterior"
+const MESES_DASH = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function etiquetaPeriodoAnterior(d) {
+    const [ay, am, ad] = d.periodo.desde.split('-').map(Number);
+    const [by, bm] = d.periodo.hasta.split('-').map(Number);
+    const anterior = d.anterior.desde.split('-').map(Number);
+    if (ad === 1 && ay === by && am === bm) return `Mes anterior (${MESES_DASH[anterior[1] - 1]})`;
+    if (ad === 1 && am === 1 && ay === by) return `Año anterior (${anterior[0]})`;
+    const activo = document.querySelector('.dash-filtros > .dash-chip.activo');
+    if (activo && activo.dataset.rango === 'semana') return 'Semana anterior';
+    return 'Período anterior';
+}
+
 function renderTablaTendencia(d) {
     const s = d.serie;
     const filas = s.etiquetas.map((e, i) => `<tr><td>${escaparHTML(e)}</td><td class="num">${dinero(s.ingresos[i])}</td>
@@ -2359,7 +2374,7 @@ function renderTablaTendencia(d) {
     document.getElementById('dash-tabla-tendencia').innerHTML = `<table class="tabla-caja">
         <thead><tr><th>${d.periodo.granularidad === 'mes' ? 'Mes' : d.periodo.granularidad === 'semana' ? 'Semana del' : 'Día'}</th>
             <th style="text-align:right;">Ingresos</th><th style="text-align:right;">Egresos</th>
-            <th style="text-align:right;">Ingresos antes</th></tr></thead><tbody>${filas}</tbody></table>`;
+            <th style="text-align:right;">${escaparHTML(etiquetaPeriodoAnterior(d))}</th></tr></thead><tbody>${filas}</tbody></table>`;
 }
 
 function alternarTablaTendencia() {
