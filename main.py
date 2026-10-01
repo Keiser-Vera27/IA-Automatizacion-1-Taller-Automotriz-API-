@@ -1422,14 +1422,20 @@ def _evaluar_garantia(o: dict, km_actual: int | None) -> dict | None:
     }
 
 def buscar_garantia(taller_id, placa: str, km_actual: int | None) -> dict | None:
-    """Garantía de la última orden terminada de esta placa en ESTE taller."""
+    """Garantía de esta placa en ESTE taller. Si alguna orden anterior aún tiene
+    garantía vigente, gana esa (antes solo se miraba la última orden, y un cambio
+    de aceite sin garantía "tapaba" la garantía vigente de un trabajo anterior)."""
+    from datetime import timedelta
+    desde = (datetime.now(ZONA_ECUADOR).date() - timedelta(days=60)).isoformat()
     try:
         filas = (supabase.table("reparaciones").select(_COLS_GARANTIA_SELECT)
                  .eq("taller_id", taller_id).eq("vehiculo", placa).eq("estado", "Terminado")
-                 .order("fecha_salida", desc=True).limit(1).execute()).data
+                 .gte("garantia_vence", desde)
+                 .order("fecha_salida", desc=True).limit(20).execute()).data or []
     except Exception:
         return None   # migración de garantías aún no ejecutada
-    return _evaluar_garantia(filas[0] if filas else None, km_actual)
+    evaluadas = [g for g in (_evaluar_garantia(f, km_actual) for f in filas) if g]
+    return next((g for g in evaluadas if g["vigente"]), evaluadas[0] if evaluadas else None)
 
 def buscar_garantias_lote(taller_id, placas: list[str]) -> dict[str, dict]:
     """Última orden terminada CON garantía de cada placa, en UNA sola consulta
@@ -1446,10 +1452,17 @@ def buscar_garantias_lote(taller_id, placas: list[str]) -> dict[str, dict]:
                  .order("fecha_salida", desc=True).execute()).data or []
     except Exception:
         return {}
-    ultima: dict[str, dict] = {}
+    # Por placa: la orden más reciente con garantía VIGENTE por fecha; si ninguna
+    # lo está, la más reciente (para avisar que venció hace poco)
+    hoy = datetime.now(ZONA_ECUADOR).date().isoformat()
+    elegida: dict[str, dict] = {}
     for f in filas:                       # ordenadas de la más reciente a la más antigua
-        ultima.setdefault(f.get("vehiculo"), f)
-    return ultima
+        placa = f.get("vehiculo")
+        vigente = str(f.get("garantia_vence") or "")[:10] >= hoy
+        actual = elegida.get(placa)
+        if actual is None or (vigente and str(actual.get("garantia_vence") or "")[:10] < hoy):
+            elegida[placa] = f
+    return elegida
 
 # Columnas nuevas de garantía/kilometraje: si la migración aún no se ejecutó,
 # se guarda la orden sin ellas en lugar de fallar.
@@ -3630,6 +3643,162 @@ def actualizar_reclamo_proveedor(reparacion_id: str, datos: ActualizacionReclamo
     if not res:
         raise HTTPException(status_code=404, detail="No se encontró el reclamo en este taller.")
     return {"status": "ok"}
+
+
+# ==============================================================================
+# VEHÍCULOS Y CLIENTES: búsqueda y ficha completa de un vehículo
+# ==============================================================================
+# Búsqueda por placa, cliente, cédula o teléfono (requisito original del sistema).
+# La ficha junta todo lo que el taller sabe de un vehículo: datos, dueño actual
+# (y anteriores), resumen de visitas y gasto, garantías vigentes e historial
+# completo de órdenes con sus trabajos y repuestos. Siempre filtrado por taller.
+MAX_ORDENES_FICHA = 500
+COLUMNAS_BUSQUEDA = "id, vehiculo, modelo, cliente, cedula, telefono, fecha_hora, estado"
+
+
+def _texto_busqueda(q: str) -> str:
+    """Deja solo letras (con tildes), números, espacios y guiones: el texto va
+    dentro de un patrón ILIKE y no debe poder alterar la consulta."""
+    limpio = re.sub(r"[^0-9A-Za-zÁÉÍÓÚÜÑáéíóúüñ \-]", "", str(q or ""))
+    return re.sub(r"\s+", " ", limpio).strip()[:40]
+
+
+@app.get("/vehiculos/buscar")
+def buscar_vehiculos(request: Request, q: str = ""):
+    """Vehículos del taller que coinciden con placa, cliente, cédula o teléfono."""
+    _, taller_id = obtener_cliente_seguro(request)
+    texto = _texto_busqueda(q)
+    if len(texto) < 2:
+        return {"resultados": []}
+
+    digitos = re.sub(r"\D", "", texto)
+    consultas = [("vehiculo", normalizar_placa(texto)), ("cliente", texto)]
+    if len(digitos) >= 4:
+        consultas.append(("cedula", digitos))
+        # Teléfono: se buscan los últimos 8 dígitos ("+593 99..." y "099..." coinciden)
+        consultas.append(("telefono", digitos[-8:]))
+
+    filas = []
+    for campo, valor in consultas:
+        filas += (supabase.table("reparaciones").select(COLUMNAS_BUSQUEDA)
+                  .eq("taller_id", taller_id).ilike(campo, f"%{valor}%")
+                  .order("id", desc=True).limit(200).execute().data or [])
+
+    # Una fila por placa, con los datos de su visita más reciente
+    por_placa: dict[str, dict] = {}
+    for f in sorted(filas, key=lambda x: str(x.get("fecha_hora") or ""), reverse=True):
+        placa = str(f.get("vehiculo") or "").strip()
+        if not placa or placa == "S/C":
+            continue
+        r = por_placa.setdefault(placa, {"placa": placa, "modelo": "", "cliente": "", "telefono": "",
+                                         "ultima_visita": fecha_ecuador(f.get("fecha_hora")), "en_taller": False})
+        for k in ("modelo", "cliente", "telefono"):
+            if not r[k] and f.get(k):
+                r[k] = f[k]
+        if f.get("estado") == "Pendiente":
+            r["en_taller"] = True
+    resultados = sorted(por_placa.values(), key=lambda r: str(r["ultima_visita"] or ""), reverse=True)[:20]
+    for r in resultados:
+        r["ultima_visita"] = r["ultima_visita"].isoformat() if r["ultima_visita"] else None
+    return {"resultados": resultados}
+
+
+def _iso(d) -> str | None:
+    return d.isoformat() if d else None
+
+
+def _primero(ordenes: list[dict], campo: str):
+    """Valor más reciente no vacío de un campo (las órdenes vienen de la más nueva a la más vieja)."""
+    for o in ordenes:
+        v = o.get(campo)
+        if v not in (None, "", "None", "S/C", "N/A"):
+            return v
+    return None
+
+
+@app.get("/vehiculos/{placa}/ficha")
+def ficha_vehiculo(placa: str, request: Request):
+    _, taller_id = obtener_cliente_seguro(request)
+    placa = normalizar_placa(placa)
+    if not placa or placa == "S/C" or not re.fullmatch(r"[A-Z0-9]{3,10}", placa):
+        raise HTTPException(status_code=400, detail="Placa inválida.")
+
+    # Cliente admin: el JOIN a reparacion_detalles/inventario no tiene política
+    # RLS de SELECT. Sigue aislado por .eq("taller_id", ...).
+    ordenes = _paginar(lambda: supabase.table("reparaciones")
+                       .select("*, reparacion_detalles(*, inventario(codigo, nombre))")
+                       .eq("taller_id", taller_id).eq("vehiculo", placa)
+                       .order("id", desc=True), maximo=MAX_ORDENES_FICHA)
+    if not ordenes:
+        raise HTTPException(status_code=404, detail=f"No hay registros de la placa {placa} en este taller.")
+    ordenes.sort(key=lambda o: (str(o.get("fecha_hora") or ""), str(o.get("id"))), reverse=True)
+
+    # ---- Datos del vehículo y del dueño actual (lo más reciente que se registró)
+    vehiculo = {"placa": placa, **{k: _primero(ordenes, k) for k in ("modelo", "color", "anio", "cilindraje", "cilindros")}}
+    cliente_actual = _primero(ordenes, "cliente")
+    dueno = {"nombre": cliente_actual, "cedula": _primero(ordenes, "cedula"), "telefono": _primero(ordenes, "telefono")}
+    telefono, valido = normalizar_telefono_ec(dueno["telefono"])
+    dueno["whatsapp"] = ("593" + telefono[1:]) if valido and telefono.startswith("09") else None
+
+    # Dueños anteriores (el carro se vendió o lo trajo otra persona)
+    anteriores: dict[str, dict] = {}
+    for o in ordenes:
+        nombre = str(o.get("cliente") or "").strip()
+        clave = _sin_tildes(nombre).lower()
+        if nombre and clave != _sin_tildes(str(cliente_actual or "")).lower() and clave not in anteriores:
+            anteriores[clave] = {"nombre": nombre, "ultima_vez": _iso(fecha_ecuador(o.get("fecha_hora")))}
+    dueno["anteriores"] = list(anteriores.values())[:5]
+
+    # ---- Kilometraje: actual y promedio por mes (con al menos 30 días de historia)
+    puntos_km = [(fecha_ecuador(o.get("fecha_hora")), normalizar_kilometraje(o.get("kilometraje"))) for o in ordenes]
+    puntos_km = sorted((d, k) for d, k in puntos_km if d and k)
+    km_actual = puntos_km[-1][1] if puntos_km else None
+    km_mes = None
+    if len(puntos_km) >= 2:
+        dias = (puntos_km[-1][0] - puntos_km[0][0]).days
+        if dias >= 30 and puntos_km[-1][1] > puntos_km[0][1]:
+            km_mes = round((puntos_km[-1][1] - puntos_km[0][1]) / (dias / 30.44))
+
+    # ---- Resumen
+    terminadas = [o for o in ordenes if o.get("estado") == "Terminado"]
+    con_cobro = [o for o in terminadas if float(o.get("cobro") or 0) > 0]
+    total = sum(float(o.get("cobro") or 0) for o in terminadas)
+    fechas = [d for d in (fecha_ecuador(o.get("fecha_hora")) for o in ordenes) if d]
+    abierta = next((o for o in ordenes if o.get("estado") == "Pendiente"), None)
+    resumen = {
+        "visitas": len(ordenes),
+        "total_gastado": round(total, 2),
+        "promedio_visita": round(total / len(con_cobro), 2) if con_cobro else 0.0,
+        "primera_visita": min(fechas).isoformat() if fechas else None,
+        "ultima_visita": max(fechas).isoformat() if fechas else None,
+        "km_actual": km_actual,
+        "km_por_mes": km_mes,
+        "orden_abierta": abierta["id"] if abierta else None,
+    }
+
+    # ---- Garantías vigentes (de cualquier orden, no solo la última)
+    hoy = datetime.now(ZONA_ECUADOR).date().isoformat()
+    garantias = []
+    for o in terminadas:
+        vence = str(o.get("garantia_vence") or "")[:10]
+        km_limite = o.get("garantia_km_limite")
+        if vence and vence >= hoy and not (km_actual and km_limite and km_actual > int(km_limite)):
+            garantias.append({"orden_id": o["id"], "trabajo": o.get("trabajo_realizado") or texto_trabajos(trabajos_de_orden(o)),
+                              "vence": vence, "km_limite": km_limite, "tecnico": o.get("oficial") or ""})
+
+    # ---- Historial: la orden completa (sirve para volver a descargar su PNG)
+    # más campos ya listos para mostrar
+    for o in ordenes:
+        o["_ingreso"] = _iso(fecha_ecuador(o.get("fecha_hora")))
+        o["_salida"] = _iso(fecha_ecuador(o.get("fecha_salida")))
+        trabajos = trabajos_de_orden(o)
+        if len(trabajos) == 1 and not o.get("trabajos") and " | " in trabajos[0]["descripcion"]:
+            trabajos = [{"descripcion": t.strip(), "precio": 0.0} for t in trabajos[0]["descripcion"].split(" | ") if t.strip()]
+        o["_trabajos"] = trabajos
+        o["_motivo_cierre"] = MOTIVOS_CIERRE_SIN_COBRO.get(o.get("motivo_cierre") or "", "") if o.get("estado") == ESTADO_CERRADO_SIN_COBRO else ""
+
+    return {"vehiculo": vehiculo, "dueno": dueno, "resumen": resumen, "garantias": garantias, "ordenes": ordenes,
+            "truncado": len(ordenes) >= MAX_ORDENES_FICHA}
 
 
 @app.get("/vehiculos-pendientes")

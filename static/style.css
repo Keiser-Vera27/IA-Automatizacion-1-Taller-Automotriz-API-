@@ -1013,3 +1013,64 @@ html[data-theme="dark"] {
     .dash-kpi-valor { font-size: 1.3rem; }
     .dash-kpi:first-child { grid-column: 1 / -1; }
 }
+
+/* ==========================================================================
+   VEHÍCULOS Y CLIENTES (búsqueda y ficha)
+   ========================================================================== */
+.acciones-tarjeta { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+.acciones-tarjeta .btn-cerrar-orden { margin: 12px 0 0; display: inline-block; }
+
+.buscador-vehiculos {
+    width: 100%; max-width: 560px; box-sizing: border-box; padding: 12px 16px; font-size: 15px;
+    border-radius: 12px; border: 1px solid var(--borde); background: var(--superficie); color: var(--texto);
+}
+.buscador-vehiculos:focus { outline: none; border-color: var(--morado); box-shadow: 0 0 0 3px var(--sombra-marca); }
+.resultados-vehiculos { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; max-width: 760px; }
+.vacio-vehiculos { color: var(--texto-tenue); font-size: 14px; padding: 12px 2px; }
+.resultado-vehiculo {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; text-align: left;
+    padding: 12px 14px; border-radius: 12px; border: 1px solid var(--borde); background: var(--superficie);
+    color: var(--texto); cursor: pointer; font-family: var(--fuente-datos); font-size: 14px;
+}
+.resultado-vehiculo:hover, .resultado-vehiculo:focus-visible { border-color: var(--morado); outline: none; }
+.resultado-datos { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.resultado-datos span { color: var(--texto-tenue); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resultado-fecha { color: var(--texto-tenue); font-size: 12px; text-align: right; }
+
+.ficha-cabecera { border: 1px solid var(--borde); }
+.ficha-placa-fila { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ficha-placa { font-size: 1.25rem; }
+.ficha-detalle { margin-top: 10px; color: var(--texto); font-size: 15px; }
+.ficha-dueno { margin-top: 6px; color: var(--texto); font-size: 14px; }
+.ficha-dueno a { color: var(--morado); font-weight: 600; }
+html[data-theme="dark"] .ficha-dueno a { color: #b9a4ff; }
+.ficha-nota { margin-top: 8px; color: var(--texto-tenue); font-size: 13px; }
+.ficha-garantias { margin: 6px 0 0 18px; padding: 0; }
+.ficha-titulo-historial { margin: 26px 0 10px; color: var(--texto); }
+.ficha-historial { display: flex; flex-direction: column; gap: 12px; }
+/* En el celular la ficha muestra sus 4 indicadores en 2 x 2 */
+@media (max-width: 520px) { .ficha-kpis .dash-kpi:first-child { grid-column: auto; } }
+
+.orden-historial {
+    background: var(--superficie); border: 1px solid var(--borde); border-radius: 14px; padding: 14px 16px;
+    font-family: var(--fuente-datos); color: var(--texto); font-size: 14px;
+}
+.oh-cabecera { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.oh-fecha { color: var(--texto-tenue); font-size: 13px; }
+.oh-monto { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.oh-meta { color: var(--texto-tenue); font-size: 13px; margin-top: 6px; }
+.oh-motivo { margin-top: 8px; }
+.oh-subtitulo { margin-top: 10px; font-size: 12.5px; color: var(--texto-tenue); font-weight: 600; }
+.oh-lista { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.oh-lista li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px dashed var(--borde); }
+.oh-lista li:last-child { border-bottom: none; }
+.oh-lista .num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--texto-tenue); }
+.oh-repuestos { font-size: 13px; }
+.oh-notas { margin-top: 10px; font-size: 13px; color: var(--texto-tenue); }
+.orden-historial .btn-link { margin-top: 8px; padding-left: 0; }
+
+@media (max-width: 520px) {
+    .resultado-vehiculo { grid-template-columns: auto 1fr; }
+    .resultado-fecha { grid-column: 1 / -1; text-align: left; }
+    .oh-monto { margin-left: 0; }
+}

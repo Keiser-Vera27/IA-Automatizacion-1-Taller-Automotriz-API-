@@ -1649,8 +1649,12 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
                         ${v.estado === 'Pendiente' ? trabajosTarjetaHTML(v) : ''}
                         ${marcaGarantia(v.garantia_previa)}
                         ${botonDescarga}
-                        ${botonCerrar}
-                        ${botonReabrir}
+                        <div class="acciones-tarjeta">
+                            ${v.vehiculo && v.vehiculo !== 'S/C' ? `<button class="btn-cerrar-orden" title="Ver todo el historial de este vehículo"
+                                onclick='event.stopPropagation(); abrirFichaVehiculo(${JSON.stringify(v.vehiculo)})'>Ficha</button>` : ''}
+                            ${botonCerrar}
+                            ${botonReabrir}
+                        </div>
                     </div>
                 `;
             });
@@ -2111,7 +2115,7 @@ function toggleMenu() {
     }
 }
 
-function cambiarVista(idVista) {
+function cambiarVista(idVista, desdeMenu = true) {
     // Ocultar todas las vistas
     const vistas = document.querySelectorAll('.vista-app');
     vistas.forEach(vista => vista.style.display = 'none');
@@ -2119,8 +2123,8 @@ function cambiarVista(idVista) {
     // Mostrar la vista seleccionada
     document.getElementById(idVista).style.display = 'block';
     
-    // Cerrar el menú lateral
-    toggleMenu();
+    // Cerrar el menú lateral (solo si se llegó desde el menú)
+    if (desdeMenu) toggleMenu();
     
     // Si entramos al dashboard, cargamos los gráficos (lo programaremos luego)
     if (idVista === 'vista-dashboard') {
@@ -2129,6 +2133,8 @@ function cambiarVista(idVista) {
         cargarServicios();
     } else if (idVista === 'vista-garantias') {
         iniciarVistaGarantias();
+    } else if (idVista === 'vista-vehiculos') {
+        iniciarVistaVehiculos();
     }
 }
 // ==========================================================================
@@ -2416,7 +2422,7 @@ function renderFugas(f) {
     const a = f.abiertas;
     const filas = [];
     if (a.estancadas_total) {
-        const lista = a.estancadas.map(o => `<tr><td><b>${e(o.placa)}</b></td><td>${e(o.cliente || '—')}</td>
+        const lista = a.estancadas.map(o => `<tr><td><button type="button" class="btn-link" onclick='abrirFichaVehiculo(${JSON.stringify(o.placa)})'><b>${e(o.placa)}</b></button></td><td>${e(o.cliente || '—')}</td>
             <td class="num">${o.dias} días</td></tr>`).join('');
         const mas = a.estancadas_total > a.estancadas.length ? `<div class="sub">y ${a.estancadas_total - a.estancadas.length} más</div>` : '';
         filas.push(filaFuga('serio', `${a.estancadas_total > 1 ? `${a.estancadas_total} órdenes abiertas` : '1 orden abierta'} hace más de ${a.dias_limite} días`,
@@ -2462,6 +2468,178 @@ function renderInventarioDashboard(inv) {
                                      : `Todo el stock se movió en ${inv.dias_sin_movimiento} días`,
             lista(inv.sin_movimiento, x => `${x.stock} u. · ${dinero(x.valor)}`))
     ].join('');
+}
+
+// ==========================================================================
+// VEHÍCULOS Y CLIENTES: búsqueda y ficha completa de un vehículo
+// ==========================================================================
+let temporizadorBusquedaVehiculo = null;
+let ordenesFichaActual = {};          // id -> orden completa (para volver a descargar su PNG)
+
+function fechaCorta(iso) {
+    if (!iso) return '—';
+    return new Date(iso + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function iniciarVistaVehiculos() {
+    mostrarBusquedaVehiculos();
+    const input = document.getElementById('buscar-vehiculo');
+    if (!input.value.trim()) {
+        document.getElementById('resultados-vehiculos').innerHTML =
+            '<p class="vacio-vehiculos">Escribe al menos 2 letras o números para buscar.</p>';
+    }
+    setTimeout(() => input.focus(), 50);
+}
+
+function mostrarBusquedaVehiculos() {
+    document.getElementById('vehiculos-busqueda').hidden = false;
+    document.getElementById('ficha-vehiculo').hidden = true;
+}
+
+// Busca mientras se escribe, sin disparar una consulta por cada tecla
+function buscarVehiculosDiferido() {
+    clearTimeout(temporizadorBusquedaVehiculo);
+    temporizadorBusquedaVehiculo = setTimeout(buscarVehiculos, 300);
+}
+
+async function buscarVehiculos() {
+    const q = document.getElementById('buscar-vehiculo').value.trim();
+    const cont = document.getElementById('resultados-vehiculos');
+    if (q.length < 2) {
+        cont.innerHTML = '<p class="vacio-vehiculos">Escribe al menos 2 letras o números para buscar.</p>';
+        return;
+    }
+    try {
+        const res = await fetch(`/vehiculos/buscar?q=${encodeURIComponent(q)}`, { headers: cabeceraAuth() });
+        const data = await res.json().catch(() => ({}));
+        // Si mientras tanto el texto cambió, esta respuesta ya no sirve
+        if (document.getElementById('buscar-vehiculo').value.trim() !== q) return;
+        if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+        const e = escaparHTML;
+        cont.innerHTML = data.resultados.length
+            ? data.resultados.map(r => `
+                <button type="button" class="resultado-vehiculo" onclick='abrirFichaVehiculo(${JSON.stringify(r.placa)})'>
+                    <span class="placa-badge">${e(r.placa)}</span>
+                    <span class="resultado-datos">
+                        <b>${e(r.cliente || 'Sin cliente registrado')}</b>
+                        <span>${[r.modelo, r.telefono].filter(Boolean).map(e).join(' · ') || '&nbsp;'}</span>
+                    </span>
+                    <span class="resultado-fecha">${r.en_taller ? '<span class="badge-estado estado-pendiente">En el taller</span>' : `Última visita<br>${fechaCorta(r.ultima_visita)}`}</span>
+                </button>`).join('')
+            : `<p class="vacio-vehiculos">No hay vehículos ni clientes que coincidan con "${e(q)}".</p>`;
+    } catch (err) {
+        cont.innerHTML = `<p class="vacio-vehiculos">No se pudo buscar: ${escaparHTML(err.message)}</p>`;
+    }
+}
+
+// Se puede abrir desde la búsqueda, desde una tarjeta de vehículo o desde el dashboard
+async function abrirFichaVehiculo(placa) {
+    if (document.getElementById('vista-vehiculos').style.display === 'none') {
+        cambiarVista('vista-vehiculos', false);
+    }
+    document.getElementById('vehiculos-busqueda').hidden = true;
+    const cont = document.getElementById('ficha-vehiculo');
+    cont.hidden = false;
+    cont.innerHTML = '<p class="vacio-vehiculos">Cargando ficha...</p>';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    try {
+        const res = await fetch(`/vehiculos/${encodeURIComponent(placa)}/ficha`, { headers: cabeceraAuth() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`);
+        renderFichaVehiculo(data);
+    } catch (err) {
+        cont.innerHTML = `<button type="button" class="btn-link" onclick="mostrarBusquedaVehiculos()">← Volver a la búsqueda</button>
+            <p class="vacio-vehiculos">${escaparHTML(err.message)}</p>`;
+    }
+}
+
+function renderFichaVehiculo(f) {
+    const e = escaparHTML;
+    const v = f.vehiculo, d = f.dueno, r = f.resumen;
+    ordenesFichaActual = {};
+    f.ordenes.forEach(o => { ordenesFichaActual[String(o.id)] = o; });
+
+    const detalles = [v.modelo, v.color, v.anio, v.cilindraje, v.cilindros ? `${v.cilindros} cilindros` : null].filter(Boolean).map(e).join(' · ');
+    const contacto = [
+        d.cedula ? `Cédula ${e(d.cedula)}` : null,
+        d.telefono ? `<a href="tel:${e(d.telefono)}">${e(d.telefono)}</a>` : null,
+        d.whatsapp ? `<a href="https://wa.me/${e(d.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : null
+    ].filter(Boolean).join(' · ');
+    const anteriores = d.anteriores.length
+        ? `<div class="ficha-nota">También estuvo a nombre de: ${d.anteriores.map(a => `${e(a.nombre)} (hasta ${fechaCorta(a.ultima_vez)})`).join(', ')}</div>` : '';
+    const enTaller = r.orden_abierta
+        ? `<span class="badge-estado estado-pendiente">En el taller ahora · Orden N° ${e(String(r.orden_abierta))}</span>` : '';
+
+    const kpi = (etiqueta, valor, extra = '') => `<div class="dash-kpi"><div class="dash-kpi-etiqueta">${etiqueta}</div>
+        <div class="dash-kpi-valor">${valor}</div>${extra ? `<div class="dash-kpi-extra">${extra}</div>` : ''}</div>`;
+    const kpis = [
+        kpi('Visitas', r.visitas, `Desde ${fechaCorta(r.primera_visita)}`),
+        kpi('Total gastado', dinero(r.total_gastado)),
+        kpi('Promedio por visita', dinero(r.promedio_visita)),
+        kpi('Kilometraje', r.km_actual ? `${Number(r.km_actual).toLocaleString('es-EC')} km` : '—',
+            r.km_por_mes ? `≈ ${Number(r.km_por_mes).toLocaleString('es-EC')} km por mes` : '')
+    ].join('');
+
+    const garantias = f.garantias.length
+        ? `<div class="aviso-garantia vigente"><b>Garantías vigentes</b><ul class="ficha-garantias">${f.garantias.map(g =>
+            `<li>Orden N° ${e(String(g.orden_id))}: ${e(g.trabajo || 'trabajo')} · hasta ${fechaCorta(g.vence)}${g.km_limite ? ` o ${Number(g.km_limite).toLocaleString('es-EC')} km` : ''}</li>`).join('')}</ul></div>`
+        : '';
+
+    document.getElementById('ficha-vehiculo').innerHTML = `
+        <button type="button" class="btn-link" onclick="mostrarBusquedaVehiculos()">← Volver a la búsqueda</button>
+        <div class="ficha-cabecera panel-caja">
+            <div class="ficha-placa-fila"><span class="placa-badge ficha-placa">${e(v.placa)}</span>${enTaller}</div>
+            <div class="ficha-detalle">${detalles || 'Sin datos del vehículo'}</div>
+            <div class="ficha-dueno"><b>${e(d.nombre || 'Sin cliente registrado')}</b>${contacto ? ` · ${contacto}` : ''}</div>
+            ${anteriores}
+        </div>
+        <div class="dash-kpis ficha-kpis">${kpis}</div>
+        ${garantias}
+        <h3 class="ficha-titulo-historial">Historial (${f.ordenes.length === 1 ? '1 orden' : `${f.ordenes.length} órdenes`})</h3>
+        ${f.truncado ? '<p class="ficha-nota">Se muestran las órdenes más recientes.</p>' : ''}
+        <div class="ficha-historial">${f.ordenes.map(ordenHistorialHTML).join('')}</div>`;
+}
+
+function ordenHistorialHTML(o) {
+    const e = escaparHTML;
+    const clase = o.estado === 'Pendiente' ? 'estado-pendiente' : (o.estado === 'Cerrado sin cobro' ? 'estado-sin-cobro' : 'estado-terminado');
+    const fechas = o._salida && o._salida !== o._ingreso ? `${fechaCorta(o._ingreso)} → ${fechaCorta(o._salida)}` : fechaCorta(o._ingreso);
+    const meta = [
+        o.kilometraje ? `${Number(o.kilometraje).toLocaleString('es-EC')} km` : null,
+        o.oficial ? `Técnico: ${e(o.oficial)}` : null,
+        o.estado === 'Terminado' && o.metodo_pago ? `Pago: ${e([o.metodo_pago, o.banco].filter(Boolean).join(' · '))}` : null
+    ].filter(Boolean).join(' · ');
+    const trabajos = (o._trabajos || []).map(t =>
+        `<li><span>${e(t.descripcion)}</span>${Number(t.precio) > 0 ? `<span class="num">${dinero(t.precio)}</span>` : ''}</li>`).join('');
+    const repuestos = (o.reparacion_detalles || []).map(x => {
+        const inv = x.inventario || {};
+        return `<li><span>${Number(x.cantidad)} × ${e(inv.nombre || inv.codigo || 'Repuesto')}${inv.codigo ? ` <span class="sub">(${e(inv.codigo)})</span>` : ''}</span>
+            <span class="num">${x.incluido ? 'incluido' : dinero(Number(x.cantidad) * Number(x.precio_unitario || 0))}</span></li>`;
+    }).join('');
+    const notas = [];
+    if (o.estado === 'Cerrado sin cobro') notas.push(`Cerrada sin cobro: ${e(o._motivo_cierre || 'sin motivo')}${o.detalle_cierre ? ` — ${e(o.detalle_cierre)}` : ''}`);
+    if (o.garantia_orden_origen) notas.push(`Reclamo de garantía de la orden N° ${e(String(o.garantia_orden_origen))}`);
+    if (o.estado === 'Terminado' && o.garantia_vence) notas.push(`Garantía hasta ${fechaCorta(String(o.garantia_vence).slice(0, 10))}`);
+
+    return `<article class="orden-historial">
+        <header class="oh-cabecera">
+            <b>Orden N° ${e(String(o.id))}</b>
+            <span class="badge-estado ${clase}">${e(o.estado)}</span>
+            <span class="oh-fecha">${fechas}</span>
+            ${o.estado === 'Terminado' ? `<span class="oh-monto">${dinero(o.cobro)}</span>` : ''}
+        </header>
+        ${meta ? `<div class="oh-meta">${meta}</div>` : ''}
+        ${o.motivo ? `<div class="oh-motivo"><b>Motivo de ingreso:</b> ${e(o.motivo)}</div>` : ''}
+        ${trabajos ? `<ul class="oh-lista">${trabajos}</ul>` : ''}
+        ${repuestos ? `<div class="oh-subtitulo">Repuestos y materiales</div><ul class="oh-lista oh-repuestos">${repuestos}</ul>` : ''}
+        ${notas.length ? `<div class="oh-notas">${notas.join('<br>')}</div>` : ''}
+        ${o.estado === 'Terminado' ? `<button type="button" class="btn-link" onclick='descargarOrdenFicha(${JSON.stringify(String(o.id))})'>Descargar orden (PNG)</button>` : ''}
+    </article>`;
+}
+
+function descargarOrdenFicha(id) {
+    const orden = ordenesFichaActual[id];
+    if (orden) generarImagenFactura(orden);
 }
 
 // ==========================================================================

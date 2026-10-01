@@ -113,6 +113,7 @@
                 <button onclick="toggleMenu()" style="position: absolute; top: 15px; right: 15px; background: none; border: none; font-size: 20px; color: var(--texto); cursor: pointer; display: flex; padding: 4px;" aria-label="Cerrar menú"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
                 
                 <a href="#" onclick="cambiarVista('vista-chat')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Chat / Operaciones</a>
+                <a href="#" onclick="cambiarVista('vista-vehiculos')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Vehículos y clientes</a>
                 <a href="#" data-modulo="dashboard" onclick="cambiarVista('vista-dashboard')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Dashboard Analítico</a>
                 <a href="#" onclick="cambiarVista('vista-servicios')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Catálogo de Servicios</a>
                 <a href="#" data-modulo="control_garantias" onclick="cambiarVista('vista-garantias')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Garantías</a>
@@ -301,6 +302,19 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            <!-- VISTA: VEHÍCULOS Y CLIENTES (búsqueda y ficha de cada vehículo) -->
+            <div id="vista-vehiculos" class="vista-app" style="display: none; padding: 20px;">
+                <div id="vehiculos-busqueda">
+                    <h2>Vehículos y clientes</h2>
+                    <p class="nota-servicios">Busca por placa, nombre del cliente, cédula o teléfono.</p>
+                    <input id="buscar-vehiculo" type="search" class="buscador-vehiculos" autocomplete="off"
+                           placeholder="Ej. GTH6787, Juan Pérez, 0991234567" oninput="buscarVehiculosDiferido()"
+                           aria-label="Buscar vehículo o cliente">
+                    <div id="resultados-vehiculos" class="resultados-vehiculos" aria-live="polite"></div>
+                </div>
+                <div id="ficha-vehiculo" hidden></div>
             </div>
 
             <!-- VISTA: CONTROL DE GARANTÍAS (reclamos, tasa de retorno, proveedores) -->
