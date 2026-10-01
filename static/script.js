@@ -2230,22 +2230,39 @@ function renderKpis(d) {
     const k = d.kpis;
     // subeEsBueno: para egresos, subir es malo
     const tarjetas = [
-        { id: 'facturado', etiqueta: 'Facturado', formato: dinero, subeEsBueno: true },
-        { id: 'egresos', etiqueta: 'Egresos', formato: dinero, subeEsBueno: false },
-        { id: 'neto', etiqueta: 'Neto (facturado − egresos)', formato: dinero, subeEsBueno: true },
+        { id: 'facturado', etiqueta: 'Facturado', formato: dinero, subeEsBueno: true,
+          ayuda: 'Suma de lo cobrado en las órdenes cerradas en el período.' },
+        { id: 'egresos', etiqueta: 'Egresos', formato: dinero, subeEsBueno: false,
+          ayuda: 'Suma de los gastos registrados en el período.' },
+        { id: 'neto', etiqueta: 'Neto', formato: dinero, subeEsBueno: true,
+          ayuda: 'Facturado menos egresos: lo que queda después de restar los gastos. Coincide con el cuadre de caja.' },
         { id: 'atendidos', etiqueta: 'Vehículos atendidos', formato: v => String(v), subeEsBueno: true,
-          extra: `${d.ingresados} ingresaron en el período` },
-        { id: 'ticket', etiqueta: 'Ticket promedio', formato: dinero, subeEsBueno: true }
+          extra: `${d.ingresados} ingresaron en el período`,
+          ayuda: 'Órdenes cerradas (terminadas) en el período.' },
+        { id: 'ticket', etiqueta: 'Promedio por vehículo', formato: dinero, subeEsBueno: true,
+          ayuda: 'Lo que paga en promedio cada vehículo: facturado ÷ vehículos que pagaron algo. ' +
+                 'Si sube, cada cliente gasta más; si baja con los mismos carros, entran trabajos más pequeños o hay descuentos.' }
     ];
     document.getElementById('dash-kpis').innerHTML = tarjetas.map(t => {
         const { valor, anterior } = k[t.id];
         return `<div class="dash-kpi">
-            <div class="dash-kpi-etiqueta">${t.etiqueta}</div>
+            <div class="dash-kpi-etiqueta">${t.etiqueta}
+                <button type="button" class="dash-ayuda" title="${escaparHTML(t.ayuda)}" aria-label="Qué es ${escaparHTML(t.etiqueta)}"
+                    onclick="mostrarAyudaKpi(this)">${ICONO_AYUDA}</button></div>
             <div class="dash-kpi-valor">${t.formato(valor)}</div>
             ${deltaHTML(valor, anterior, t.subeEsBueno, t.formato)}
             ${t.extra ? `<div class="dash-kpi-extra">${escaparHTML(t.extra)}</div>` : ''}
         </div>`;
     }).join('');
+}
+
+// Icono "?" de cada indicador: en PC la explicación sale al pasar el mouse;
+// en celular (sin mouse) se muestra al tocarlo
+const ICONO_AYUDA = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.2 6.2a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="11.6" r=".85" fill="currentColor"/></svg>';
+
+function mostrarAyudaKpi(boton) {
+    const etiqueta = boton.parentElement.firstChild.textContent.trim();
+    mostrarModal({ tipo: 'info', titulo: etiqueta, mensaje: escaparHTML(boton.title) });
 }
 
 function deltaHTML(valor, anterior, subeEsBueno, formato) {
