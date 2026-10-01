@@ -4249,68 +4249,344 @@ def eliminar_servicio(servicio_id: str, request: Request):
     cliente_seguro.table("servicios").delete().eq("id", servicio_id).eq("taller_id", taller_id).execute()
     return {"status": "ok", "mensaje": "Servicio eliminado"}
 # ==============================================================================
-# DASHBOARD ANALÍTICO (CHART.JS)
+# DASHBOARD ANALÍTICO (fase 1)
 # ==============================================================================
-@app.get("/dashboard-stats")
-def dashboard_stats(request: Request):
-    """
-    Calcula los Top 5 para el Dashboard Analítico.
-    """
-    cliente_seguro, taller_id = obtener_cliente_seguro(request)
-    exigir_modulo(taller_id, "dashboard")
-    
+# Responde tres preguntas del dueño para un período (por defecto, el mes en curso):
+#   1. ¿Cómo voy?            -> indicadores con comparación y tendencia ingresos vs egresos
+#   2. ¿Qué me deja plata?   -> servicios por ingreso (agrupados por el catálogo)
+#   3. ¿Qué se me escapa?    -> órdenes estancadas, cierres sin cobro, garantías, inventario
+# Las definiciones coinciden con el cuadre de caja: una orden cuenta el día que se
+# CIERRA (fecha_salida) y un egreso el día que se registra.
+DIAS_ORDEN_ESTANCADA = 3          # una orden abierta más días que esto es "estancada"
+DIAS_SIN_MOVIMIENTO = 90          # repuesto con stock que no se usa hace 90 días
+MAX_DIAS_DASHBOARD = 1100         # ~3 años: evita consultas desmedidas
+MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def _paginar(armar_consulta, tam: int = 1000, maximo: int = 60000) -> list[dict]:
+    """Supabase devuelve como máximo 1000 filas por consulta: se piden por páginas.
+    'armar_consulta' crea la consulta de nuevo en cada página (son de un solo uso)."""
+    filas, inicio = [], 0
+    while True:
+        lote = armar_consulta().range(inicio, inicio + tam - 1).execute().data or []
+        filas.extend(lote)
+        if len(lote) < tam or len(filas) >= maximo:
+            return filas
+        inicio += tam
+
+
+def fecha_ecuador(valor) -> date | None:
+    """Fecha calendario en Ecuador de un timestamp guardado en UTC."""
+    if not valor:
+        return None
+    texto = str(valor).replace("T", " ").replace("Z", "+00:00")
     try:
-        # 1. Traer todas las órdenes terminadas con sus detalles
-        # (cliente admin: reparacion_detalles/inventario no tienen política RLS de SELECT)
-        res = (
-            supabase.table("reparaciones")
-            .select("cliente, cobro, trabajo_realizado, reparacion_detalles(cantidad, inventario(nombre))")
-            .eq("taller_id", taller_id)
-            .eq("estado", "Terminado")
-            .execute()
-        )
-        ordenes = res.data
+        dt = datetime.fromisoformat(texto)
+    except ValueError:
+        try:
+            dt = datetime.strptime(texto[:19], "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(ZONA_ECUADOR).date()
 
-        dicc_clientes = {}
-        dicc_servicios = {}
-        dicc_repuestos = {}
 
-        for o in ordenes:
-            # --- Top Clientes ---
-            cli = str(o.get("cliente") or "Cliente Final").strip()
-            dicc_clientes[cli] = dicc_clientes.get(cli, 0.0) + float(o.get("cobro") or 0.0)
+def texto_rango(d1: date, d2: date) -> str:
+    """'1–30 sep 2026', '15 ago – 14 sep 2026', '1 ene 2025 – 30 sep 2026'."""
+    m = lambda d: MESES_CORTOS[d.month - 1]
+    if d1 == d2:
+        return f"{d1.day} {m(d1)} {d1.year}"
+    if (d1.year, d1.month) == (d2.year, d2.month):
+        return f"{d1.day}–{d2.day} {m(d2)} {d2.year}"
+    if d1.year == d2.year:
+        return f"{d1.day} {m(d1)} – {d2.day} {m(d2)} {d2.year}"
+    return f"{d1.day} {m(d1)} {d1.year} – {d2.day} {m(d2)} {d2.year}"
 
-            # --- Top Servicios ---
-            trabajo = str(o.get("trabajo_realizado") or "").strip()
-            if trabajo:
-                para_servicios = [t.strip() for t in trabajo.split("|") if t.strip()]
-                for s in para_servicios:
-                    dicc_servicios[s] = dicc_servicios.get(s, 0) + 1
 
-            # --- Top Repuestos ---
-            detalles = o.get("reparacion_detalles") or []
-            for d in detalles:
-                cant = int(d.get("cantidad") or 0)
-                rep_info = d.get("inventario") or {}
-                # Buscamos el nombre correcto del repuesto
-                nombre_rep = str(rep_info.get("nombre") or "Repuesto Genérico").strip()
-                dicc_repuestos[nombre_rep] = dicc_repuestos.get(nombre_rep, 0) + cant
+def periodo_anterior(desde: date, hasta: date) -> tuple[date, date]:
+    """Período con el que se compara:
+       - un mes (completo o en curso): el mismo tramo del mes anterior (1–30 sep -> 1–30 ago)
+       - el año en curso: el mismo tramo del año anterior
+       - cualquier otro rango: los mismos días inmediatamente antes."""
+    import calendar
+    from datetime import timedelta
+    if desde.day == 1 and (desde.year, desde.month) == (hasta.year, hasta.month):
+        y, mes = (desde.year, desde.month - 1) if desde.month > 1 else (desde.year - 1, 12)
+        return date(y, mes, 1), date(y, mes, min(hasta.day, calendar.monthrange(y, mes)[1]))
+    if (desde.month, desde.day) == (1, 1) and desde.year == hasta.year:
+        ultimo = calendar.monthrange(hasta.year - 1, hasta.month)[1]
+        return date(desde.year - 1, 1, 1), date(hasta.year - 1, hasta.month, min(hasta.day, ultimo))
+    n = (hasta - desde).days + 1
+    return desde - timedelta(days=n), desde - timedelta(days=1)
 
-        # 2. Ordenar de mayor a menor y sacar solo el Top 5
-        top_clientes = [{"nombre": k, "total": round(v, 2)} for k, v in sorted(dicc_clientes.items(), key=lambda x: x[1], reverse=True)[:5]]
-        top_servicios = [{"nombre": k, "cantidad": v} for k, v in sorted(dicc_servicios.items(), key=lambda x: x[1], reverse=True)[:5]]
-        top_repuestos = [{"nombre": k, "cantidad": v} for k, v in sorted(dicc_repuestos.items(), key=lambda x: x[1], reverse=True)[:5]]
 
-        return {
-            "top_clientes": top_clientes,
-            "top_servicios": top_servicios,
-            "top_repuestos": top_repuestos
-        }
+def granularidad(desde: date, hasta: date) -> str:
+    dias = (hasta - desde).days + 1
+    return "dia" if dias <= 62 else ("semana" if dias <= 366 else "mes")
+
+
+def inicio_bucket(d: date, gran: str) -> date:
+    from datetime import timedelta
+    if gran == "semana":
+        return d - timedelta(days=d.weekday())      # lunes de esa semana
+    if gran == "mes":
+        return d.replace(day=1)
+    return d
+
+
+def buckets(desde: date, hasta: date, gran: str) -> list[date]:
+    from datetime import timedelta
+    lista, d = [], inicio_bucket(desde, gran)
+    while d <= hasta:
+        lista.append(d)
+        if gran == "dia":
+            d += timedelta(days=1)
+        elif gran == "semana":
+            d += timedelta(days=7)
+        else:
+            d = date(d.year + (d.month == 12), d.month % 12 + 1, 1)
+    return lista
+
+
+def etiqueta_bucket(d: date, gran: str) -> str:
+    if gran == "mes":
+        return f"{MESES_CORTOS[d.month - 1]} {str(d.year)[2:]}"
+    return f"{d.day} {MESES_CORTOS[d.month - 1]}"
+
+
+def resumen_periodo(taller_id, desde: date, hasta: date, detalle: bool = True) -> dict:
+    """Totales y serie de un período. Con detalle=False (período anterior) solo
+    se calcula lo necesario para comparar."""
+    inicio_utc, _ = limites_dia_ecuador(desde.isoformat())
+    _, fin_utc = limites_dia_ecuador(hasta.isoformat())
+    gran = granularidad(desde, hasta)
+
+    cerradas = _paginar(lambda: supabase.table("reparaciones")
+                        .select("id, estado, cobro, fecha_salida, trabajos, trabajo_realizado, motivo_cierre")
+                        .eq("taller_id", taller_id)
+                        .in_("estado", ["Terminado", ESTADO_CERRADO_SIN_COBRO])
+                        .gte("fecha_salida", inicio_utc).lte("fecha_salida", fin_utc))
+    gastos = _paginar(lambda: supabase.table("gastos").select("monto, fecha_hora")
+                      .eq("taller_id", taller_id).gte("fecha_hora", inicio_utc).lte("fecha_hora", fin_utc))
+    terminadas = [o for o in cerradas if o.get("estado") == "Terminado"]
+
+    facturado = sum(float(o.get("cobro") or 0) for o in terminadas)
+    egresos = sum(float(g.get("monto") or 0) for g in gastos)
+    con_cobro = [o for o in terminadas if float(o.get("cobro") or 0) > 0]
+
+    # Serie por día / semana / mes (los períodos sin movimiento quedan en 0)
+    claves = buckets(desde, hasta, gran)
+    ingresos_b = {k: 0.0 for k in claves}
+    egresos_b = {k: 0.0 for k in claves}
+    for o in terminadas:
+        d = fecha_ecuador(o.get("fecha_salida"))
+        if d:
+            ingresos_b[inicio_bucket(d, gran)] = ingresos_b.get(inicio_bucket(d, gran), 0.0) + float(o.get("cobro") or 0)
+    for g in gastos:
+        d = fecha_ecuador(g.get("fecha_hora"))
+        if d:
+            egresos_b[inicio_bucket(d, gran)] = egresos_b.get(inicio_bucket(d, gran), 0.0) + float(g.get("monto") or 0)
+
+    r = {
+        "facturado": round(facturado, 2),
+        "egresos": round(egresos, 2),
+        "neto": round(facturado - egresos, 2),
+        "atendidos": len(terminadas),
+        "ticket": round(facturado / len(con_cobro), 2) if con_cobro else 0.0,
+        "serie_ingresos": [round(ingresos_b[k], 2) for k in claves],
+        "serie_egresos": [round(egresos_b[k], 2) for k in claves],
+        # La primera semana/mes puede empezar antes del período: se rotula desde su inicio real
+        "etiquetas": [etiqueta_bucket(max(k, desde), gran) for k in claves],
+        "granularidad": gran,
+    }
+    if not detalle:
+        return r
+
+    # Vehículos que ingresaron en el período (abiertos o no)
+    r["ingresados"] = (supabase.table("reparaciones").select("id", count="exact")
+                       .eq("taller_id", taller_id).gte("fecha_hora", inicio_utc).lte("fecha_hora", fin_utc)
+                       .limit(1).execute()).count or 0
+
+    # ---- Servicios: agrupados por el servicio del catálogo (no por cómo se escribió)
+    catalogo = {str(s["id"]): s.get("nombre_servicio") or "Servicio"
+                for s in (supabase.table("servicios").select("id, nombre_servicio")
+                          .eq("taller_id", taller_id).execute().data or [])}
+    servicios: dict[str, dict] = {}
+
+    def sumar_servicio(clave, nombre, precio):
+        s = servicios.setdefault(clave, {"nombre": nombre, "cantidad": 0, "ingreso": 0.0})
+        s["cantidad"] += 1
+        s["ingreso"] += precio
+
+    for o in terminadas:
+        trabajos = o.get("trabajos") if isinstance(o.get("trabajos"), list) else []
+        trabajos = [t for t in trabajos if isinstance(t, dict) and str(t.get("descripcion") or "").strip()]
+        if trabajos:
+            for t in trabajos:
+                sid = t.get("servicio_id")
+                desc = str(t["descripcion"]).strip()
+                if sid is not None and str(sid) in catalogo:
+                    sumar_servicio(f"s{sid}", catalogo[str(sid)], float(t.get("precio") or 0))
+                else:
+                    sumar_servicio("t" + _sin_tildes(desc).lower().strip(), desc[:60], float(t.get("precio") or 0))
+        else:
+            # Órdenes antiguas (antes de 'trabajos'): solo se cuentan, sin precio por trabajo
+            for desc in str(o.get("trabajo_realizado") or "").split("|"):
+                desc = desc.strip()
+                if desc:
+                    sumar_servicio("t" + _sin_tildes(desc).lower().strip(), desc[:60], 0.0)
+
+    ordenados = sorted(servicios.values(), key=lambda s: (s["ingreso"], s["cantidad"]), reverse=True)
+    principales, resto = ordenados[:8], ordenados[8:]
+    r["servicios"] = {
+        "items": [{**s, "ingreso": round(s["ingreso"], 2)} for s in principales],
+        "otros": ({"nombre": f"Otros ({len(resto)})", "cantidad": sum(s["cantidad"] for s in resto),
+                   "ingreso": round(sum(s["ingreso"] for s in resto), 2)} if resto else None),
+        "total_ingreso": round(sum(s["ingreso"] for s in ordenados), 2),
+    }
+
+    # ---- Cierres sin cobro, por motivo
+    motivos: dict[str, int] = {}
+    for o in cerradas:
+        if o.get("estado") == ESTADO_CERRADO_SIN_COBRO:
+            texto = MOTIVOS_CIERRE_SIN_COBRO.get(o.get("motivo_cierre") or "", "Sin motivo")
+            motivos[texto] = motivos.get(texto, 0) + 1
+    r["sin_cobro"] = {"total": sum(motivos.values()),
+                      "motivos": [{"motivo": k, "cantidad": v} for k, v in sorted(motivos.items(), key=lambda x: -x[1])]}
+    r["inicio_utc"], r["fin_utc"] = inicio_utc, fin_utc
+    return r
+
+
+def garantias_periodo(taller_id, inicio_utc: str, fin_utc: str) -> dict | None:
+    """Reclamos de garantía atendidos en el período y tasa de retorno."""
+    try:
+        entregadas = (supabase.table("reparaciones").select("id", count="exact")
+                      .eq("taller_id", taller_id).eq("estado", "Terminado").gt("garantia_dias", 0)
+                      .gte("fecha_salida", inicio_utc).lte("fecha_salida", fin_utc).limit(1).execute()).count or 0
+        reclamos = _paginar(lambda: supabase.table("reparaciones").select("id, garantia_costo")
+                            .eq("taller_id", taller_id).not_.is_("garantia_orden_origen", "null")
+                            .gte("fecha_salida", inicio_utc).lte("fecha_salida", fin_utc))
     except Exception as e:
-        print(f"Error en dashboard_stats: {e}")
-        # En caso de error, devolvemos listas vacías para que no se rompa la página
-        return {"top_clientes": [], "top_servicios": [], "top_repuestos": []}
-    
+        print(f"Dashboard sin datos de garantías (¿faltan migraciones?): {e}")
+        return None
+    return {
+        "entregadas": entregadas,
+        "reclamos": len(reclamos),
+        "costo": round(sum(float(x.get("garantia_costo") or 0) for x in reclamos), 2),
+        "tasa": round(100.0 * len(reclamos) / entregadas, 1) if entregadas else None,
+    }
+
+
+def ordenes_abiertas(taller_id) -> dict:
+    """Órdenes abiertas ahora mismo y las estancadas (más de DIAS_ORDEN_ESTANCADA días)."""
+    abiertas = _paginar(lambda: supabase.table("reparaciones")
+                        .select("id, vehiculo, cliente, modelo, motivo, oficial, fecha_hora")
+                        .eq("taller_id", taller_id).eq("estado", "Pendiente"))
+    hoy = datetime.now(ZONA_ECUADOR).date()
+    estancadas = []
+    for o in abiertas:
+        d = fecha_ecuador(o.get("fecha_hora"))
+        dias = (hoy - d).days if d else 0
+        if dias > DIAS_ORDEN_ESTANCADA:
+            estancadas.append({"id": o["id"], "placa": o.get("vehiculo") or "S/C", "cliente": o.get("cliente") or "",
+                               "modelo": o.get("modelo") or "", "motivo": o.get("motivo") or "",
+                               "tecnico": o.get("oficial") or "", "dias": dias})
+    estancadas.sort(key=lambda x: -x["dias"])
+    return {"total": len(abiertas), "dias_limite": DIAS_ORDEN_ESTANCADA,
+            "estancadas_total": len(estancadas), "estancadas": estancadas[:10]}
+
+
+def alertas_inventario(taller_id) -> dict:
+    """Foto actual del inventario: lo que se acabó (y sí se usa), lo que se acabará
+    pronto y el dinero parado en repuestos que no se mueven."""
+    from datetime import timedelta
+    inventario = _paginar(lambda: supabase.table("inventario").select("id, codigo, nombre, cantidad, costo")
+                          .eq("taller_id", taller_id))
+    hace_90, _ = limites_dia_ecuador((datetime.now(ZONA_ECUADOR).date() - timedelta(days=DIAS_SIN_MOVIMIENTO)).isoformat())
+    hace_30, _ = limites_dia_ecuador((datetime.now(ZONA_ECUADOR).date() - timedelta(days=30)).isoformat())
+    ordenes = _paginar(lambda: supabase.table("reparaciones")
+                       .select("id, fecha_hora, reparacion_detalles(inventario_id, cantidad)")
+                       .eq("taller_id", taller_id).gte("fecha_hora", hace_90))
+    uso_90: dict[str, float] = {}
+    uso_30: dict[str, float] = {}
+    for o in ordenes:
+        reciente = str(o.get("fecha_hora") or "") >= hace_30
+        for det in o.get("reparacion_detalles") or []:
+            k = str(det.get("inventario_id"))
+            cant = float(det.get("cantidad") or 0)
+            uso_90[k] = uso_90.get(k, 0) + cant
+            if reciente:
+                uso_30[k] = uso_30.get(k, 0) + cant
+
+    agotados, por_agotarse, quietos = [], [], []
+    for it in inventario:
+        k, stock = str(it["id"]), float(it.get("cantidad") or 0)
+        fila = {"codigo": it.get("codigo") or "", "nombre": it.get("nombre") or "", "stock": stock,
+                "uso_30": uso_30.get(k, 0)}
+        if stock <= 0 and uso_90.get(k):
+            agotados.append(fila)
+        elif stock > 0 and uso_30.get(k, 0) > stock:
+            por_agotarse.append(fila)       # en 30 días se usó más de lo que queda
+        elif stock > 0 and not uso_90.get(k):
+            quietos.append({**fila, "valor": round(stock * float(it.get("costo") or 0), 2)})
+    agotados.sort(key=lambda x: -x["uso_30"])
+    por_agotarse.sort(key=lambda x: x["stock"] - x["uso_30"])
+    quietos.sort(key=lambda x: -x["valor"])
+    return {
+        "agotados": agotados[:8], "agotados_total": len(agotados),
+        "por_agotarse": por_agotarse[:8], "por_agotarse_total": len(por_agotarse),
+        "sin_movimiento_total": len(quietos), "sin_movimiento_valor": round(sum(q["valor"] for q in quietos), 2),
+        "sin_movimiento": quietos[:5], "dias_sin_movimiento": DIAS_SIN_MOVIMIENTO,
+    }
+
+
+@app.get("/dashboard-stats")
+def dashboard_stats(request: Request, desde: str | None = None, hasta: str | None = None):
+    """Dashboard analítico de un período (AAAA-MM-DD; por defecto, el mes en curso)."""
+    _, taller_id = obtener_cliente_seguro(request)
+    exigir_modulo(taller_id, "dashboard")
+
+    hoy = datetime.now(ZONA_ECUADOR).date()
+    try:
+        desde_d = datetime.strptime(desde, "%Y-%m-%d").date() if desde else hoy.replace(day=1)
+        hasta_d = datetime.strptime(hasta, "%Y-%m-%d").date() if hasta else hoy
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Fechas inválidas (formato AAAA-MM-DD).")
+    if desde_d > hasta_d:
+        raise HTTPException(status_code=400, detail="La fecha 'desde' no puede ser mayor que 'hasta'.")
+    if (hasta_d - desde_d).days + 1 > MAX_DIAS_DASHBOARD:
+        raise HTTPException(status_code=400, detail="El período máximo es de 3 años.")
+
+    actual = resumen_periodo(taller_id, desde_d, hasta_d)
+    ant_desde, ant_hasta = periodo_anterior(desde_d, hasta_d)
+    anterior = resumen_periodo(taller_id, ant_desde, ant_hasta, detalle=False)
+
+    # La serie anterior se alinea por posición (día 1 con día 1, semana 1 con semana 1)
+    n = len(actual["etiquetas"])
+    serie_anterior = (anterior["serie_ingresos"] + [None] * n)[:n]
+
+    activos = modulos_activos(taller_id)
+    return {
+        "periodo": {"desde": desde_d.isoformat(), "hasta": hasta_d.isoformat(),
+                    "texto": texto_rango(desde_d, hasta_d), "granularidad": actual["granularidad"]},
+        "anterior": {"desde": ant_desde.isoformat(), "hasta": ant_hasta.isoformat(),
+                     "texto": texto_rango(ant_desde, ant_hasta)},
+        "kpis": {k: {"valor": actual[k], "anterior": anterior[k]}
+                 for k in ("facturado", "egresos", "neto", "atendidos", "ticket")},
+        "ingresados": actual["ingresados"],
+        "serie": {"etiquetas": actual["etiquetas"], "ingresos": actual["serie_ingresos"],
+                  "egresos": actual["serie_egresos"], "ingresos_anterior": serie_anterior},
+        "servicios": actual["servicios"],
+        "fugas": {
+            "abiertas": ordenes_abiertas(taller_id),
+            "sin_cobro": actual["sin_cobro"],
+            "garantias": (garantias_periodo(taller_id, actual["inicio_utc"], actual["fin_utc"])
+                          if "control_garantias" in activos else None),
+        },
+        "inventario": alertas_inventario(taller_id) if "inventario" in activos else None,
+    }
+
 @app.get("/exportar-inventario")
 def exportar_inventario(request: Request):
     try:

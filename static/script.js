@@ -10,6 +10,8 @@ function alternarTema() {
     raiz.setAttribute("data-theme", nuevoTema);
     localStorage.setItem("as_tema", nuevoTema);
     actualizarIconoTema(nuevoTema);
+    // El gráfico del dashboard toma sus colores del tema: se redibuja
+    if (typeof ultimoDashboard !== 'undefined' && ultimoDashboard) renderTendencia(ultimoDashboard);
 }
 
 const ICONO_LUNA = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
@@ -2130,96 +2132,306 @@ function cambiarVista(idVista) {
     }
 }
 // ==========================================================================
-// DASHBOARD ANALÍTICO (CHART.JS)
+// DASHBOARD ANALÍTICO
+// Tres preguntas: ¿cómo voy? (indicadores + tendencia), ¿qué me deja plata?
+// (servicios) y ¿qué se me puede escapar? (estancadas, sin cobro, garantías,
+// inventario). Todo obedece al filtro de período de arriba.
 // ==========================================================================
-let chartRepuestos = null;
-let chartClientes = null;
-let chartServicios = null;
+let chartTendencia = null;
+let ultimoDashboard = null;           // para redibujar al cambiar el tema
 
-async function cargarDatosDashboard() {
-    const token = localStorage.getItem("taller_token"); // ¡Corregido!
-    if (!token) return;
+// Fechas en hora local (el navegador del taller está en Ecuador)
+function isoLocal(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
-    try {
-        // Llama a la URL de tu backend correctamente sin API_URL
-        const response = await fetch("/dashboard-stats", {
-            headers: { "Authorization": `Bearer ${token}` }
-        });
-        
-        if (!response.ok) throw new Error("Error cargando el dashboard");
-        
-        const data = await response.json();
-
-        renderChartRepuestos(data.top_repuestos);
-        renderChartClientes(data.top_clientes);
-        renderChartServicios(data.top_servicios);
-
-    } catch (error) {
-        console.error("Error en el Dashboard:", error);
+function rangoDashboard(clave) {
+    const hoy = new Date();
+    const y = hoy.getFullYear(), m = hoy.getMonth();
+    switch (clave) {
+        case 'hoy': return { desde: isoLocal(hoy), hasta: isoLocal(hoy) };
+        case 'semana': {
+            const lunes = new Date(hoy); lunes.setDate(hoy.getDate() - ((hoy.getDay() + 6) % 7));
+            return { desde: isoLocal(lunes), hasta: isoLocal(hoy) };
+        }
+        case 'mes_anterior': return { desde: isoLocal(new Date(y, m - 1, 1)), hasta: isoLocal(new Date(y, m, 0)) };
+        case 'anio': return { desde: isoLocal(new Date(y, 0, 1)), hasta: isoLocal(hoy) };
+        case 'propio': return {
+            desde: document.getElementById('dash-desde').value,
+            hasta: document.getElementById('dash-hasta').value
+        };
+        default: return { desde: isoLocal(new Date(y, m, 1)), hasta: isoLocal(hoy) };
     }
 }
 
-function renderChartRepuestos(datos) {
-    const ctx = document.getElementById('graficoRepuestos').getContext('2d');
-    if (chartRepuestos) chartRepuestos.destroy(); // Limpiar gráfico anterior
-
-    chartRepuestos = new Chart(ctx, {
-        type: 'doughnut', // Gráfico circular (donut)
-        data: {
-            labels: datos.map(d => d.nombre),
-            datasets: [{
-                label: 'Unidades Vendidas',
-                data: datos.map(d => d.cantidad),
-                backgroundColor: ['#DB1FFF', '#7030EF', '#00d2ff', '#3a7bd5', '#ff7b00'],
-                borderWidth: 0
-            }]
-        },
-        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#888' } } } }
-    });
+function seleccionarRangoDashboard(boton) {
+    document.querySelectorAll('.dash-filtros > .dash-chip').forEach(b => b.classList.toggle('activo', b === boton));
+    const propio = boton.dataset.rango === 'propio';
+    document.getElementById('dash-rango-propio').hidden = !propio;
+    if (propio) {
+        // Arranca con el rango que se estaba viendo, para solo ajustarlo
+        if (ultimoDashboard && !document.getElementById('dash-desde').value) {
+            document.getElementById('dash-desde').value = ultimoDashboard.periodo.desde;
+            document.getElementById('dash-hasta').value = ultimoDashboard.periodo.hasta;
+        }
+        return;   // espera a "Aplicar"
+    }
+    cargarDatosDashboard();
 }
 
-function renderChartClientes(datos) {
-    const ctx = document.getElementById('graficoClientes').getContext('2d');
-    if (chartClientes) chartClientes.destroy();
+async function cargarDatosDashboard() {
+    const token = localStorage.getItem("taller_token");
+    if (!token) return;
+    const activo = document.querySelector('.dash-filtros > .dash-chip.activo');
+    const { desde, hasta } = rangoDashboard(activo ? activo.dataset.rango : 'mes');
+    if (!desde || !hasta) {
+        mostrarNotificacion("Elige las dos fechas del período.", "warning");
+        return;
+    }
+    document.getElementById('vista-dashboard').classList.add('cargando');
+    try {
+        const res = await fetch(`/dashboard-stats?desde=${desde}&hasta=${hasta}`, { headers: cabeceraAuth() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            mostrarModal({ tipo: 'error', titulo: 'No se pudo cargar el dashboard',
+                           mensaje: escaparHTML(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`) });
+            return;
+        }
+        ultimoDashboard = data;
+        renderDashboard(data);
+    } catch (e) {
+        mostrarNotificacion("Error de conexión al cargar el dashboard.", "error");
+    } finally {
+        document.getElementById('vista-dashboard').classList.remove('cargando');
+    }
+}
 
-    chartClientes = new Chart(ctx, {
-        type: 'bar', // Gráfico de barras horizontales
+function renderDashboard(d) {
+    document.getElementById('dash-periodo-texto').innerHTML =
+        `${escaparHTML(d.periodo.texto)} <span class="dash-sub-tenue">· comparado con ${escaparHTML(d.anterior.texto)}</span>`;
+    renderKpis(d);
+    renderTendencia(d);
+    renderServiciosDashboard(d.servicios);
+    renderFugas(d.fugas);
+    renderInventarioDashboard(d.inventario);
+}
+
+// ---------- Iconos de estado: el color nunca va solo, siempre con forma y texto ----------
+const ICONOS_ESTADO = {
+    bien: '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M4.8 8.3l2.1 2.1 4.3-4.6" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    aviso: '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 1.5l7 12.5H1z" fill="currentColor"/><path d="M8 6v3.6" stroke="#1a1a19" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.8" r=".9" fill="#1a1a19"/></svg>',
+    serio: '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="currentColor"/><path d="M8 4.5v4.2" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="11.3" r="1" fill="#fff"/></svg>',
+    critico: '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    info: '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor"/><path d="M8 7.2v4" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="4.8" r="1" fill="#fff"/></svg>'
+};
+
+// ---------- 1. Indicadores con comparación ----------
+function renderKpis(d) {
+    const k = d.kpis;
+    // subeEsBueno: para egresos, subir es malo
+    const tarjetas = [
+        { id: 'facturado', etiqueta: 'Facturado', formato: dinero, subeEsBueno: true },
+        { id: 'egresos', etiqueta: 'Egresos', formato: dinero, subeEsBueno: false },
+        { id: 'neto', etiqueta: 'Neto (facturado − egresos)', formato: dinero, subeEsBueno: true },
+        { id: 'atendidos', etiqueta: 'Vehículos atendidos', formato: v => String(v), subeEsBueno: true,
+          extra: `${d.ingresados} ingresaron en el período` },
+        { id: 'ticket', etiqueta: 'Ticket promedio', formato: dinero, subeEsBueno: true }
+    ];
+    document.getElementById('dash-kpis').innerHTML = tarjetas.map(t => {
+        const { valor, anterior } = k[t.id];
+        return `<div class="dash-kpi">
+            <div class="dash-kpi-etiqueta">${t.etiqueta}</div>
+            <div class="dash-kpi-valor">${t.formato(valor)}</div>
+            ${deltaHTML(valor, anterior, t.subeEsBueno, t.formato)}
+            ${t.extra ? `<div class="dash-kpi-extra">${escaparHTML(t.extra)}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function deltaHTML(valor, anterior, subeEsBueno, formato) {
+    const titulo = `Período anterior: ${formato(anterior)}`;
+    if (!anterior) {
+        return `<div class="dash-delta" title="${titulo}"><span class="dash-delta-texto">${valor ? 'Sin datos del período anterior' : 'Sin movimiento'}</span></div>`;
+    }
+    const cambio = (valor - anterior) / Math.abs(anterior) * 100;
+    if (Math.abs(cambio) < 0.5) {
+        return `<div class="dash-delta" title="${titulo}"><span class="dash-delta-flecha neutro">=</span><span class="dash-delta-texto">Igual que antes</span></div>`;
+    }
+    const sube = cambio > 0;
+    const bueno = sube === subeEsBueno;
+    const flecha = sube
+        ? '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M6 2l4.5 6h-9z" fill="currentColor"/></svg>'
+        : '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M6 10L1.5 4h9z" fill="currentColor"/></svg>';
+    return `<div class="dash-delta" title="${titulo}">
+        <span class="dash-delta-flecha ${bueno ? 'bien' : 'critico'}">${flecha}</span>
+        <span class="dash-delta-texto"><b>${sube ? '+' : '−'}${Math.abs(cambio).toFixed(Math.abs(cambio) < 10 ? 1 : 0)}%</b> vs. antes (${formato(anterior)})</span>
+    </div>`;
+}
+
+// ---------- Tendencia: ingresos, egresos y el período anterior ----------
+function colorVar(nombre) {
+    return getComputedStyle(document.documentElement).getPropertyValue(nombre).trim();
+}
+
+function renderTendencia(d) {
+    const s = d.serie;
+    const lienzo = document.getElementById('graficoTendencia');
+    const vacio = document.getElementById('dash-tendencia-vacia');
+    if (chartTendencia) { chartTendencia.destroy(); chartTendencia = null; }
+
+    const sinDatos = !s.ingresos.some(v => v) && !s.egresos.some(v => v);
+    const unPunto = s.etiquetas.length < 2;
+    lienzo.parentElement.hidden = sinDatos || unPunto;
+    vacio.hidden = !(sinDatos || unPunto);
+    vacio.textContent = unPunto ? 'Elige un período de más de un día para ver la tendencia.'
+                                : 'No hay ingresos ni egresos en este período.';
+    renderTablaTendencia(d);
+
+    const series = [
+        { etiqueta: 'Ingresos', color: colorVar('--serie-ingresos'), datos: s.ingresos, ancho: 2 },
+        { etiqueta: 'Egresos', color: colorVar('--serie-egresos'), datos: s.egresos, ancho: 2 },
+        { etiqueta: `Ingresos ${d.anterior.texto}`, color: colorVar('--serie-anterior'), datos: s.ingresos_anterior, ancho: 1.5, punteada: true }
+    ];
+    // Leyenda propia (texto en tinta normal; el color solo en la muestra)
+    document.getElementById('dash-leyenda').innerHTML = series.map(x =>
+        `<span class="dash-leyenda-item"><span class="dash-muestra ${x.punteada ? 'punteada' : ''}" style="--c:${x.color}"></span>${escaparHTML(x.etiqueta)}</span>`).join('');
+    if (sinDatos || unPunto || typeof Chart === 'undefined') return;
+
+    const tinta = colorVar('--texto-tenue');
+    const rejilla = colorVar('--dash-rejilla');
+    const porDia = d.periodo.granularidad === 'dia';
+    chartTendencia = new Chart(lienzo, {
+        type: 'line',
         data: {
-            labels: datos.map(d => d.nombre),
-            datasets: [{
-                label: 'Inversión Total ($)',
-                data: datos.map(d => d.total),
-                backgroundColor: '#28a745',
-                borderRadius: 5
-            }]
+            labels: s.etiquetas,
+            datasets: series.map(x => ({
+                label: x.etiqueta, data: x.datos, borderColor: x.color, backgroundColor: x.color,
+                borderWidth: x.ancho, borderDash: x.punteada ? [5, 4] : [], cubicInterpolationMode: 'monotone',   // curva suave sin pasarse de los valores reales
+                pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12,
+                pointHoverBorderColor: colorVar('--dash-superficie'), pointHoverBorderWidth: 2, spanGaps: false
+            }))
         },
-        options: { 
-            indexAxis: 'y', // Lo hace horizontal
-            responsive: true, 
-            plugins: { legend: { display: false } },
-            scales: { x: { grid: { color: '#333' } }, y: { grid: { display: false } } }
+        options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            interaction: { mode: 'index', intersect: false },     // cruz + tooltip con las 3 series
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: colorVar('--dash-tooltip'), titleColor: colorVar('--texto'), bodyColor: colorVar('--texto'),
+                    borderColor: rejilla, borderWidth: 1, padding: 10, boxPadding: 4, usePointStyle: true,
+                    callbacks: {
+                        title: items => (porDia ? '' : (d.periodo.granularidad === 'semana' ? 'Semana del ' : '')) + items[0].label,
+                        label: c => c.raw === null ? null : ` ${c.dataset.label}: ${dinero(c.raw)}`
+                    }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, border: { color: rejilla },
+                     ticks: { color: tinta, maxRotation: 0, autoSkip: true, maxTicksLimit: porDia ? 10 : 12 } },
+                y: { beginAtZero: true, grid: { color: rejilla }, border: { display: false },
+                     ticks: { color: tinta, maxTicksLimit: 5, callback: v => '$' + Number(v).toLocaleString('en-US') } }
+            }
         }
     });
 }
 
-function renderChartServicios(datos) {
-    const ctx = document.getElementById('graficoServicios').getContext('2d');
-    if (chartServicios) chartServicios.destroy();
-
-    chartServicios = new Chart(ctx, {
-        type: 'pie', // Gráfico tipo pastel
-        data: {
-            labels: datos.map(d => d.nombre),
-            datasets: [{
-                label: 'Veces Realizado',
-                data: datos.map(d => d.cantidad),
-                backgroundColor: ['#ff9900', '#ff5500', '#ff0055', '#9900ff', '#00ccff'],
-                borderWidth: 0
-            }]
-        },
-        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#888' } } } }
-    });
+function renderTablaTendencia(d) {
+    const s = d.serie;
+    const filas = s.etiquetas.map((e, i) => `<tr><td>${escaparHTML(e)}</td><td class="num">${dinero(s.ingresos[i])}</td>
+        <td class="num">${dinero(s.egresos[i])}</td><td class="num">${s.ingresos_anterior[i] === null ? '—' : dinero(s.ingresos_anterior[i])}</td></tr>`).join('');
+    document.getElementById('dash-tabla-tendencia').innerHTML = `<table class="tabla-caja">
+        <thead><tr><th>${d.periodo.granularidad === 'mes' ? 'Mes' : d.periodo.granularidad === 'semana' ? 'Semana del' : 'Día'}</th>
+            <th style="text-align:right;">Ingresos</th><th style="text-align:right;">Egresos</th>
+            <th style="text-align:right;">Ingresos antes</th></tr></thead><tbody>${filas}</tbody></table>`;
 }
+
+function alternarTablaTendencia() {
+    const tabla = document.getElementById('dash-tabla-tendencia');
+    tabla.hidden = !tabla.hidden;
+    document.getElementById('dash-btn-tabla').textContent = tabla.hidden ? 'Ver como tabla' : 'Ocultar tabla';
+}
+
+// ---------- 2. Servicios que más facturan (barras horizontales en HTML) ----------
+function renderServiciosDashboard(sv) {
+    const cont = document.getElementById('dash-servicios');
+    const items = [...sv.items, ...(sv.otros ? [sv.otros] : [])];
+    if (!items.length) {
+        cont.innerHTML = '<p class="dash-vacio">No hay trabajos terminados en este período.</p>';
+        return;
+    }
+    // Si las órdenes no tienen precio por trabajo (datos antiguos), se compara por cantidad
+    const porIngreso = sv.total_ingreso > 0;
+    const maximo = Math.max(...items.map(x => porIngreso ? x.ingreso : x.cantidad)) || 1;
+    cont.innerHTML = `<ul class="dash-barras">${items.map(x => {
+        const valor = porIngreso ? x.ingreso : x.cantidad;
+        const ancho = Math.max(2, valor / maximo * 100);
+        return `<li class="dash-barra-fila" title="${escaparHTML(x.nombre)}: ${dinero(x.ingreso)} en ${x.cantidad} trabajo${x.cantidad === 1 ? '' : 's'}">
+            <div class="dash-barra-texto"><span class="dash-barra-nombre">${escaparHTML(x.nombre)}</span>
+                <span class="dash-barra-valor">${porIngreso ? dinero(x.ingreso) : ''} <span class="sub">${x.cantidad} ${x.cantidad === 1 ? 'vez' : 'veces'}</span></span></div>
+            <div class="dash-barra-pista"><div class="dash-barra ${x.nombre.startsWith('Otros') ? 'otros' : ''}" style="width:${ancho}%"></div></div>
+        </li>`;
+    }).join('')}</ul>`;
+}
+
+// ---------- 3. Lo que se te puede escapar ----------
+function filaFuga(estado, titulo, detalle = '') {
+    return `<li class="dash-fuga"><span class="dash-icono ${estado}">${ICONOS_ESTADO[estado]}</span>
+        <div><div class="dash-fuga-titulo">${titulo}</div>${detalle ? `<div class="dash-fuga-detalle">${detalle}</div>` : ''}</div></li>`;
+}
+
+function renderFugas(f) {
+    const e = escaparHTML;
+    const a = f.abiertas;
+    const filas = [];
+    if (a.estancadas_total) {
+        const lista = a.estancadas.map(o => `<tr><td><b>${e(o.placa)}</b></td><td>${e(o.cliente || '—')}</td>
+            <td class="num">${o.dias} días</td></tr>`).join('');
+        const mas = a.estancadas_total > a.estancadas.length ? `<div class="sub">y ${a.estancadas_total - a.estancadas.length} más</div>` : '';
+        filas.push(filaFuga('serio', `${a.estancadas_total > 1 ? `${a.estancadas_total} órdenes abiertas` : '1 orden abierta'} hace más de ${a.dias_limite} días`,
+            `<table class="dash-mini-tabla"><tbody>${lista}</tbody></table>${mas}`));
+    } else {
+        filas.push(filaFuga('bien', `Ninguna orden abierta hace más de ${a.dias_limite} días`));
+    }
+    filas.push(filaFuga('info', `${a.total === 1 ? '1 orden abierta' : `${a.total} órdenes abiertas`} ahora mismo`));
+
+    const sc = f.sin_cobro;
+    filas.push(sc.total
+        ? filaFuga('aviso', `${sc.total > 1 ? `${sc.total} vehículos salieron` : '1 vehículo salió'} sin cobro`,
+            sc.motivos.map(m => `${e(m.motivo)}: <b>${m.cantidad}</b>`).join('<br>'))
+        : filaFuga('bien', 'Ningún vehículo salió sin cobro'));
+
+    const g = f.garantias;
+    if (g) {
+        filas.push(g.reclamos
+            ? filaFuga('aviso', `${g.reclamos} reclamo${g.reclamos > 1 ? 's' : ''} de garantía${g.tasa !== null ? ` · ${g.tasa}% de retorno` : ''}`,
+                `Costo para el taller: <b>${dinero(g.costo)}</b> · ${g.entregadas} trabajos con garantía en el período`)
+            : filaFuga('bien', 'Ningún reclamo de garantía', `${g.entregadas} trabajos con garantía en el período`));
+    }
+    document.getElementById('dash-fugas').innerHTML = `<ul class="dash-fugas">${filas.join('')}</ul>`;
+}
+
+// ---------- Inventario (si el plan lo incluye) ----------
+function renderInventarioDashboard(inv) {
+    const cont = document.getElementById('dash-inventario');
+    if (!inv) { cont.innerHTML = ''; return; }
+    const e = escaparHTML;
+    const lista = (items, texto) => items.length
+        ? `<ul class="dash-lista">${items.map(x => `<li><span><b>${e(x.codigo)}</b> ${e(x.nombre)}</span><span class="sub">${texto(x)}</span></li>`).join('')}</ul>` : '';
+    const bloque = (estado, titulo, cuerpo) => `<div class="dash-inv-bloque">${filaFuga(estado, titulo)}${cuerpo}</div>`;
+    cont.innerHTML = [
+        bloque(inv.agotados_total ? 'critico' : 'bien',
+            inv.agotados_total ? `${inv.agotados_total} agotado${inv.agotados_total > 1 ? 's' : ''} que sí se usa${inv.agotados_total > 1 ? 'n' : ''}` : 'Nada agotado que se use',
+            lista(inv.agotados, x => `usaste ${x.uso_30} en 30 días`)),
+        bloque(inv.por_agotarse_total ? 'aviso' : 'bien',
+            inv.por_agotarse_total ? `${inv.por_agotarse_total} por agotarse` : 'Nada por agotarse',
+            lista(inv.por_agotarse, x => `quedan ${x.stock} · usaste ${x.uso_30} en 30 días`)),
+        bloque(inv.sin_movimiento_total ? 'info' : 'bien',
+            inv.sin_movimiento_total ? `${dinero(inv.sin_movimiento_valor)} parados en ${inv.sin_movimiento_total} repuesto${inv.sin_movimiento_total > 1 ? 's' : ''} sin uso en ${inv.dias_sin_movimiento} días`
+                                     : `Todo el stock se movió en ${inv.dias_sin_movimiento} días`,
+            lista(inv.sin_movimiento, x => `${x.stock} u. · ${dinero(x.valor)}`))
+    ].join('');
+}
+
 // ==========================================================================
 // CATÁLOGO DE SERVICIOS
 // ==========================================================================
