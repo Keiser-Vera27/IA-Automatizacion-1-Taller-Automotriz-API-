@@ -998,6 +998,21 @@ def reprocesar_mensaje(mensaje_id: str, background_tasks: BackgroundTasks, reque
 class RepuestoUsado(BaseModel):
     codigo: str = Field(description="Código exacto del repuesto usado (ej: vss005)")
     cantidad: int = Field(description="Cantidad de unidades utilizadas")
+    # Precio unitario NEGOCIADO con el cliente (ej. "el TPS se le dejó en 30").
+    # None = se cobra el precio de venta del inventario. 0 es válido (regalado).
+    precio_unitario: float | None = Field(default=None, description="Precio unitario acordado si el mensaje lo menciona")
+
+    @field_validator("precio_unitario", mode="before")
+    @classmethod
+    def _precio_negociado(cls, v):
+        """Acepta '30', '30$', '$30,50'. Vacío, inválido o negativo = sin precio negociado."""
+        if v is None or str(v).strip() == "":
+            return None
+        try:
+            n = float(str(v).replace("$", "").replace(",", ".").strip())
+        except (TypeError, ValueError):
+            return None
+        return round(n, 2) if 0 <= n <= 100000 else None
 
 
 
@@ -1128,6 +1143,9 @@ class SolicitudUnificada(BaseModel):
     datos_confirmados: dict[str, str] | None = None
     # Respuesta a la ventana "¿Cerrar la orden?": "cerrar" o "abierta"
     decision_cierre: Literal["cerrar", "abierta"] | None = None
+    # Precios corregidos en la ventana de cierre:
+    # {"repuestos": {codigo: precio_unitario}, "trabajos": {descripcion: precio}}
+    precios: dict[str, dict[str, float]] | None = None
 
 
 class RouterIntencion(BaseModel):
@@ -1203,6 +1221,12 @@ def construir_prompt_extraccion(taller_id, texto: str, nombres_tecnicos: list[st
     'repuestos_usados'. Si el repuesto mencionado no se parece a ninguno del catálogo, NO lo 
     inventes: omítelo de 'repuestos_usados' (mejor dejarlo fuera que inventar un código que no existe).
 
+    REGLA DE PRECIO NEGOCIADO DE REPUESTOS:
+    Si el mensaje dice a qué precio se vendió o se dejó un repuesto (ej. "el TPS se le dejó en 30$",
+    "la bomba a 45", "se le cobró 12 el filtro"), pon ese valor en 'precio_unitario' de ESE repuesto
+    (precio por unidad). Si no se menciona su precio, deja 'precio_unitario' en null (el sistema
+    usará el precio del inventario). Ese precio NO es el 'cobro' total de la orden.
+
     ETAPA DE LA ORDEN (campo "etapa", OBLIGATORIO en reparaciones). Es la regla MÁS IMPORTANTE:
     - "ingreso": el vehículo LLEGA al taller. Lo que el cliente PIDE o el problema que reporta
       (ej. "quiere mantenimiento a inyectores", "llega por ruido en frenos") va SOLO en 'motivo'.
@@ -1251,7 +1275,7 @@ def construir_prompt_extraccion(taller_id, texto: str, nombres_tecnicos: list[st
           "metodo_pago": "efectivo, transferencia, tarjeta, etc.",
           "banco": "Nombre exacto del banco si es transferencia (ej. Pichincha, Guayaquil, Produbanco, Pacifico)",
           "repuestos_usados": [
-              {{"codigo": "codigo_repuesto_EXACTO_del_catalogo", "cantidad": 1}}
+              {{"codigo": "codigo_repuesto_EXACTO_del_catalogo", "cantidad": 1, "precio_unitario": null}}
           ]
       }} | null,
       "gasto": {{
@@ -1661,10 +1685,14 @@ def calcular_materiales(taller_id, lineas: list[dict], modelo: str, cilindros,
         inv = inv_por_codigo.get(str(r["codigo"]))
         if not inv:
             continue
+        precio_lista = round(float(inv.get("precio_venta") or 0), 2)
+        # Precio acordado con el cliente (mensaje o ventana de cierre); si no hay, el de lista
+        negociado = r.get("precio_unitario")
         items.append({
             "inventario_id": inv["id"], "codigo": inv.get("codigo", ""), "nombre": inv.get("nombre", ""),
             "cantidad": int(r.get("cantidad") or 0), "incluido": False, "origen": "manual", "trabajo": None,
-            "precio_unitario": float(inv.get("precio_venta") or 0), "stock": inv.get("cantidad"),
+            "precio_unitario": precio_lista if negociado is None else float(negociado),
+            "precio_lista": precio_lista, "stock": inv.get("cantidad"),
         })
 
     # Avisos de stock (no bloquean el trabajo)
@@ -1723,6 +1751,8 @@ def registrar_materiales_en_orden(taller_id, reparacion_id, items: list[dict]):
                 "precio_unitario": it["precio_unitario"],
                 "origen": it["origen"], "trabajo": it["trabajo"], "incluido": it["incluido"],
             }
+            if it.get("precio_lista") is not None:
+                fila["precio_lista"] = it["precio_lista"]   # permite reportar descuentos
             insertar_detalle_repuesto(fila)
             ya_en_orden.append(fila)
         except Exception as e_repuesto:
@@ -1741,9 +1771,12 @@ def insertar_detalle_repuesto(fila: dict):
     try:
         return supabase.table("reparacion_detalles").insert(fila).execute()
     except APIError as e:
+        # precio_lista: migración 2026-10-05; origen/trabajo/incluido: migración 2026-09-24
+        if "precio_lista" in str(e):
+            return insertar_detalle_repuesto({k: v for k, v in fila.items() if k != "precio_lista"})
         if any(c in str(e) for c in ("origen", "trabajo", "incluido")):
             return supabase.table("reparacion_detalles").insert(
-                {k: v for k, v in fila.items() if k not in ("origen", "trabajo", "incluido")}).execute()
+                {k: v for k, v in fila.items() if k not in ("origen", "trabajo", "incluido", "precio_lista")}).execute()
         raise
 
 def unir_trabajos(existentes: list[dict], nuevos: list[dict]) -> list[dict]:
@@ -1934,8 +1967,13 @@ def validar_orden_trabajo(d: dict, taller_id, mapa_tecnicos: dict[str, str], tex
         "orden_abierta": pendiente, "garantia": garantia,
         "cliente": efectivo("cliente"), "modelo": efectivo("modelo"),
         "trabajo": texto_trabajos(trabajos_orden), "cobro": d.get("cobro") or 0,
-        "trabajos": trabajos_orden, "total": round(total_orden, 2),
-        "materiales": [{k: m.get(k) for k in ("codigo", "nombre", "cantidad", "precio_unitario", "incluido", "origen", "trabajo")}
+        # editable: solo lo que agrega ESTE mensaje (lo ya guardado en la orden no se toca aquí)
+        "trabajos": [{**t, "editable": _sin_tildes(t["descripcion"]).strip() not in claves_existentes}
+                     for t in trabajos_orden],
+        "total": round(total_orden, 2),
+        "materiales": [{**{k: m.get(k) for k in ("codigo", "nombre", "cantidad", "precio_unitario", "precio_lista",
+                                                   "incluido", "origen", "trabajo")},
+                        "editable": m.get("origen") == "manual" and not m.get("ya_registrado")}
                        for m in materiales_orden],
         "avisos_materiales": vista_materiales["avisos"],
         "cobro_indicado": float(d.get("cobro") or 0) > 0,
@@ -2000,6 +2038,36 @@ def obtener_datos_pre_extraidos(msj: dict) -> dict | None:
         return (fila[0].get("datos_extraidos") if fila else None) or None
     except Exception:
         return None
+
+def aplicar_precios_corregidos(rep: dict, precios: dict | None):
+    """Aplica al borrador los precios que el usuario corrigió en la ventana.
+    - Solo afecta lo que trae ESTE mensaje (repuestos_usados y trabajos_nuevos):
+      el borrador está firmado, así que no se pueden agregar ítems nuevos.
+    - Repuestos: precio unitario >= 0 (0 = regalado). Trabajos: precio > 0
+      (un trabajo en 0 vuelve al precio del catálogo al normalizar)."""
+    if not precios:
+        return
+    def numero(v, minimo):
+        try:
+            n = round(float(v), 2)
+        except (TypeError, ValueError):
+            return None
+        return n if minimo <= n <= 100000 else None
+
+    por_codigo = {str(k): numero(v, 0) for k, v in (precios.get("repuestos") or {}).items()}
+    for r in rep.get("repuestos_usados") or []:
+        nuevo = por_codigo.get(str(r.get("codigo")))
+        if nuevo is not None:
+            r["precio_unitario"] = nuevo
+
+    por_trabajo = {_sin_tildes(k).strip(): numero(v, 0.01) for k, v in (precios.get("trabajos") or {}).items()}
+    for t in rep.get("trabajos_nuevos") or []:
+        nuevo = por_trabajo.get(_sin_tildes(t.get("descripcion")).strip())
+        if nuevo is not None:
+            t["precio"] = nuevo
+    # Con precios corregidos manda la suma: un monto total dicho en el mensaje ya no aplica
+    if any(v is not None for v in (*por_codigo.values(), *por_trabajo.values())):
+        rep["cobro"] = 0.0
 
 # Estado de la cola para un cierre rechazado por datos faltantes (no se reintenta:
 # el usuario debe reenviar el mensaje con los datos completos)
@@ -2777,6 +2845,7 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
                     completados[k] = valor
             # Se revalida con el modelo (normaliza la placa, etc.)
             resultado["reparacion"] = TrabajoTaller.model_validate({**resultado["reparacion"], **completados}).model_dump()
+            aplicar_precios_corregidos(resultado["reparacion"], solicitud.precios)
             # Decisión del usuario en la ventana de confirmación de cierre
             if solicitud.decision_cierre:
                 resultado["reparacion"]["cierra"] = solicitud.decision_cierre == "cerrar"

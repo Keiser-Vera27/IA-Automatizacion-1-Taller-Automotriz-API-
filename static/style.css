@@ -863,6 +863,23 @@ hr {
    ========================================================================== */
 .tabla-resumen-cierre { margin: 10px 0; text-align: left; min-width: 0; }
 .tabla-resumen-cierre .num { text-align: right; white-space: nowrap; }
+/* Precio corregible en la ventana de cierre */
+.precio-editable {
+    width: 92px;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--borde);
+    background: var(--bg-alterno);
+    color: var(--texto);
+    font-family: var(--fuente-datos);
+    font-size: 0.95rem;
+    text-align: right;
+}
+.precio-editable:focus { outline: 2px solid var(--morado); outline-offset: 1px; }
+.precio-editable.invalido { border-color: #DC2626; }
+.nota-precios { font-size: 0.8rem; color: var(--texto-tenue); margin: -4px 0 8px; text-align: left; }
+.nota-faltantes { margin-top: 8px; color: var(--texto); }
 .datos-cierre { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 0.9rem; color: var(--texto-tenue); margin: 6px 0; }
 .datos-cierre b { color: var(--texto); }
 .trabajos-tarjeta { margin-top: 6px; font-size: 0.85rem; color: var(--texto-tenue); }

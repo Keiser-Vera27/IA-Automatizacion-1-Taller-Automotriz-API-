@@ -221,8 +221,11 @@ function cerrarSesion() {
 // CIERRE DE ÓRDENES: resumen de trabajos, confirmación y reabrir
 // ==============================================================================
 
-// Tabla con los trabajos de la orden y el total (se usa en las ventanas de cierre)
-function resumenTrabajosHTML(ctx) {
+// Tabla con los trabajos de la orden y el total (se usa en las ventanas de cierre).
+// editable = true: los precios de lo que agrega ESTE mensaje se pueden corregir
+// (ej. la IA no tomó un descuento) y el total se recalcula en vivo.
+function resumenTrabajosHTML(ctx, editable = false) {
+    if (editable) return resumenEditableHTML(ctx);
     const e = escaparHTML;
     const trabajos = ctx.trabajos || [];
     const materiales = listaMaterialesHTML(ctx.materiales, ctx.avisos_materiales);
@@ -240,6 +243,95 @@ function resumenTrabajosHTML(ctx) {
             </table>${materiales}`;
 }
 
+// Input de precio dentro de la tabla de cierre
+function inputPrecioHTML(tipo, clave, valor, minimo, extra = '') {
+    return `<input type="number" class="precio-editable" inputmode="decimal" step="0.01" min="${minimo}"
+        value="${Number(valor || 0).toFixed(2)}" data-tipo="${tipo}" data-clave="${escaparHTML(clave)}"
+        data-original="${Number(valor || 0).toFixed(2)}" ${extra} aria-label="Precio">`;
+}
+
+// Resumen de cierre con precios corregibles: trabajos + materiales en una sola tabla
+function resumenEditableHTML(ctx) {
+    const e = escaparHTML;
+    const trabajos = ctx.trabajos || [];
+    const materiales = ctx.materiales || [];
+    const filasTrabajos = trabajos.map(t => `<tr><td>${e(t.descripcion)}</td><td class="num">${
+        t.editable ? inputPrecioHTML('trabajo', t.descripcion, t.precio, '0.01')
+                   : (t.precio > 0 ? dinero(t.precio) : '—')}</td></tr>`).join('');
+    const filasMateriales = materiales.map(m => {
+        const nombre = `${Number(m.cantidad)} × ${e(m.nombre || m.codigo)} <span class="sub">(${e(m.codigo)})</span>`;
+        if (m.incluido) return `<tr><td>${nombre}</td><td class="num sub">incluido</td></tr>`;
+        if (!m.editable) return `<tr><td>${nombre}</td><td class="num">${dinero((m.precio_unitario || 0) * (m.cantidad || 0))}</td></tr>`;
+        // Repuesto vendido: precio UNITARIO editable, con el de lista como referencia
+        const lista = m.precio_lista != null ? `<div class="sub">Precio de lista: ${dinero(m.precio_lista)} c/u</div>` : '';
+        const cant = Number(m.cantidad) > 1 ? `<div class="sub">c/u</div>` : '';
+        return `<tr><td>${nombre}${lista}</td><td class="num">${
+            inputPrecioHTML('repuesto', m.codigo, m.precio_unitario, '0', `data-cantidad="${Number(m.cantidad) || 0}"`)}${cant}</td></tr>`;
+    }).join('');
+    const hayEditables = trabajos.some(t => t.editable) || materiales.some(m => m.editable && !m.incluido);
+    const nota = ctx.cobro_indicado ? 'Monto indicado en el mensaje' : '';
+    const avisos = listaMaterialesHTML([], ctx.avisos_materiales);
+    return `<table class="tabla-caja tabla-resumen-cierre">
+                <thead><tr><th>Detalle de la orden</th><th style="text-align:right;">Precio</th></tr></thead>
+                <tbody>${filasTrabajos}${filasMateriales}
+                    <tr class="fila-total"><td>Total a cobrar<div class="sub" id="nota-total-cierre">${nota}</div></td>
+                        <td class="num" id="total-cierre-vivo">${dinero(ctx.total)}</td></tr>
+                </tbody>
+            </table>
+            ${hayEditables ? '<div class="nota-precios">Si se dio otro precio al cliente, corrígelo aquí antes de cerrar.</div>' : ''}
+            ${avisos}`;
+}
+
+// Recalcula el total en vivo al editar un precio (misma regla que el backend)
+function activarPreciosEditables(ctx) {
+    const inputs = document.querySelectorAll('#modal-mensaje .precio-editable');
+    if (!inputs.length) return;
+    // Parte fija: lo que no se puede editar y sí se cobra
+    const fijo = (ctx.trabajos || []).filter(t => !t.editable).reduce((s, t) => s + (Number(t.precio) || 0), 0)
+        + (ctx.materiales || []).filter(m => !m.editable && !m.incluido)
+              .reduce((s, m) => s + (Number(m.precio_unitario) || 0) * (Number(m.cantidad) || 0), 0);
+    const recalcular = () => {
+        let suma = fijo;
+        inputs.forEach(i => {
+            const v = Number(i.value) || 0;
+            suma += i.dataset.tipo === 'repuesto' ? v * (Number(i.dataset.cantidad) || 0) : v;
+        });
+        const cambiado = [...inputs].some(i => Math.abs((Number(i.value) || 0) - Number(i.dataset.original)) > 0.0049);
+        // Con el monto dicho en el mensaje, manda ese monto mientras no se corrija un precio
+        const total = ctx.cobro_indicado && !cambiado ? ctx.total : suma;
+        document.getElementById('total-cierre-vivo').textContent = dinero(total);
+        const nota = document.getElementById('nota-total-cierre');
+        if (nota) nota.textContent = cambiado ? 'Recalculado con los precios corregidos'
+                                              : (ctx.cobro_indicado ? 'Monto indicado en el mensaje' : '');
+    };
+    inputs.forEach(i => {
+        i.addEventListener('input', () => { i.classList.remove('invalido'); recalcular(); });
+        i.addEventListener('focus', () => i.select());
+    });
+}
+
+// Precios corregidos en la ventana (solo los que cambiaron).
+// Devuelve null si no cambió nada y false si hay un valor inválido.
+function leerPreciosEditados() {
+    const precios = { repuestos: {}, trabajos: {} };
+    let valido = true, hayCambios = false;
+    document.querySelectorAll('#modal-mensaje .precio-editable').forEach(i => {
+        const v = Number(i.value);
+        const minimo = Number(i.min);
+        const malo = i.value.trim() === '' || !Number.isFinite(v) || v < minimo || v > 100000;
+        i.classList.toggle('invalido', malo);
+        if (malo) { valido = false; return; }
+        if (Math.abs(v - Number(i.dataset.original)) < 0.005) return;
+        hayCambios = true;
+        precios[i.dataset.tipo === 'repuesto' ? 'repuestos' : 'trabajos'][i.dataset.clave] = Math.round(v * 100) / 100;
+    });
+    if (!valido) {
+        mostrarNotificacion("Revisa los precios marcados en rojo.", "warning");
+        return false;
+    }
+    return hayCambios ? precios : null;
+}
+
 // Punto 4: ventana "¿Cerrar la orden?" con el resumen. Nada se guarda hasta decidir.
 function mostrarConfirmacionCierre(data) {
     const overlay = document.getElementById('modal-aviso');
@@ -253,7 +345,7 @@ function mostrarConfirmacionCierre(data) {
                       ctx.modelo ? e(ctx.modelo) : '', ctx.cliente ? e(ctx.cliente) : ''].filter(Boolean).join(' · ');
     document.getElementById('modal-mensaje').innerHTML = `
         <div class="resumen-orden">${cabecera}</div>
-        ${resumenTrabajosHTML(ctx)}
+        ${resumenTrabajosHTML(ctx, true)}
         <div class="datos-cierre">
             ${ctx.tecnico ? `<span>Técnico: <b>${e(ctx.tecnico)}</b></span>` : ''}
             ${pago ? `<span>Pago: <b>${e(pago)}</b></span>` : ''}
@@ -262,6 +354,7 @@ function mostrarConfirmacionCierre(data) {
             Si el trabajo aún no termina, elige <b>“No, sigue abierta”</b>: los trabajos se agregan a la orden sin cerrarla.
             <br><button type="button" class="btn-link" onclick="cancelarConfirmacionCierre()">Cancelar sin guardar nada</button></div>`;
 
+    activarPreciosEditables(ctx);
     const formulario = document.getElementById('modal-formulario');
     formulario.hidden = true; formulario.innerHTML = '';
 
@@ -286,6 +379,8 @@ function cancelarConfirmacionCierre() {
 }
 
 async function enviarDecisionCierre(borrador, decision) {
+    const precios = leerPreciosEditados();
+    if (precios === false) return;
     const btnOk = document.getElementById('modal-btn-ok');
     const btnNo = document.getElementById('modal-btn-cancelar');
     btnOk.disabled = btnNo.disabled = true;
@@ -293,7 +388,7 @@ async function enviarDecisionCierre(borrador, decision) {
         const res = await fetch('/procesar-mensaje', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem("taller_token")}` },
-            body: JSON.stringify({ borrador, decision_cierre: decision })
+            body: JSON.stringify(Object.assign({ borrador, decision_cierre: decision }, precios ? { precios } : {}))
         });
         const data = await res.json().catch(() => ({}));
         btnNo.textContent = 'Cancelar';
@@ -708,14 +803,17 @@ function mostrarFormularioFaltantes(data) {
     const resumen = [ctx.placa && ctx.placa !== 'S/C' ? `<b>${e(ctx.placa)}</b>` : '',
                      ctx.modelo ? e(ctx.modelo) : '', ctx.cliente ? e(ctx.cliente) : '']
                     .filter(Boolean).join(' · ');
+    // Nombra exactamente lo que falta (antes era un texto genérico)
+    const pendientes = faltantes.filter(f => !f.opcional).map(f => e(f.etiqueta));
+    const listaFaltan = pendientes.length ? `<b>${pendientes.join(', ')}</b>` : 'los datos marcados';
     document.getElementById('modal-mensaje').innerHTML =
         `<div class="resumen-orden">${tipoOrden}${resumen ? ': ' + resumen : ''}</div>
          ${avisoGarantiaHTML(ctx.garantia)}
-         ${ctx.es_cierre ? resumenTrabajosHTML(ctx) : ''}
-         ${ctx.es_cierre
-            ? 'Para cerrar la orden son obligatorios todos los datos del cliente y del vehículo, incluidos los que no se registraron al ingreso.'
-            : 'Completa estos datos para registrar el ingreso.'}
-         <b>No se guardó nada todavía.</b>`;
+         ${ctx.es_cierre ? resumenTrabajosHTML(ctx, true) : ''}
+         <div class="nota-faltantes">${ctx.es_cierre
+            ? `La orden <b>sigue abierta</b>. Para cerrarla falta: ${listaFaltan}.`
+            : `Para registrar el ingreso falta: ${listaFaltan}.`}</div>`;
+    if (ctx.es_cierre) activarPreciosEditables(ctx);
 
     const formulario = document.getElementById('modal-formulario');
     formulario.innerHTML = faltantes.map(f => campoFaltanteHTML(f, tecnicos)).join('')
@@ -1097,6 +1195,8 @@ async function confirmarDatosFaltantes(borrador, decisionCierre = null) {
         if (visible && (valor || ctrl.dataset.opcional === '1')) datos[ctrl.name] = valor;
     });
     if (!completo) return;
+    const precios = leerPreciosEditados();
+    if (precios === false) return;
 
     const btnOk = document.getElementById('modal-btn-ok');
     btnOk.disabled = true;
@@ -1106,7 +1206,8 @@ async function confirmarDatosFaltantes(borrador, decisionCierre = null) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem("taller_token")}` },
             body: JSON.stringify(Object.assign({ borrador: borrador, datos_confirmados: datos },
-                                               decisionCierre ? { decision_cierre: decisionCierre } : {}))
+                                               decisionCierre ? { decision_cierre: decisionCierre } : {},
+                                               precios ? { precios } : {}))
         });
         const data = await res.json().catch(() => ({}));
         await manejarRespuestaRegistro(res, data, true, decisionCierre);
