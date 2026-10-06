@@ -4103,6 +4103,69 @@ def anular_cotizacion(cotizacion_id: str, request: Request):
     return {"status": "ok"}
 
 
+# ---------------------- Avisos al taller: el cliente respondió ----------------------
+# La respuesta llega desde el link público, sin que el taller esté mirando. La
+# página consulta estos avisos cada 30 s (y al volver a la pestaña) y muestra
+# un pop-up UNA sola vez: al pulsar OK se marcan como vistos (aviso_visto_en),
+# así no se repiten en otro dispositivo del mismo taller.
+MIGRACION_AVISOS_COTIZACION = "sql/2026-10-06_avisos_cotizacion.sql"
+MAX_AVISOS_COTIZACION = 20
+
+
+class AvisosVistos(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=MAX_AVISOS_COTIZACION)
+
+
+@app.get("/cotizaciones/avisos")
+def avisos_cotizaciones(request: Request):
+    """Cotizaciones respondidas por el cliente que el taller aún no ha visto."""
+    _, taller_id = obtener_cliente_seguro(request)
+    if not modulo_activo(taller_id, "cotizaciones"):
+        return {"avisos": []}
+    try:
+        cots = (supabase.table("cotizaciones")
+                .select("id, reparacion_id, vehiculo, cliente, total, total_aprobado, comentario_cliente, "
+                        "aplicada_a_orden, respondido_en")
+                .eq("taller_id", taller_id).eq("estado", "respondida").is_("aviso_visto_en", "null")
+                .order("respondido_en").limit(MAX_AVISOS_COTIZACION).execute().data or [])
+    except Exception as e:
+        # Sin la migración de avisos (o sin la de cotizaciones) no hay avisos: no se rompe la página
+        print(f"Avisos de cotización no disponibles (¿falta {MIGRACION_AVISOS_COTIZACION}?): {e}")
+        return {"avisos": []}
+    if not cots:
+        return {"avisos": []}
+
+    ids = [c["id"] for c in cots]
+    items = (supabase.table("cotizacion_items").select("cotizacion_id, descripcion, decision")
+             .in_("cotizacion_id", ids).eq("taller_id", taller_id).order("orden").execute().data or [])
+    avisos = []
+    for c in cots:
+        propios = [i for i in items if str(i["cotizacion_id"]) == str(c["id"])]
+        aprobados = [i["descripcion"] for i in propios if i.get("decision") == "aprobado"]
+        avisos.append({
+            "id": c["id"], "reparacion_id": c["reparacion_id"],
+            "vehiculo": c.get("vehiculo") or "", "cliente": c.get("cliente") or "",
+            "total": float(c.get("total") or 0), "total_aprobado": float(c.get("total_aprobado") or 0),
+            "n_items": len(propios), "n_aprobados": len(aprobados), "aprobados": aprobados,
+            "comentario": c.get("comentario_cliente") or "",
+            # Si la orden ya estaba cerrada, lo aprobado NO se agregó (hay que avisarlo)
+            "aplicada_a_orden": bool(c.get("aplicada_a_orden")),
+        })
+    return {"avisos": avisos}
+
+
+@app.post("/cotizaciones/avisos/visto")
+def marcar_avisos_vistos(datos: AvisosVistos, request: Request):
+    """El taller pulsó OK en el aviso: no se vuelve a mostrar."""
+    _, taller_id = obtener_cliente_seguro(request)
+    try:
+        supabase.table("cotizaciones").update({"aviso_visto_en": ahora_utc_str()}) \
+            .eq("taller_id", taller_id).in_("id", datos.ids).is_("aviso_visto_en", "null").execute()
+    except Exception as e:
+        print(f"No se pudieron marcar los avisos de cotización como vistos: {e}")
+    return {"status": "ok"}
+
+
 def resumen_cotizaciones_de_ordenes(taller_id, ids_ordenes: list) -> dict[str, dict]:
     """Para las tarjetas: la cotización más reciente (no anulada) de cada orden."""
     if not ids_ordenes:

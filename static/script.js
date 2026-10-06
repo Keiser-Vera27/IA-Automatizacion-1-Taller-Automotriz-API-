@@ -1340,8 +1340,11 @@ async function cargarCuadreCaja(silencioso = false) {
 function iniciarActualizacionCuadre() {
     detenerActualizacionCuadre();
     cargarCuadreCaja();
+    revisarAvisosCotizacion();
     temporizadorCuadre = setInterval(() => {
-        if (document.visibilityState === "visible") cargarCuadreCaja(true);
+        if (document.visibilityState !== "visible") return;
+        cargarCuadreCaja(true);
+        revisarAvisosCotizacion();   // ¿algún cliente respondió una cotización?
     }, INTERVALO_CUADRE_MS);
 }
 
@@ -2184,6 +2187,9 @@ document.addEventListener("visibilitychange", function() {
         if (token) {
             console.log("Pestaña reactivada: actualizando datos en vivo...");
             
+            // Avisos de cotizaciones respondidas mientras la pestaña estaba oculta
+            if (typeof revisarAvisosCotizacion === "function") revisarAvisosCotizacion();
+
             // 1. Refrescar vehículos pendientes/terminados
             if (typeof cargarVehiculosPendientes === "function") {
                 cargarVehiculosPendientes(typeof filtroEstadoActual !== 'undefined' ? filtroEstadoActual : 'Pendiente');
@@ -2774,6 +2780,86 @@ function estadoCotizacionHTML(v) {
     }
     return `<button type="button" class="marca-cotizacion ${clase}" title="Ver cotizaciones de esta orden"
         onclick='event.stopPropagation(); verCotizacionesOrden(${JSON.stringify(String(v.id))}, ${JSON.stringify(v.vehiculo || '')})'>${escaparHTML(texto)}</button>`;
+}
+
+// ==========================================================================
+// AVISO: EL CLIENTE RESPONDIÓ UNA COTIZACIÓN
+// ==========================================================================
+// El cliente responde desde el link de WhatsApp, sin que el taller esté
+// mirando. Cada 30 s (y al volver a la pestaña) se consulta si hay respuestas
+// nuevas; se muestran en un pop-up y, al pulsar OK, se marcan como vistas en
+// el servidor (no se repiten, ni en otro celular del taller).
+let revisandoAvisosCot = false;
+
+async function revisarAvisosCotizacion() {
+    if (revisandoAvisosCot || !localStorage.getItem("taller_token") || !moduloActivo('cotizaciones')) return;
+    // No se interrumpe al usuario si tiene otra ventana abierta: se reintenta en el próximo ciclo
+    const overlay = document.getElementById('modal-aviso');
+    if (overlay && overlay.classList.contains('visible')) return;
+    revisandoAvisosCot = true;
+    try {
+        const res = await fetch('/cotizaciones/avisos', { headers: cabeceraAuth() });
+        if (!res.ok) return;
+        const avisos = (await res.json()).avisos || [];
+        if (!avisos.length) return;
+        // La respuesta pudo tardar: si mientras tanto se abrió otra ventana, se espera
+        if (overlay && overlay.classList.contains('visible')) return;
+        mostrarAvisosCotizacion(avisos);
+        // La tarjeta del vehículo ya muestra el nuevo estado y los trabajos aprobados
+        cargarVehiculosPendientes(typeof filtroEstadoActual !== 'undefined' ? filtroEstadoActual : 'Pendiente');
+    } catch (err) {
+        console.error("No se pudieron revisar las respuestas de cotizaciones:", err);
+    } finally {
+        revisandoAvisosCot = false;
+    }
+}
+
+// Un bloque por cotización respondida (normalmente es una sola)
+function avisoCotizacionHTML(a) {
+    const e = escaparHTML;
+    const cabecera = [a.vehiculo ? `<b>${e(a.vehiculo)}</b>` : '', a.cliente ? e(a.cliente) : '',
+                      `Cotización N° ${e(String(a.id))}`].filter(Boolean).join(' · ');
+    let estado, clase;
+    if (!a.n_aprobados) {
+        estado = 'Rechazó toda la cotización'; clase = 'rechazada';
+    } else if (a.n_aprobados === a.n_items) {
+        estado = `Aprobó todo · ${dinero(a.total_aprobado)}`; clase = 'aprobada';
+    } else {
+        estado = `Aprobó ${a.n_aprobados} de ${a.n_items} · ${dinero(a.total_aprobado)} de ${dinero(a.total)}`; clase = 'aprobada';
+    }
+    const lista = a.aprobados.length ? `<ul class="aviso-cot-lista">${a.aprobados.map(d => `<li>${e(d)}</li>`).join('')}</ul>` : '';
+    let nota = '';
+    if (a.n_aprobados) {
+        nota = a.aplicada_a_orden
+            ? 'Lo aprobado ya se agregó a la orden.'
+            : 'La orden ya estaba cerrada: lo aprobado <b>no</b> se agregó. Regístralo en una orden nueva.';
+    }
+    return `<div class="aviso-cot">
+        <div class="resumen-orden">${cabecera}</div>
+        <div class="marca-cotizacion ${clase} aviso-cot-estado">${estado}</div>
+        ${lista}
+        ${a.comentario ? `<div class="oh-notas">Comentario del cliente: ${e(a.comentario)}</div>` : ''}
+        ${nota ? `<div class="nota-cierre">${nota}</div>` : ''}
+    </div>`;
+}
+
+function mostrarAvisosCotizacion(avisos) {
+    const unaSola = avisos.length === 1;
+    const todasRechazadas = avisos.every(a => !a.n_aprobados);
+    mostrarModal({
+        tipo: todasRechazadas ? 'info' : 'success',
+        titulo: unaSola ? 'El cliente respondió la cotización' : `${avisos.length} clientes respondieron sus cotizaciones`,
+        mensaje: avisos.map(avisoCotizacionHTML).join(''),
+    });
+    // OK = visto: se marca en el servidor para que no vuelva a aparecer
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.onclick = () => {
+        cerrarModal();
+        fetch('/cotizaciones/avisos/visto', {
+            method: 'POST', headers: cabeceraAuth(true),
+            body: JSON.stringify({ ids: avisos.map(a => a.id) })
+        }).catch(err => console.error("No se pudo marcar el aviso como visto:", err));
+    };
 }
 
 async function abrirCotizador(boton) {

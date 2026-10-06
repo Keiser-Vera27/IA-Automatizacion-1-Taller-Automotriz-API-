@@ -1127,6 +1127,11 @@ html[data-theme="dark"] .ficha-dueno a { color: #b9a4ff; }
 .marca-cotizacion.aprobada { background: var(--bg-terminado); color: var(--text-terminado); }
 .marca-cotizacion.rechazada { background: rgba(107, 114, 128, 0.18); color: var(--texto-tenue); }
 .marca-cotizacion:hover { border-color: var(--borde); }
+/* Pop-up "el cliente respondió la cotización" */
+.aviso-cot { text-align: left; }
+.aviso-cot + .aviso-cot { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--borde); }
+.aviso-cot-estado { cursor: default; }
+.aviso-cot-lista { margin: 8px 0 0 18px; padding: 0; font-size: 0.9rem; color: var(--texto); }
 .cot-historial { text-align: left; border: 1px solid var(--borde); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
 .cot-historial-cab { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13.5px; color: var(--texto); }
 .cot-historial-cab span { color: var(--texto-tenue); }
