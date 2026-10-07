@@ -20,7 +20,7 @@ ALTER TABLE public.reparaciones
     ADD COLUMN IF NOT EXISTS motivo_antes_cierre text;
 
 ALTER TABLE public.reparacion_detalles
-    ADD COLUMN IF NOT EXISTS registrado_en timestamp;
+    ADD COLUMN IF NOT EXISTS registrado_en timestamptz;   -- mismo tipo que reparaciones.fecha_salida
 
 COMMENT ON COLUMN public.reparaciones.motivo_antes_cierre IS
     'Motivo antes del mensaje de cierre; se restaura al reabrir la orden';
