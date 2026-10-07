@@ -256,7 +256,7 @@ function resumenEditableHTML(ctx) {
     const trabajos = ctx.trabajos || [];
     const materiales = ctx.materiales || [];
     const filasTrabajos = trabajos.map(t => `<tr><td>${e(t.descripcion)}</td><td class="num">${
-        t.editable ? inputPrecioHTML('trabajo', t.descripcion, t.precio, '0.01')
+        t.editable ? inputPrecioHTML('trabajo', t.descripcion, t.precio, '0')
                    : (t.precio > 0 ? dinero(t.precio) : '—')}</td></tr>`).join('');
     const filasMateriales = materiales.map(m => {
         const nombre = `${Number(m.cantidad)} × ${e(m.nombre || m.codigo)} <span class="sub">(${e(m.codigo)})</span>`;
@@ -317,8 +317,9 @@ function leerPreciosEditados() {
     let valido = true, hayCambios = false;
     document.querySelectorAll('#modal-mensaje .precio-editable').forEach(i => {
         const v = Number(i.value);
-        const minimo = Number(i.min);
-        const malo = i.value.trim() === '' || !Number.isFinite(v) || v < minimo || v > 100000;
+        // Vacío, no numérico, negativo o exagerado. 0 es válido: en un repuesto
+        // significa regalado; en un trabajo, que se usa el precio del catálogo.
+        const malo = i.value.trim() === '' || !Number.isFinite(v) || v < 0 || v > 100000;
         i.classList.toggle('invalido', malo);
         if (malo) { valido = false; return; }
         if (Math.abs(v - Number(i.dataset.original)) < 0.005) return;
@@ -422,8 +423,10 @@ function abrirReabrirOrden(boton) {
     overlay.dataset.modo = 'formulario';
     document.getElementById('modal-mensaje').innerHTML =
         `<div class="resumen-orden"><b>${escaparHTML(placa)}</b> · Orden N° ${escaparHTML(id)}</div>
-         La orden vuelve a <b>Pendiente</b>. Se borran el cobro, la forma de pago, la garantía y el motivo de cierre
-         (se registrarán de nuevo al cerrarla). Se conservan los trabajos y los repuestos ya usados.`;
+         La orden vuelve a <b>Pendiente</b> y se <b>deshace el cierre</b>: se quitan los trabajos y repuestos que se
+         registraron al cerrarla (los repuestos vuelven al stock), lo que el cierre agregó al motivo, el cobro, la forma
+         de pago y la garantía. Al cerrarla de nuevo, escribe el cierre completo.
+         <div class="nota-cierre">Se conservan los trabajos y repuestos registrados antes del cierre (ingreso, avances y cotizaciones aprobadas).</div>`;
     const btnNo = document.getElementById('modal-btn-cancelar');
     btnNo.hidden = false;
     btnNo.onclick = () => { overlay.dataset.modo = ''; cerrarModal(); };
@@ -438,7 +441,12 @@ function abrirReabrirOrden(boton) {
                 mostrarModal({ tipo: 'error', titulo: 'No se pudo reabrir', mensaje: escaparHTML(data.detail || `Error ${res.status}`) });
                 return;
             }
-            mostrarModal({ tipo: 'success', titulo: 'Orden reabierta', mensaje: `<b>${escaparHTML(placa)}</b> está otra vez en Pendientes.` });
+            // Se muestra qué se deshizo, para que el usuario sepa qué volver a escribir
+            const quitados = [...(data.trabajos_quitados || []), ...(data.materiales_devueltos || []).map(m => `${m} (vuelve al stock)`)];
+            mostrarModal({ tipo: 'success', titulo: 'Orden reabierta',
+                mensaje: `<b>${escaparHTML(placa)}</b> está otra vez en Pendientes.`
+                    + (quitados.length ? '<br>Se quitó lo registrado en el cierre:' : ''),
+                detalles: quitados });
             cargarVehiculosPendientes('Pendiente');
             cargarCuadreCaja(true);
         } catch (err) {
@@ -1932,6 +1940,21 @@ function llenarPlantillaOrden(datos) {
     const cobro = parseFloat(datos.cobro || 0);
     const totalFinal = cobro > 0 ? cobro : totalRepuestos;
     document.getElementById('orden-total').innerText = totalFinal.toFixed(2);
+
+    // Subtotal y descuento: si el detalle suma más de lo cobrado (precio rebajado
+    // al cliente), el documento lo explica en vez de mostrar cifras que no cuadran
+    const sumaTrabajos = trabajosPNG.reduce((s, t) => s + (Number(t.precio) || 0), 0);
+    const sumaRepuestos = (datos.reparacion_detalles || []).filter(d => !d.incluido)
+        .reduce((s, d) => s + (Number(d.cantidad) || 0) * (Number(d.precio_unitario) || 0), 0);
+    const subtotal = Math.round((sumaTrabajos + sumaRepuestos) * 100) / 100;
+    const elDescuento = document.getElementById('orden-descuento');
+    if (elDescuento) {
+        const descuento = Math.round((subtotal - totalFinal) * 100) / 100;
+        const mostrar = cobro > 0 && descuento > 0.009;
+        elDescuento.hidden = !mostrar;
+        elDescuento.innerHTML = mostrar
+            ? `Subtotal: $${subtotal.toFixed(2)}<br>Descuento: -$${descuento.toFixed(2)}` : '';
+    }
 
     // Garantía entregada con este trabajo
     const cajaGarantia = document.getElementById('orden-garantia');

@@ -1507,6 +1507,10 @@ def guardar_reparacion(operacion: str, datos: dict, id_orden=None):
     try:
         return ejecutar(datos)
     except APIError as e:
+        # Migración 2026-10-07 sin ejecutar: se guarda igual, solo sin esa columna
+        if "motivo_antes_cierre" in str(e) and "motivo_antes_cierre" in datos:
+            print("Aviso: falta la columna reparaciones.motivo_antes_cierre (migración 2026-10-07).")
+            return guardar_reparacion(operacion, {k: v for k, v in datos.items() if k != "motivo_antes_cierre"}, id_orden)
         if any(c in str(e) for c in COLUMNAS_GARANTIA):
             print("Aviso: faltan columnas de garantía/kilometraje (ejecuta la migración 2026-09-23e). Se guarda sin ellas.")
             return ejecutar({k: v for k, v in datos.items() if k not in COLUMNAS_GARANTIA})
@@ -1717,7 +1721,7 @@ def materiales_segun_modulos(taller_id, lineas, modelo, cilindros, repuestos_man
                                usar_kits=modulo_activo(taller_id, "materiales_servicio"))
 
 
-def registrar_materiales_en_orden(taller_id, reparacion_id, items: list[dict]):
+def registrar_materiales_en_orden(taller_id, reparacion_id, items: list[dict], registrado_en: str | None = None):
     """Descuenta del inventario y liga a la orden los materiales/repuestos dados.
     Lo usan el trabajador de la cola y la aprobación de cotizaciones.
     Idempotencia:
@@ -1753,6 +1757,10 @@ def registrar_materiales_en_orden(taller_id, reparacion_id, items: list[dict]):
             }
             if it.get("precio_lista") is not None:
                 fila["precio_lista"] = it["precio_lista"]   # permite reportar descuentos
+            if registrado_en:
+                # Mismo instante que la fecha_salida si este mensaje cerró la orden:
+                # así al reabrirla se sabe qué materiales vinieron con el cierre
+                fila["registrado_en"] = registrado_en
             insertar_detalle_repuesto(fila)
             ya_en_orden.append(fila)
         except Exception as e_repuesto:
@@ -1771,12 +1779,14 @@ def insertar_detalle_repuesto(fila: dict):
     try:
         return supabase.table("reparacion_detalles").insert(fila).execute()
     except APIError as e:
-        # precio_lista: migración 2026-10-05; origen/trabajo/incluido: migración 2026-09-24
+        # registrado_en: migración 2026-10-07; precio_lista: 2026-10-05; origen/trabajo/incluido: 2026-09-24
+        if "registrado_en" in str(e):
+            return insertar_detalle_repuesto({k: v for k, v in fila.items() if k != "registrado_en"})
         if "precio_lista" in str(e):
             return insertar_detalle_repuesto({k: v for k, v in fila.items() if k != "precio_lista"})
         if any(c in str(e) for c in ("origen", "trabajo", "incluido")):
             return supabase.table("reparacion_detalles").insert(
-                {k: v for k, v in fila.items() if k not in ("origen", "trabajo", "incluido", "precio_lista")}).execute()
+                {k: v for k, v in fila.items() if k not in ("origen", "trabajo", "incluido", "precio_lista", "registrado_en")}).execute()
         raise
 
 def unir_trabajos(existentes: list[dict], nuevos: list[dict]) -> list[dict]:
@@ -2241,6 +2251,9 @@ async def trabajador_silencioso():
                 if cierra:
                     datos_actualizar["estado"] = "Terminado"
                     datos_actualizar["fecha_salida"] = tiempo_actual
+                    # Motivo tal como estaba antes de este cierre: si se reabre la
+                    # orden, se restaura (lo que agregó el mensaje de cierre se descarta)
+                    datos_actualizar["motivo_antes_cierre"] = motivo_bd
                     # Cobro: el dicho en el cierre o, si no, la suma de los trabajos
                     datos_actualizar["cobro"] = float(d.get("cobro") or 0) or total_trabajos(lista_trabajos)
                     # Garantía que se entrega con este trabajo
@@ -2319,7 +2332,8 @@ async def trabajador_silencioso():
                     cilindros_final = normalizar_cilindros(d.get("cilindros")) or (ultima_orden or {}).get("cilindros")
                 materiales = materiales_segun_modulos(taller_id, lineas_para_kit, modelo_final, cilindros_final,
                                                       [r for r in (d.get("repuestos_usados") or []) if isinstance(r, dict)])
-                registrar_materiales_en_orden(taller_id, reparacion_id_actual, materiales["items"])
+                registrar_materiales_en_orden(taller_id, reparacion_id_actual, materiales["items"],
+                                              registrado_en=tiempo_actual)
 
                 # Al cerrar sin monto dicho: cobro = trabajos + materiales que se cobran aparte
                 if cierra and not float(d.get("cobro") or 0):
@@ -3487,12 +3501,15 @@ def cerrar_orden_sin_cobro(reparacion_id: str, datos: CierreSinCobro, request: R
 @app.post("/reparaciones/{reparacion_id}/reabrir")
 def reabrir_orden(reparacion_id: str, request: Request):
     """Vuelve a poner en Pendiente una orden cerrada hoy (con o sin cobro).
-    - Se conserva la lista de trabajos y los repuestos ya usados (sí se usaron).
-    - Se borra lo que corresponde al cierre: cobro, pago, garantía entregada,
-      motivo de cierre y el reclamo de garantía, que se volverán a registrar
-      al cerrarla de nuevo."""
+    - Se DESHACE lo que trajo el mensaje de cierre: sus trabajos, los materiales
+      que descontó (vuelven al stock) y lo que agregó al motivo. Al cerrarla de
+      nuevo se escribe el cierre desde cero, sin duplicar trabajos.
+    - Se conservan los trabajos y repuestos registrados ANTES del cierre
+      (ingreso, avances y cotizaciones aprobadas).
+    - Se borra lo demás del cierre: cobro, pago, garantía entregada, motivo de
+      cierre y el reclamo de garantía."""
     _, taller_id = obtener_cliente_seguro(request)
-    orden = (supabase.table("reparaciones").select("id, vehiculo, estado, fecha_salida")
+    orden = (supabase.table("reparaciones").select("*")
              .eq("id", reparacion_id).eq("taller_id", taller_id).limit(1).execute()).data
     if not orden:
         raise HTTPException(status_code=404, detail="No se encontró la orden en este taller.")
@@ -3510,13 +3527,21 @@ def reabrir_orden(reparacion_id: str, request: Request):
     if abierta and o.get("vehiculo") not in ("", "S/C"):
         raise HTTPException(status_code=409, detail=f"El vehículo ya tiene otra orden abierta (N° {abierta[0]['id']}).")
 
+    # Lo que agregó el mensaje de cierre (mismo instante que la fecha de salida)
+    trabajos_quedan, trabajos_cierre = separar_trabajos_de_cierre(o)
     cambios = {"estado": "Pendiente", "fecha_salida": None, "cobro": 0, "metodo_pago": "", "banco": ""}
+    if trabajos_cierre:
+        cambios["trabajos"] = trabajos_quedan
+        cambios["trabajo_realizado"] = texto_trabajos(trabajos_quedan)
+    if o.get("motivo_antes_cierre") is not None:
+        cambios["motivo"] = o["motivo_antes_cierre"]
     # Columnas de migraciones posteriores: se limpian solo si existen
     opcionales = {
         "garantia_dias": None, "garantia_km": None, "garantia_vence": None, "garantia_km_limite": None,
         "garantia_servicio": None, "motivo_cierre": None, "detalle_cierre": None,
         "garantia_orden_origen": None, "garantia_causa": None, "garantia_costo": 0,
         "reclamo_proveedor_estado": None, "reclamo_proveedor_nombre": None, "reclamo_proveedor_monto": 0,
+        "motivo_antes_cierre": None,
     }
     try:
         res = (supabase.table("reparaciones").update({**cambios, **opcionales})
@@ -3526,7 +3551,64 @@ def reabrir_orden(reparacion_id: str, request: Request):
                .eq("id", reparacion_id).eq("taller_id", taller_id).eq("estado", o["estado"]).execute()).data
     if not res:
         raise HTTPException(status_code=409, detail="La orden cambió mientras se reabría. Actualiza la página.")
-    return {"status": "ok", "vehiculo": o.get("vehiculo")}
+    # Después de reabrir (si falla, la orden ya está abierta: se avisa en el log)
+    devueltos = devolver_materiales_de_cierre(taller_id, o, {_sin_tildes(t["descripcion"]).strip() for t in trabajos_cierre})
+    return {"status": "ok", "vehiculo": o.get("vehiculo"),
+            "trabajos_quitados": [t["descripcion"] for t in trabajos_cierre], "materiales_devueltos": devueltos}
+
+
+def _instante(valor) -> str:
+    """'2026-10-07T17:33:00+00:00' y '2026-10-07 17:33:00' -> '2026-10-07 17:33:00'."""
+    return str(valor or "").replace("T", " ")[:19]
+
+
+def separar_trabajos_de_cierre(orden: dict) -> tuple[list[dict], list[dict]]:
+    """(trabajos que se quedan, trabajos que trajo el mensaje de cierre).
+    El trabajador guarda cada trabajo con la hora del mensaje que lo agregó, y
+    la misma hora como fecha_salida al cerrar: así se identifican sin ambigüedad."""
+    salida = _instante(orden.get("fecha_salida"))
+    lista = orden.get("trabajos") if isinstance(orden.get("trabajos"), list) else []
+    if not salida or not lista:
+        return lista, []
+    del_cierre = [t for t in lista if isinstance(t, dict) and _instante(t.get("fecha")) == salida]
+    quedan = [t for t in lista if not (isinstance(t, dict) and _instante(t.get("fecha")) == salida)]
+    return quedan, del_cierre
+
+
+def devolver_materiales_de_cierre(taller_id, orden: dict, claves_trabajos_cierre: set[str]) -> list[str]:
+    """Devuelve al stock y quita de la orden los materiales que trajo el cierre:
+    los marcados con la hora del cierre (registrado_en) y los kits de los
+    trabajos del cierre (órdenes cerradas antes de existir registrado_en)."""
+    salida = _instante(orden.get("fecha_salida"))
+    try:
+        detalles = (supabase.table("reparacion_detalles").select("*, inventario(codigo, nombre)")
+                    .eq("reparacion_id", orden["id"]).execute().data or [])
+    except Exception as e:
+        print(f"No se pudieron leer los materiales de la orden {orden['id']} al reabrir: {e}")
+        return []
+    devueltos = []
+    for det in detalles:
+        del_cierre = (salida and _instante(det.get("registrado_en")) == salida) or (
+            det.get("origen") == "kit" and _sin_tildes(det.get("trabajo")).strip() in claves_trabajos_cierre)
+        if not del_cierre or det.get("id") is None:
+            continue
+        try:
+            borrado = (supabase.table("reparacion_detalles").delete().eq("id", det["id"])
+                       .eq("reparacion_id", orden["id"]).execute().data or [])
+            if not borrado:
+                continue   # otro proceso ya lo quitó: no se devuelve dos veces al stock
+            if det.get("inventario_id") is not None and modulo_activo(taller_id, "inventario"):
+                inv = (supabase.table("inventario").select("cantidad").eq("id", det["inventario_id"])
+                       .eq("taller_id", taller_id).limit(1).execute().data or [None])[0]
+                if inv is not None:
+                    nueva = int(inv.get("cantidad") or 0) + int(round(float(det.get("cantidad") or 0)))
+                    supabase.table("inventario").update({"cantidad": nueva}).eq("id", det["inventario_id"]) \
+                        .eq("taller_id", taller_id).execute()
+            nombre = (det.get("inventario") or {}).get("nombre") or (det.get("inventario") or {}).get("codigo") or "material"
+            devueltos.append(f"{_num(float(det.get('cantidad') or 0))} × {nombre}")
+        except Exception as e:
+            print(f"No se pudo devolver el material {det.get('id')} de la orden {orden['id']}: {e}")
+    return devueltos
 
 
 # ==============================================================================
