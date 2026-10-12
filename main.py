@@ -1149,12 +1149,18 @@ class SolicitudUnificada(BaseModel):
 
 
 class RouterIntencion(BaseModel):
-    accion: Literal["registro", "consulta", "generar_orden"] = Field(
+    accion: Literal["registro", "consulta", "generar_orden", "ordenes_dia"] = Field(
         description="Clasificación estricta de la intención del usuario."
     )
     placa: str = Field(
-        default="", 
+        default="",
         description="Placa del vehículo SOLO si la acción es generar_orden."
+    )
+    # Solo para 'ordenes_dia': día pedido en formato YYYY-MM-DD (hora de Ecuador).
+    # Es un respaldo: primero se intenta leer la fecha del texto sin IA.
+    fecha: str = Field(
+        default="",
+        description="Fecha YYYY-MM-DD SOLO si la acción es ordenes_dia."
     )
 
 
@@ -2722,32 +2728,47 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
     texto_usuario = solicitud.texto
     tiempo_actual = ahora_utc_str()
 
+    # Fecha de hoy en Ecuador: la IA la necesita para resolver "ayer", "el viernes", etc.
+    hoy_ec = datetime.now(ZONA_ECUADOR).date()
+    hoy_txt = f"{DIAS_SEMANA_ES[hoy_ec.weekday()]} {hoy_ec.isoformat()}"
+
     # PROMPT BLINDADO CON REGLAS Y FEW-SHOT (Ejemplos)
     prompt_router = f"""
-    Eres el enrutador principal de un sistema de gestión de taller automotriz. 
-    Tu única tarea es clasificar la intención del texto en una de estas tres categorías: 'registro', 'consulta' o 'generar_orden'.
+    Eres el enrutador principal de un sistema de gestión de taller automotriz.
+    Tu única tarea es clasificar la intención del texto en una de estas cuatro categorías: 'registro', 'consulta', 'generar_orden' u 'ordenes_dia'.
+    Hoy es {hoy_txt} (hora de Ecuador).
 
     REGLAS CRÍTICAS DE CLASIFICACIÓN:
-    1. REGISTRO (Por defecto para ingresos): El usuario proporciona información que debe guardarse. 
-       - IMPORTANTE: La sola presencia de un vehículo, cliente, placa o diagnóstico implica un REGISTRO de entrada. 
+    1. REGISTRO (Por defecto para ingresos): El usuario proporciona información que debe guardarse.
+       - IMPORTANTE: La sola presencia de un vehículo, cliente, placa o diagnóstico implica un REGISTRO de entrada.
        - NUNCA clasifiques como 'generar_orden' o 'consulta' a menos que el usuario pida explícitamente buscar, imprimir o descargar.
     2. CONSULTA: El usuario pregunta por datos históricos o estadísticas (ej. ¿cuándo vino?, ¿cuánto gastó?).
     3. GENERAR_ORDEN: El usuario pide EXPLÍCITAMENTE imprimir, descargar, generar factura u orden de un vehículo que YA existe.
+    4. ORDENES_DIA: El usuario pide VER o DESCARGAR las órdenes cerradas/entregadas de un DÍA concreto,
+       o el cierre/cuadre de caja de un día. Devuelve en "fecha" ese día en formato YYYY-MM-DD.
 
     EJEMPLOS DE CLASIFICACIÓN:
-    - "Ingresa el Spark GSC8797 por falla de freno" -> {{"accion": "registro", "placa": ""}}
-    - "Chevrolet Spark blanco Placa GSC8797, Jeferson Laje quiere escaneo" -> {{"accion": "registro", "placa": ""}}
-    - "¿Cuándo vino el carro placa GSC8797?" -> {{"accion": "consulta", "placa": ""}}
-    - "Genera la orden de trabajo para GSC8797" -> {{"accion": "generar_orden", "placa": "GSC8797"}}
-    - "Imprime la ficha del cliente" -> {{"accion": "generar_orden", "placa": ""}}
+    - "Ingresa el Spark GSC8797 por falla de freno" -> {{"accion": "registro", "placa": "", "fecha": ""}}
+    - "Chevrolet Spark blanco Placa GSC8797, Jeferson Laje quiere escaneo" -> {{"accion": "registro", "placa": "", "fecha": ""}}
+    - "¿Cuándo vino el carro placa GSC8797?" -> {{"accion": "consulta", "placa": "", "fecha": ""}}
+    - "Genera la orden de trabajo para GSC8797" -> {{"accion": "generar_orden", "placa": "GSC8797", "fecha": ""}}
+    - "Imprime la ficha del cliente" -> {{"accion": "generar_orden", "placa": "", "fecha": ""}}
+    - "Dame las órdenes cerradas el 3 de septiembre de 2026" -> {{"accion": "ordenes_dia", "placa": "", "fecha": "2026-09-03"}}
+    - "Necesito el cierre de caja de ayer" -> {{"accion": "ordenes_dia", "placa": "", "fecha": "<fecha de ayer>"}}
 
-    Responde ESTRICTAMENTE en formato JSON válido con las claves "accion" y "placa".
+    Responde ESTRICTAMENTE en formato JSON válido con las claves "accion", "placa" y "fecha".
     Texto: "{texto_usuario}"
     """
 
+    fecha_ia = ""
     if solicitud.borrador:
         # Confirmación desde el modal "faltan datos": ya sabemos que es un registro
         accion, placa_extraida = "registro", ""
+    elif es_pedido_ordenes_dia(texto_usuario):
+        # Pedido claro ("dame las órdenes cerradas del viernes 9 de octubre"):
+        # se resuelve sin gastar una llamada a la IA y sin riesgo de que la
+        # IA lo confunda con un registro.
+        accion, placa_extraida = "ordenes_dia", ""
     else:
         try:
             # 1. Obtenemos el JSON de Groq o DeepSeek
@@ -2758,6 +2779,7 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
         
             accion = resultado_validado.accion
             placa_extraida = resultado_validado.placa
+            fecha_ia = resultado_validado.fecha
         except Exception as e:
             # Fallback de seguridad (Se mantiene igual que antes)
             print(f"Router de IA falló en ambos proveedores o falló validación Pydantic. Error: {e}")
@@ -2772,6 +2794,21 @@ async def procesar_mensaje_unificado(solicitud: SolicitudUnificada, background_t
             else:
                 accion = "registro"
             placa_extraida = ""
+    # --- ÓRDENES CERRADAS DE UN DÍA (respaldo del cierre de caja) ---
+    if accion == "ordenes_dia":
+        # 1) Fecha leída del texto sin IA (fiable); 2) si no, la que dio la IA
+        fecha = interpretar_fecha_consulta(texto_usuario, hoy_ec) or validar_fecha_iso(fecha_ia)
+        if not fecha:
+            raise HTTPException(status_code=400, detail=(
+                "No pude identificar el día. Escríbelo así: "
+                "\"dame las órdenes cerradas del 9 de octubre de 2026\"."))
+        if fecha > hoy_ec.isoformat():
+            raise HTTPException(status_code=400, detail=f"La fecha {fecha} todavía no ha llegado.")
+        return {
+            "status": "ordenes_dia",
+            **ordenes_cerradas_del_dia(taller_id, fecha),
+        }
+
     # --- NUEVA LÓGICA: GENERAR ORDEN DE TRABAJO ---
     if accion == "generar_orden":
         placa = normalizar_placa(placa_extraida)
@@ -3057,11 +3094,27 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
         .eq("taller_id", taller_id).gte("fecha_hora", inicio_utc).lte("fecha_hora", fin_utc)
         .limit(1).execute()
     ).count or 0
-    pendientes_taller = (
-        supabase.table("reparaciones").select("id", count="exact")
-        .eq("taller_id", taller_id).eq("estado", "Pendiente")
-        .limit(1).execute()
-    ).count or 0
+    hoy_iso = datetime.now(ZONA_ECUADOR).date().isoformat()
+    if not fecha or fecha >= hoy_iso:
+        pendientes_taller = (
+            supabase.table("reparaciones").select("id", count="exact")
+            .eq("taller_id", taller_id).eq("estado", "Pendiente")
+            .limit(1).execute()
+        ).count or 0
+    else:
+        # Cuadre de un día pasado: vehículos que seguían en el taller al final de
+        # ESE día (ingresaron hasta esa noche y no habían salido), no los de hoy.
+        siguen_pendientes = (
+            supabase.table("reparaciones").select("id", count="exact")
+            .eq("taller_id", taller_id).eq("estado", "Pendiente")
+            .lte("fecha_hora", fin_utc).limit(1).execute()
+        ).count or 0
+        salieron_despues = (
+            supabase.table("reparaciones").select("id", count="exact")
+            .eq("taller_id", taller_id).neq("estado", "Pendiente")
+            .lte("fecha_hora", fin_utc).gt("fecha_salida", fin_utc).limit(1).execute()
+        ).count or 0
+        pendientes_taller = siguen_pendientes + salieron_despues
 
     # Vehículos cerrados SIN COBRO hoy (garantías, sin presupuesto, etc.).
     # No suman a ingresos ni comisiones, pero se muestran para el control.
@@ -3231,7 +3284,189 @@ def reporte_del_dia(request: Request, fecha: str | None = None):
     }
 
 # ==============================================================================
-# RANKING ANUAL Y LEADERBOARD DE TÉCNICOS 
+# ÓRDENES CERRADAS DE UN DÍA PASADO (respaldo si no se descargó el cierre)
+# Desde el chat: "dame las órdenes cerradas el viernes 9 de octubre del 2026".
+# Devuelve las órdenes de ese día para descargarlas una por una en PNG; el
+# cierre de caja de esa fecha lo arma el frontend con /reporte-dia?fecha=...
+# ==============================================================================
+
+DIAS_SEMANA_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+            "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+# Variantes sin tildes para leer lo que escribe el usuario ("setiembre" también)
+_MESES_TEXTO = {m: i + 1 for i, m in enumerate(MESES_ES)} | {"setiembre": 9}
+_DIAS_TEXTO = {"lunes": 0, "martes": 1, "miercoles": 2, "jueves": 3,
+               "viernes": 4, "sabado": 5, "domingo": 6}
+MAX_ORDENES_DIA = 2000   # tope de seguridad; un taller cierra 10-20 por día
+
+
+def fecha_legible(fecha_iso: str) -> str:
+    """'2026-10-09' -> 'viernes 9 de octubre de 2026'."""
+    d = date.fromisoformat(fecha_iso)
+    return f"{DIAS_SEMANA_ES[d.weekday()]} {d.day} de {MESES_ES[d.month - 1]} de {d.year}"
+
+
+def validar_fecha_iso(texto: str | None) -> str | None:
+    """Devuelve la fecha si es un YYYY-MM-DD real (la IA a veces inventa formatos)."""
+    texto = str(texto or "").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", texto):
+        return None
+    try:
+        return date.fromisoformat(texto).isoformat()
+    except ValueError:
+        return None
+
+
+def interpretar_fecha_consulta(texto: str, hoy: date | None = None) -> str | None:
+    """
+    Lee la fecha que pide el usuario SIN usar IA. Devuelve 'YYYY-MM-DD' o None.
+    Entiende: '9 de octubre del 2026', '9 octubre', '09/10/2026' (día/mes),
+    '2026-10-09', 'hoy', 'ayer', 'anteayer', 'el viernes', 'el viernes pasado'.
+    Una fecha completa tiene prioridad sobre el día de la semana
+    ('viernes 9 de octubre' -> 9 de octubre).
+    """
+    hoy = hoy or datetime.now(ZONA_ECUADOR).date()
+    t = _sin_tildes(texto)
+
+    def armar(anio: int, mes: int, dia: int) -> str | None:
+        try:
+            return date(anio, mes, dia).isoformat()
+        except ValueError:   # 31 de febrero, etc.
+            return None
+
+    # 1) ISO: 2026-10-09
+    m = re.search(r"\b(20\d{2})-(\d{1,2})-(\d{1,2})\b", t)
+    if m:
+        return armar(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+
+    # 2) Numérica día/mes/año (formato de Ecuador): 09/10/2026, 9-10-26
+    m = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})\b", t)
+    if m:
+        anio = int(m.group(3))
+        anio = anio + 2000 if anio < 100 else anio
+        return armar(anio, int(m.group(2)), int(m.group(1)))
+
+    # 3) Texto: '9 de octubre del 2026', '9 octubre', 'octubre 9 de 2026'
+    nombres_mes = "|".join(_MESES_TEXTO)
+    m = (re.search(rf"\b(\d{{1,2}})\s+(?:de\s+)?({nombres_mes})\b(?:\s+(?:de\s+|del\s+)?(\d{{4}}))?", t)
+         or re.search(rf"\b({nombres_mes})\s+(\d{{1,2}})\b(?:\s*,?\s*(?:de\s+|del\s+)?(\d{{4}}))?", t))
+    if m:
+        if m.group(1).isdigit():
+            dia, mes = int(m.group(1)), _MESES_TEXTO[m.group(2)]
+        else:
+            dia, mes = int(m.group(2)), _MESES_TEXTO[m.group(1)]
+        if m.group(3):
+            return armar(int(m.group(3)), mes, dia)
+        # Sin año: el más reciente que no sea futuro ('15 de diciembre' en enero = año pasado)
+        fecha = armar(hoy.year, mes, dia)
+        if fecha and fecha > hoy.isoformat():
+            fecha = armar(hoy.year - 1, mes, dia)
+        return fecha
+
+    # 4) Relativas
+    if re.search(r"\b(anteayer|antier|antes de ayer)\b", t):
+        return (hoy - timedelta(days=2)).isoformat()
+    if re.search(r"\bayer\b", t):
+        return (hoy - timedelta(days=1)).isoformat()
+    if re.search(r"\bhoy\b", t):
+        return hoy.isoformat()
+
+    # 5) Día de la semana: el más reciente ya ocurrido ('el viernes' = viernes pasado)
+    m = re.search(r"\b(lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b", t)
+    if m:
+        atras = (hoy.weekday() - _DIAS_TEXTO[m.group(1)]) % 7
+        if atras == 0 and re.search(r"\bpasad[oa]\b", t):
+            atras = 7   # hoy es viernes y pide "el viernes pasado"
+        return (hoy - timedelta(days=atras)).isoformat()
+    return None
+
+
+def es_pedido_ordenes_dia(texto: str) -> bool:
+    """
+    Detección SIN IA de un pedido claro de órdenes cerradas / cierre de caja de
+    un día. Exige las tres cosas para no confundirlo con un registro:
+    un verbo de pedido + 'órdenes' (plural) o 'cierre/cuadre de caja' + una fecha.
+    """
+    t = _sin_tildes(texto)
+    pide = re.search(r"\b(dame|dama|deme|muestra(me)?|mostrar|ensena(me)?|ver|lista(me|r)?|busca(me|r)?|"
+                     r"trae(me|r)?|descarga(me|r)?|necesito|quiero|genera(me|r)?|saca(me|r)?|cuales|"
+                     r"recupera(me|r)?|pasa(me)?)\b", t)
+    objeto = re.search(r"\bordenes\b|\bcierre de caja\b|\bcuadre\b|\bcierre del dia\b", t)
+    return bool(pide and objeto and interpretar_fecha_consulta(texto))
+
+
+def ordenes_cerradas_del_dia(taller_id, fecha: str) -> dict:
+    """
+    Órdenes cerradas en el día 'fecha' (YYYY-MM-DD, hora de Ecuador): las cobradas
+    ('Terminado') y las cerradas sin cobro. Cada una lleva la fila completa
+    (con repuestos) para que el frontend genere su PNG con la plantilla de siempre.
+    """
+    inicio_utc, fin_utc = limites_dia_ecuador(fecha)
+    # Cliente admin: el JOIN a reparacion_detalles/inventario no tiene política RLS
+    # de SELECT. El aislamiento entre talleres lo da .eq("taller_id", ...).
+    filas = _paginar(lambda: supabase.table("reparaciones")
+                     .select("*, reparacion_detalles(*, inventario(codigo, nombre))")
+                     .eq("taller_id", taller_id)
+                     .in_("estado", ["Terminado", ESTADO_CERRADO_SIN_COBRO])
+                     .gte("fecha_salida", inicio_utc)
+                     .lte("fecha_salida", fin_utc)
+                     .order("fecha_salida"), maximo=MAX_ORDENES_DIA)
+    filas.sort(key=lambda o: str(o.get("fecha_salida") or ""))   # de la mañana a la noche
+
+    ordenes, total_cobrado, con_cobro = [], 0.0, 0
+    for o in filas:
+        cobrada = o.get("estado") == "Terminado"
+        cobro = float(o.get("cobro") or 0) if cobrada else 0.0
+        metodo, banco = normalizar_metodo_pago(o.get("metodo_pago"), o.get("banco")) if cobrada else ("", "")
+        if cobrada:
+            total_cobrado += cobro
+            con_cobro += 1
+        ordenes.append({
+            "id": o.get("id"),
+            "hora": hora_ecuador(o.get("fecha_salida")),
+            "vehiculo": o.get("vehiculo") or "-",
+            "modelo": o.get("modelo") or "",
+            "cliente": o.get("cliente") or "-",
+            "oficial": o.get("oficial") or "",
+            "trabajo": o.get("trabajo_realizado") or texto_trabajos(trabajos_de_orden(o)),
+            "estado": o.get("estado"),
+            "cobro": round(cobro, 2),
+            "metodo_pago": metodo,
+            "banco": banco,
+            "motivo_cierre": o.get("motivo_cierre") or "",
+            "orden": o,   # fila completa para la plantilla PNG
+        })
+
+    sin_cobro = len(ordenes) - con_cobro
+    legible = fecha_legible(fecha)
+    if ordenes:
+        mensaje = (f"El {legible} se cerraron {len(ordenes)} orden(es): {con_cobro} cobrada(s) por "
+                   f"${total_cobrado:,.2f}" + (f" y {sin_cobro} sin cobro." if sin_cobro else "."))
+    else:
+        mensaje = f"No hay órdenes cerradas el {legible}."
+    return {
+        "fecha": fecha,
+        "fecha_legible": legible,
+        "resumen": {"cerradas": len(ordenes), "cobradas": con_cobro, "sin_cobro": sin_cobro,
+                    "total_cobrado": round(total_cobrado, 2)},
+        "ordenes": ordenes,
+        "mensaje_bd": mensaje,
+    }
+
+
+@app.get("/ordenes-cerradas")
+def ordenes_cerradas(request: Request, fecha: str):
+    """Mismo resultado que el pedido por chat, para consultarlo directo por fecha."""
+    _, taller_id = obtener_cliente_seguro(request)
+    fecha_ok = validar_fecha_iso(fecha)
+    if not fecha_ok:
+        raise HTTPException(status_code=400, detail="Fecha inválida. Usa el formato AAAA-MM-DD.")
+    if fecha_ok > datetime.now(ZONA_ECUADOR).date().isoformat():
+        raise HTTPException(status_code=400, detail=f"La fecha {fecha_ok} todavía no ha llegado.")
+    return ordenes_cerradas_del_dia(taller_id, fecha_ok)
+
+# ==============================================================================
+# RANKING ANUAL Y LEADERBOARD DE TÉCNICOS
 # ==============================================================================
 
 @app.get("/ranking-anual")

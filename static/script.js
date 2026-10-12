@@ -491,6 +491,13 @@ async function manejarRespuestaRegistro(res, data, desdeModal, decisionCierre = 
         return;
     }
 
+    // Órdenes cerradas de un día (ej. "dame las órdenes cerradas el 9 de octubre")
+    if (data.status === "ordenes_dia") {
+        inputTexto.value = "";
+        mostrarOrdenesDelDia(data);
+        return;
+    }
+
     // INTERCEPTAMOS LA SOLICITUD DE ORDEN DE TRABAJO
     if (data.status === "imprimir_orden") {
         inputTexto.value = "";
@@ -1371,9 +1378,12 @@ function refrescarCuadrePronto() {
 // Descarga el cuadre como imagen PNG (nítida para texto y tablas; JPG
 // difumina las letras). Se genera siempre a ancho completo y fondo sólido,
 // aunque se descargue desde un celular.
-async function descargarCuadreCaja() {
-    const tarjeta = document.querySelector('#panel-cuadre-caja .panel-caja');
-    const boton = document.getElementById('btn-descargar-cuadre');
+// 'panelId' permite descargar también el cuadre de un día pasado, que se arma
+// fuera de pantalla (ver descargarCierreDelDia).
+async function descargarCuadreCaja(panelId = 'panel-cuadre-caja') {
+    const selector = `#${panelId} .panel-caja`;
+    const tarjeta = document.querySelector(selector);
+    const boton = panelId === 'panel-cuadre-caja' ? document.getElementById('btn-descargar-cuadre') : null;
     if (!tarjeta || typeof html2canvas === 'undefined') {
         mostrarModal({ tipo: 'error', titulo: 'No se pudo descargar', mensaje: 'El cuadre aún no está listo o falta la librería de imágenes. Recarga la página e inténtalo otra vez.' });
         return;
@@ -1390,7 +1400,7 @@ async function descargarCuadreCaja() {
             backgroundColor: oscuro ? "#15112E" : "#FFFFFF",
             // Cambios SOLO en la copia que se fotografía (la pantalla no cambia):
             onclone: (doc) => {
-                const copia = doc.querySelector('#panel-cuadre-caja .panel-caja');
+                const copia = doc.querySelector(selector);
                 copia.style.width = '1000px';             // ancho fijo, también desde móvil
                 copia.style.backdropFilter = 'none';
                 copia.style.background = oscuro ? "#15112E" : "#FFFFFF";
@@ -1435,10 +1445,13 @@ const COLORES_METODO = {
     'Otro': '#D97706', 'Sin especificar': '#9CA3AF'
 };
 
-function renderizarCuadreDeCaja(data) {
-    const panel = document.getElementById('panel-cuadre-caja');
+function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
+    const panel = document.getElementById(panelId);
     if (!panel) return;
     const e = escaparHTML;  // todo texto que viene de la BD se escapa
+    // Cuadre de un día pasado (pedido desde el chat): los textos no dicen "hoy"
+    const esHoy = !data.fecha || data.fecha === isoLocal(new Date());
+    const cuando = esHoy ? 'hoy' : 'ese día';
 
     const claseNeto = data.neto > 0 ? 'monto-positivo' : (data.neto < 0 ? 'monto-negativo' : 'monto-neutro');
     const claseCaja = data.efectivo_en_caja < 0 ? 'monto-negativo' : 'monto-neutro';
@@ -1472,7 +1485,7 @@ function renderizarCuadreDeCaja(data) {
                 <td class="num">${dinero(b.total)}</td>
                 <td></td>
             </tr>`).join('')}`).join('')
-        : `<tr><td colspan="4" class="vacio">Sin cobros registrados hoy.</td></tr>`;
+        : `<tr><td colspan="4" class="vacio">Sin cobros registrados ${cuando}.</td></tr>`;
 
     // ---------- Órdenes cerradas ----------
     const ordenes = data.ordenes_cerradas || [];
@@ -1487,7 +1500,7 @@ function renderizarCuadreDeCaja(data) {
                 <td class="num">${dinero(o.cobro)}${o.repuestos > 0 ? `<div class="sub">rep. ${dinero(o.repuestos)}</div>` : ''}</td>
             </tr>`).join('') + `
             <tr class="fila-total"><td colspan="6">Total cobrado</td><td class="num">${dinero(data.total_ingresos)}</td></tr>`
-        : `<tr><td colspan="7" class="vacio">Sin órdenes cerradas hoy.</td></tr>`;
+        : `<tr><td colspan="7" class="vacio">Sin órdenes cerradas ${cuando}.</td></tr>`;
 
     // ---------- Cerrados sin cobro (garantías, sin presupuesto, etc.) ----------
     const sinCobro = data.cerrados_sin_cobro || [];
@@ -1520,7 +1533,7 @@ function renderizarCuadreDeCaja(data) {
                 <td class="num">${dinero(g.monto)}</td>
             </tr>`).join('') + `
             <tr class="fila-total"><td colspan="4">Total egresos</td><td class="num">${dinero(data.total_egresos)}</td></tr>`
-        : `<tr><td colspan="5" class="vacio">Sin egresos registrados hoy.</td></tr>`;
+        : `<tr><td colspan="5" class="vacio">Sin egresos registrados ${cuando}.</td></tr>`;
     const porResponsable = (data.egresos_por_responsable || []);
     const bloqueResponsables = porResponsable.length > 1 ? `
         <div class="chips-responsables">${porResponsable.map(r =>
@@ -1538,7 +1551,7 @@ function renderizarCuadreDeCaja(data) {
                 <td class="num comision">${dinero(t.comision_a_pagar)}</td>
             </tr>`).join('') + `
             <tr class="fila-total"><td colspan="4">Total comisiones a pagar</td><td class="num comision">${dinero(data.total_comisiones)}</td></tr>`
-        : `<tr><td colspan="5" class="vacio">Sin datos de técnicos hoy.</td></tr>`;
+        : `<tr><td colspan="5" class="vacio">Sin datos de técnicos ${cuando}.</td></tr>`;
 
     panel.innerHTML = `
         <div class="panel-caja" data-fecha="${e(data.fecha)}">
@@ -1573,7 +1586,7 @@ function renderizarCuadreDeCaja(data) {
             <div class="linea-detalle">
                 Mano de obra <b>${dinero(data.total_mano_obra)}</b> · Repuestos <b>${dinero(data.total_repuestos)}</b> · Comisiones <b>${dinero(data.total_comisiones)}</b>
                 <span class="separador">|</span>
-                Vehículos: <b>${v.ingresados_hoy || 0}</b> ingresaron · <b>${v.entregados_hoy || 0}</b> entregados${v.cerrados_sin_cobro ? ` · <b>${v.cerrados_sin_cobro}</b> sin cobro` : ''} · <b>${v.pendientes_en_taller || 0}</b> en taller
+                Vehículos: <b>${v.ingresados_hoy || 0}</b> ingresaron · <b>${v.entregados_hoy || 0}</b> entregados${v.cerrados_sin_cobro ? ` · <b>${v.cerrados_sin_cobro}</b> sin cobro` : ''} · <b>${v.pendientes_en_taller || 0}</b> ${esHoy ? 'en taller' : 'quedaron en taller'}
             </div>
 
             ${bloqueAlertas}
@@ -1597,7 +1610,7 @@ function renderizarCuadreDeCaja(data) {
                 </div>
             </div>
 
-            <h4>Órdenes cerradas hoy (${ordenes.length})</h4>
+            <h4>Órdenes cerradas ${cuando} (${ordenes.length})</h4>
             <div class="tabla-scroll">
                 <table class="tabla-caja">
                     <thead><tr>
@@ -1609,7 +1622,7 @@ function renderizarCuadreDeCaja(data) {
 
             ${bloqueSinCobro}
 
-            <h4>Egresos de hoy (${egresos.length})</h4>
+            <h4>Egresos ${esHoy ? 'de hoy' : 'del día'} (${egresos.length})</h4>
             ${bloqueResponsables}
             <div class="tabla-scroll">
                 <table class="tabla-caja">
@@ -2777,6 +2790,107 @@ function ordenHistorialHTML(o) {
 function descargarOrdenFicha(id) {
     const orden = ordenesFichaActual[id];
     if (orden) generarImagenFactura(orden);
+}
+
+// ==========================================================================
+// ÓRDENES CERRADAS DE UN DÍA PASADO (pedidas desde el chat)
+// Respaldo cuando no se descargó el cierre: se puede bajar cada orden en PNG
+// o el cuadre de caja completo de esa fecha, igual al del panel principal.
+// ==========================================================================
+let ordenesDelDia = null;   // última respuesta: { fecha, fecha_legible, resumen, ordenes: [...] }
+
+function mostrarOrdenesDelDia(data) {
+    ordenesDelDia = data;
+    const e = escaparHTML;
+    const r = data.resumen || {};
+    const ordenes = data.ordenes || [];
+
+    const resumen = ordenes.length
+        ? `<div class="od-resumen">
+               <span><b>${r.cerradas}</b> cerradas</span>
+               <span><b>${r.cobradas}</b> cobradas · <b>${dinero(r.total_cobrado)}</b></span>
+               ${r.sin_cobro ? `<span><b>${r.sin_cobro}</b> sin cobro</span>` : ''}
+           </div>`
+        : `<p class="vacio-vehiculos">No hay órdenes cerradas ese día. Igual puedes descargar el cierre de caja (incluye egresos).</p>`;
+
+    const lista = ordenes.map((o, i) => {
+        const sinCobro = o.estado !== 'Terminado';
+        const pago = sinCobro
+            ? `<span class="badge-estado estado-sin-cobro">Sin cobro</span>${o.motivo_cierre ? ` <span class="od-sub">${e(o.motivo_cierre)}</span>` : ''}`
+            : `<b>${dinero(o.cobro)}</b> <span class="od-sub">${e([o.metodo_pago, o.banco].filter(Boolean).join(' · '))}</span>`;
+        return `<article class="od-orden">
+            <header class="od-cab">
+                <span class="od-hora">${e(o.hora || '--:--')}</span>
+                <b>${e(o.vehiculo)}</b>${o.modelo ? ` <span class="od-sub">${e(o.modelo)}</span>` : ''}
+                <span class="od-num">N° ${e(String(o.id))}</span>
+            </header>
+            <div class="od-linea">${e(o.cliente)}${o.oficial ? ` · Técnico: ${e(o.oficial)}` : ''}</div>
+            ${o.trabajo ? `<div class="od-linea od-trabajo">${e(o.trabajo)}</div>` : ''}
+            <div class="od-pie">
+                <div>${pago}</div>
+                <button type="button" class="dash-chip" onclick="descargarOrdenDelDia(${i}, this)">Descargar PNG</button>
+            </div>
+        </article>`;
+    }).join('');
+
+    mostrarModal({ tipo: 'info', titulo: `Órdenes cerradas · ${data.fecha_legible || data.fecha}` });
+    document.querySelector('#modal-aviso .modal-caja').classList.add('ancho');
+    document.getElementById('modal-mensaje').innerHTML = `
+        <div class="od-contenedor">
+            ${resumen}
+            <button type="button" id="btn-cierre-dia" class="btn-cierre-dia" onclick="descargarCierreDelDia()">
+                Descargar cierre de caja del día (PNG)
+            </button>
+            ${ordenes.length ? `<div class="od-lista">${lista}</div>` : ''}
+        </div>`;
+}
+
+// Descarga una orden puntual con la misma plantilla de "Orden de Trabajo"
+async function descargarOrdenDelDia(indice, boton) {
+    const item = ordenesDelDia && ordenesDelDia.ordenes[indice];
+    if (!item) return;
+    const texto = boton ? boton.textContent : '';
+    try {
+        if (boton) { boton.disabled = true; boton.textContent = 'Generando...'; }
+        await generarImagenFactura(item.orden);
+    } finally {
+        if (boton) { boton.disabled = false; boton.textContent = texto; }
+    }
+}
+
+// Pide el cuadre de esa fecha a /reporte-dia, lo dibuja FUERA de pantalla con
+// el mismo diseño del panel principal y lo descarga como PNG.
+async function descargarCierreDelDia() {
+    if (!ordenesDelDia) return;
+    const fecha = ordenesDelDia.fecha;
+    const boton = document.getElementById('btn-cierre-dia');
+    const textoBoton = boton ? boton.textContent : '';
+    const idContenedor = 'panel-cuadre-historico';
+    let contenedor = null;
+
+    try {
+        if (boton) { boton.disabled = true; boton.textContent = 'Generando cierre de caja...'; }
+        const res = await fetch(`/reporte-dia?fecha=${encodeURIComponent(fecha)}`, { headers: cabeceraAuth() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+
+        // Contenedor temporal, invisible para el usuario, a ancho de escritorio
+        contenedor = document.createElement('div');
+        contenedor.id = idContenedor;
+        contenedor.style.cssText = 'position:fixed; left:-10000px; top:0; width:1000px;';
+        document.body.appendChild(contenedor);
+
+        renderizarCuadreDeCaja(data, idContenedor);
+        // Fuera del panel principal no hacen falta (y evitan ids duplicados)
+        contenedor.querySelectorAll('#estado-cuadre, #btn-descargar-cuadre').forEach(n => n.remove());
+
+        await descargarCuadreCaja(idContenedor);
+    } catch (err) {
+        mostrarModal({ tipo: 'error', titulo: 'No se pudo descargar el cierre', mensaje: escaparHTML(err.message || 'Error desconocido.') });
+    } finally {
+        if (contenedor) contenedor.remove();
+        if (boton) { boton.disabled = false; boton.textContent = textoBoton; }
+    }
 }
 
 // ==========================================================================
