@@ -1414,17 +1414,17 @@ async function descargarCuadreCaja(panelId = 'panel-cuadre-caja') {
         if (boton) boton.disabled = true;
         const canvas = await html2canvas(tarjeta, {
             scale: 2,                                     // doble resolución: se lee bien al hacer zoom
-            backgroundColor: oscuro ? "#15112E" : "#FFFFFF",
+            backgroundColor: oscuro ? "#100E18" : "#FFFFFF",
             // Cambios SOLO en la copia que se fotografía (la pantalla no cambia):
             onclone: (doc) => {
                 const copia = doc.querySelector(selector);
                 copia.style.width = '1000px';             // ancho fijo, también desde móvil
                 copia.style.backdropFilter = 'none';
-                copia.style.background = oscuro ? "#15112E" : "#FFFFFF";
+                copia.style.background = oscuro ? "#100E18" : "#FFFFFF";
                 copia.querySelectorAll('.tabla-scroll').forEach(t => t.style.overflow = 'visible');
                 if (nombreTaller) {
                     const titulo = copia.querySelector('.titulo-cuadre');
-                    if (titulo) titulo.textContent = `${nombreTaller} · ${titulo.textContent}`;
+                    if (titulo) titulo.textContent = `${nombreTaller}: ${titulo.textContent}`;
                 }
                 // Pie con la hora exacta de generación (evita confundir cortes del mismo día)
                 const pie = doc.createElement('p');
@@ -1458,9 +1458,15 @@ function dinero(valor) {
 
 // Colores fijos por método de pago (la barra y los puntos de la tabla coinciden)
 const COLORES_METODO = {
-    'Efectivo': '#16A34A', 'Transferencia': '#7030EF', 'Tarjeta': '#2563EB',
-    'Otro': '#D97706', 'Sin especificar': '#9CA3AF'
+    'Efectivo': '#34C77B', 'Transferencia': '#8B5CF6', 'Tarjeta': '#3B82F6',
+    'Otro': '#F59E0B', 'Sin especificar': '#8E88A4'
 };
+
+function fechaLarga(iso) {
+    if (!iso) return '';
+    const d = new Date(iso + 'T12:00:00');
+    return isNaN(d) ? iso : d.toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
 
 function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
     const panel = document.getElementById(panelId);
@@ -1574,11 +1580,12 @@ function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
         <div class="panel-caja" data-fecha="${e(data.fecha)}">
             <div class="cabecera-caja">
                 <div class="titulo-caja-wrap">
-                    <h3 class="titulo-cuadre">Cuadre de Caja — ${e(data.fecha)}</h3>
+                    <h3 class="titulo-cuadre">Cuadre de caja</h3>
+                    <span class="fecha-cuadre">${e(fechaLarga(data.fecha))}</span>
                     <span id="estado-cuadre" class="estado-cuadre" data-html2canvas-ignore="true">Actualizado ${new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
-                <button id="btn-descargar-cuadre" class="btn-descargar-cuadre" onclick="descargarCuadreCaja()" data-html2canvas-ignore="true"
-                        title="Descargar cuadre de caja (imagen PNG)" aria-label="Descargar cuadre de caja"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg></button>
+                <button id="btn-descargar-cuadre" class="btn-chico btn-descargar-cuadre" onclick="descargarCuadreCaja()" data-html2canvas-ignore="true"
+                        title="Descargar cuadre de caja (imagen PNG)"><svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg>Descargar</button>
             </div>
 
             <!-- Resumen principal -->
@@ -1600,11 +1607,15 @@ function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
                     <div class="monto ${claseCaja}">${dinero(data.efectivo_en_caja)}</div>
                 </div>
             </div>
-            <div class="linea-detalle">
-                Mano de obra <b>${dinero(data.total_mano_obra)}</b> · Repuestos <b>${dinero(data.total_repuestos)}</b> · Comisiones <b>${dinero(data.total_comisiones)}</b>
-                <span class="separador">|</span>
-                Vehículos: <b>${v.ingresados_hoy || 0}</b> ingresaron · <b>${v.entregados_hoy || 0}</b> entregados${v.cerrados_sin_cobro ? ` · <b>${v.cerrados_sin_cobro}</b> sin cobro` : ''} · <b>${v.pendientes_en_taller || 0}</b> ${esHoy ? 'en taller' : 'quedaron en taller'}
-            </div>
+            <dl class="linea-detalle">
+                <div><dt>Mano de obra</dt><dd>${dinero(data.total_mano_obra)}</dd></div>
+                <div><dt>Repuestos</dt><dd>${dinero(data.total_repuestos)}</dd></div>
+                <div><dt>Comisiones</dt><dd>${dinero(data.total_comisiones)}</dd></div>
+                <div><dt>Ingresaron</dt><dd>${v.ingresados_hoy || 0}</dd></div>
+                <div><dt>Entregados</dt><dd>${v.entregados_hoy || 0}</dd></div>
+                ${v.cerrados_sin_cobro ? `<div><dt>Sin cobro</dt><dd>${v.cerrados_sin_cobro}</dd></div>` : ''}
+                <div><dt>${esHoy ? 'En el taller' : 'Quedaron en el taller'}</dt><dd>${v.pendientes_en_taller || 0}</dd></div>
+            </dl>
 
             ${bloqueAlertas}
 
@@ -2443,7 +2454,7 @@ async function cargarLiquidacionFechas() {
         return;
     }
 
-    contenedorResultado.innerHTML = `<p style="color: #a0a0a0; text-align: center; margin: 20px 0;">Calculando liquidación del periodo...</p>`;
+    contenedorResultado.innerHTML = `<p class="cargando-panel">Calculando liquidación del periodo…</p>`;
 
     try {
         const response = await fetch(`/reporte-liquidacion?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`, {
@@ -2475,23 +2486,23 @@ function renderizarLiquidacion(data) {
             <tr>
                 <td>${escaparHTML(t.tecnico)}</td>
                 <td class="centro">${t.trabajos_realizados}</td>
-                <td class="num">$${t.facturacion_total.toFixed(2)}</td>
-                <td class="num">$${t.mano_de_obra_acumulada.toFixed(2)}</td>
-                <td class="num" style="color: #4CAF50; font-weight: bold;">$${t.comision_a_pagar.toFixed(2)}</td>
+                <td class="num">${dinero(t.facturacion_total)}</td>
+                <td class="num">${dinero(t.mano_de_obra_acumulada)}</td>
+                <td class="num comision">${dinero(t.comision_a_pagar)}</td>
             </tr>`).join('')
         : `<tr><td colspan="5" class="vacio">No hay registros en este periodo.</td></tr>`;
 
     contenedor.innerHTML = `
-        <h4 style="margin-top: 15px; margin-bottom: 10px;">Resultado: ${data.periodo}</h4>
+        <h4 class="titulo-resultado">Resultado: ${escaparHTML(data.periodo)}</h4>
         <div class="tabla-scroll">
             <table class="tabla-caja">
                 <thead>
                     <tr>
                         <th>Técnico</th>
                         <th style="text-align: center;">Trabajos</th>
-                        <th style="text-align: right;">Facturación Total</th>
-                        <th style="text-align: right;">Mano de Obra (Neto)</th>
-                        <th style="text-align: right;">Comisión a Pagar</th>
+                        <th style="text-align: right;">Facturación total</th>
+                        <th style="text-align: right;">Mano de obra (neto)</th>
+                        <th style="text-align: right;">Comisión a pagar</th>
                     </tr>
                 </thead>
                 <tbody>${filas}</tbody>
@@ -2509,7 +2520,7 @@ async function cargarRankingAnual() {
     await esperarModulos();
     if (!moduloActivo('tecnicos')) return;   // el plan no incluye técnicos
 
-    contenedor.innerHTML = `<p style="color: var(--texto-tenue); text-align: center; font-size: 0.9rem; margin: 15px 0;">Cargando posiciones del año...</p>`;
+    contenedor.innerHTML = `<p class="cargando-panel">Cargando posiciones del año…</p>`;
 
     try {
         const response = await fetch('/ranking-anual', {
@@ -2517,7 +2528,7 @@ async function cargarRankingAnual() {
         });
 
         if (!response.ok) {
-            contenedor.innerHTML = `<p style="color: #E0397A; text-align: center; font-size: 0.9rem;">Error al cargar el ranking anual.</p>`;
+            contenedor.innerHTML = `<p class="cargando-panel error">No se pudo cargar el ranking anual. Pulsa Actualizar para reintentar.</p>`;
             return;
         }
 
@@ -2526,7 +2537,7 @@ async function cargarRankingAnual() {
 
     } catch (error) {
         console.error("Error:", error);
-        contenedor.innerHTML = `<p style="color: #E0397A; text-align: center; font-size: 0.9rem;">Error de conexión con el servidor.</p>`;
+        contenedor.innerHTML = `<p class="cargando-panel error">Sin conexión con el servidor. Pulsa Actualizar para reintentar.</p>`;
     }
 }
 
@@ -2539,12 +2550,12 @@ function renderizarRankingAnual(data) {
             const clasePuesto = t.posicion <= 3 ? `puesto-top puesto-${t.posicion}` : '';
             return `
                 <tr>
-                    <td style="font-weight: bold;"><span class="${clasePuesto}">#${t.posicion}</span></td>
+                    <td><span class="puesto ${clasePuesto}">${t.posicion}</span></td>
                     <td>${escaparHTML(t.tecnico)}</td>
                     <td class="centro">${t.trabajos_totales}</td>
-                    <td class="num">$${t.facturacion_anual.toFixed(2)}</td>
-                    <td class="num">$${t.mano_de_obra_acumulada.toFixed(2)}</td>
-                    <td class="num" style="color: var(--magenta); font-weight: bold;">$${t.comision_acumulada.toFixed(2)}</td>
+                    <td class="num">${dinero(t.facturacion_anual)}</td>
+                    <td class="num">${dinero(t.mano_de_obra_acumulada)}</td>
+                    <td class="num comision">${dinero(t.comision_acumulada)}</td>
                 </tr>`;
         }).join('')
         : `<tr><td colspan="6" class="vacio">Aún no hay registros de técnicos este año.</td></tr>`;
@@ -2554,12 +2565,12 @@ function renderizarRankingAnual(data) {
             <table class="tabla-caja">
                 <thead>
                     <tr>
-                        <th>Pos</th>
+                        <th>Puesto</th>
                         <th>Técnico</th>
                         <th style="text-align: center;">Trabajos</th>
-                        <th style="text-align: right;">Facturado (Total)</th>
-                        <th style="text-align: right;">Mano de Obra (Neto)</th>
-                        <th style="text-align: right;">Comisión Acumulada</th>
+                        <th style="text-align: right;">Facturado</th>
+                        <th style="text-align: right;">Mano de obra (neto)</th>
+                        <th style="text-align: right;">Comisión acumulada</th>
                     </tr>
                 </thead>
                 <tbody>${filas}</tbody>

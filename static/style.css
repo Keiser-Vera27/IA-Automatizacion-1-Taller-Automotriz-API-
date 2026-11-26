@@ -1626,3 +1626,147 @@ html[data-theme="dark"] .ficha-dueno a { color: #b9a4ff; }
 /* Plantilla de la orden (se convierte en imagen PNG): siempre tinta negra sobre blanco,
    sin importar el tema de la app */
 #plantilla-orden, #plantilla-orden h1, #plantilla-orden h3, #plantilla-orden p, #plantilla-orden td, #plantilla-orden th { color: #111; }
+
+/* ==================================================================
+   CAJA Y FINANZAS (debajo de Geor IA)
+   Reemplaza el estilo anterior del cuadre, el ranking y la liquidación.
+   ================================================================== */
+.seccion-contabilidad { margin-top: var(--e-7); }
+.cabecera-seccion { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--e-4); flex-wrap: wrap; margin-bottom: var(--e-4); }
+.cabecera-seccion h2 { margin: 0 0 4px; font-size: var(--t-xl); }
+.cabecera-seccion p { margin: 0; color: var(--tinta-2); font-size: var(--t-s); max-width: 60ch; }
+.acciones-inventario { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Panel base de esta sección */
+.seccion-contabilidad .panel-caja, .panel-caja {
+    margin-top: 0;
+    padding: 20px 22px 22px;
+    border-radius: 18px;
+    background: var(--superficie-1);
+    border: 1px solid var(--linea-fuerte) !important;
+    box-shadow: none;
+}
+.panel-caja h3 { font-size: 1.0625rem; margin: 0; }
+.panel-caja h4 { font-size: var(--t-s); font-weight: 600; color: var(--tinta); margin: 26px 0 10px; }
+.cargando-panel { color: var(--tinta-3); text-align: center; font-size: var(--t-s); margin: 18px 0; }
+.cargando-panel.error { color: var(--aviso); }
+.caja-cargando { color: var(--tinta-3); font-size: var(--t-s); }
+
+/* Cabecera del cuadre */
+.cabecera-caja { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--e-3); margin-bottom: var(--e-4); }
+.titulo-caja-wrap { display: grid; gap: 2px; }
+.fecha-cuadre { font-size: var(--t-s); color: var(--tinta-2); }
+.fecha-cuadre::first-letter { text-transform: uppercase; }
+.estado-cuadre { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-size: var(--t-xs); color: var(--tinta-3); }
+.estado-cuadre::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--lima); }
+html[data-theme="light"] .estado-cuadre::before { background: var(--exito); }
+.estado-cuadre.estado-error { color: var(--aviso); }
+.estado-cuadre.estado-error::before { background: var(--aviso); }
+.btn-descargar-cuadre { flex-shrink: 0; }
+
+/* Resumen: una sola franja con divisiones (no cuatro tarjetas iguales) */
+.tarjetas-resumen-caja {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0; margin: 0;
+    border: 1px solid var(--linea); border-radius: 14px; background: var(--superficie-hundida);
+    overflow: hidden;
+}
+.tarjeta-resumen-caja {
+    min-width: 0; text-align: left; padding: 14px 18px;
+    background: none; border: 0; border-radius: 0;
+}
+.tarjeta-resumen-caja + .tarjeta-resumen-caja { border-left: 1px solid var(--linea); }
+.tarjeta-resumen-caja .etiqueta { font-size: var(--t-xs); color: var(--tinta-3); }
+.tarjeta-resumen-caja .monto { font-size: 1.625rem; font-weight: 680; font-stretch: 85%; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tarjeta-efectivo { border: 0; background: var(--marca-suave); }
+.tarjeta-efectivo .etiqueta { color: var(--tinta-2); }
+
+/* Detalle del día: pares dato/valor */
+.linea-detalle {
+    display: flex; flex-wrap: wrap; gap: 8px 22px;
+    margin: 14px 2px 0; padding: 0; font-size: var(--t-xs);
+}
+.linea-detalle div { display: flex; gap: 6px; align-items: baseline; }
+.linea-detalle dt { color: var(--tinta-3); }
+.linea-detalle dd { margin: 0; color: var(--tinta); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Alertas para revisar antes de cerrar caja */
+.alertas-caja {
+    margin-top: 18px; padding: 12px 16px; border-radius: 12px;
+    background: var(--aviso-fondo); border: 1px solid color-mix(in srgb, var(--aviso) 35%, transparent);
+    color: var(--tinta); font-size: var(--t-s);
+}
+.alertas-caja b { color: var(--aviso); }
+.alertas-caja ul { margin: 6px 0 0; padding-left: 18px; }
+
+/* Métodos de pago + cuadre de efectivo */
+.grid-caja { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 22px; margin: 8px 0 0; }
+@media (max-width: 760px) { .grid-caja { grid-template-columns: minmax(0, 1fr); } }
+.barra-metodos { display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 2px; margin-bottom: 10px; background: var(--linea); }
+.barra-metodos span { display: block; height: 100%; }
+.punto-metodo { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+.cuadre-efectivo { background: var(--superficie-hundida); border: 1px solid var(--linea); border-radius: 14px; padding: 4px 16px 14px; align-self: start; }
+.cuadre-efectivo h4 { margin-top: 14px; }
+.linea-cuadre { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--linea); font-size: var(--t-s); font-variant-numeric: tabular-nums; }
+.linea-cuadre.total { border-bottom: 0; padding-top: 12px; font-weight: 650; font-size: var(--t-m); }
+.nota-cuadre { margin: 8px 0 0; font-size: var(--t-xs); color: var(--tinta-3); }
+.monto-positivo { color: var(--exito); }
+.monto-negativo { color: var(--peligro); }
+.monto-neutro { color: var(--tinta); }
+
+/* Tablas de la sección */
+.tabla-scroll { margin-bottom: 0; border: 1px solid var(--linea); border-radius: 12px; }
+.tabla-caja { width: 100%; min-width: 520px; border-collapse: collapse; font-size: var(--t-s); }
+.tabla-caja.tabla-compacta { min-width: 0; }
+.grid-caja .tabla-caja.tabla-compacta { border: 1px solid var(--linea); border-radius: 12px; border-collapse: separate; border-spacing: 0; overflow: hidden; }
+.tabla-caja th { color: var(--tinta-3); font-weight: 550; font-size: var(--t-xs); text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--linea); white-space: nowrap; background: var(--superficie-hundida); }
+.tabla-caja td { padding: 9px 12px; border-bottom: 1px solid var(--linea); color: var(--tinta); vertical-align: top; }
+.tabla-caja tbody tr:last-child td { border-bottom: 0; }
+.tabla-caja tbody tr:not(.fila-total):hover td { background: color-mix(in srgb, var(--superficie-3) 55%, transparent); }
+.tabla-caja td.num, .tabla-caja th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tabla-caja td.centro { text-align: center; }
+.tabla-caja td.vacio { text-align: center; color: var(--tinta-3); padding: 18px; }
+.tabla-caja .sub { font-size: var(--t-xs); color: var(--tinta-3); font-weight: normal; }
+.tabla-caja .comision { color: var(--exito); font-weight: 650; }
+.tabla-caja .fila-total td { font-weight: 650; border-top: 1px solid var(--linea-fuerte); background: var(--superficie-hundida); }
+.tabla-caja .fila-banco td { color: var(--tinta-2); font-size: var(--t-xs); padding-top: 4px; }
+.tabla-caja .fila-banco td:first-child { padding-left: 28px; }
+.chips-responsables .chip { background: var(--superficie-2); border-color: var(--linea-fuerte); color: var(--tinta-2); }
+
+/* Ranking y liquidación lado a lado */
+.grid-finanzas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--e-5); margin-top: var(--e-5); align-items: start; }
+@media (max-width: 1100px) { .grid-finanzas { grid-template-columns: minmax(0, 1fr); } }
+.cabecera-panel { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--e-3); margin-bottom: var(--e-4); }
+.cabecera-panel p { margin: 4px 0 0; color: var(--tinta-2); font-size: var(--t-xs); max-width: 52ch; }
+.filtros-liquidacion { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: var(--e-4); }
+.filtros-liquidacion label { display: grid; gap: 4px; font-size: var(--t-xs); color: var(--tinta-2); }
+.filtros-liquidacion input { min-height: 40px; }
+.filtros-liquidacion .btn { min-height: 40px; }
+.titulo-resultado { margin: 0 0 10px !important; }
+
+/* Puestos del ranking: número en un círculo; los tres primeros con su metal */
+.puesto { display: inline-grid; place-items: center; min-width: 26px; height: 26px; border-radius: 50%; font-weight: 700; font-size: var(--t-xs); color: var(--tinta-2); background: var(--superficie-2); border: 1px solid var(--linea-fuerte); }
+.puesto.puesto-top { color: #1A1236; border: 0; }
+.puesto.puesto-1 { background: #E6C15A; }
+.puesto.puesto-2 { background: #C4C8D0; }
+.puesto.puesto-3 { background: #D29A62; }
+
+@media (max-width: 700px) {
+    .tarjetas-resumen-caja { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tarjeta-resumen-caja:nth-child(3) { border-left: 0; }
+    .tarjeta-resumen-caja:nth-child(n+3) { border-top: 1px solid var(--linea); }
+    .tarjeta-resumen-caja .monto { font-size: 1.3rem; }
+    .seccion-contabilidad .panel-caja { padding: 16px 14px 18px; }
+    .acciones-inventario { width: 100%; }
+}
+/* El botón de descarga del cuadre ahora es un botón chico con texto (antes, un círculo verde) */
+.btn-descargar-cuadre, .btn-descargar-cuadre:hover {
+    width: auto; height: 32px; border-radius: 8px; background: transparent;
+    color: var(--tinta-2); box-shadow: none; transform: none;
+}
+.btn-descargar-cuadre:hover { color: var(--tinta); background: var(--superficie-3); }
+.grid-finanzas { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+@media (max-width: 1100px) { .grid-finanzas { grid-template-columns: minmax(0, 1fr); } }
+/* Placas y métodos de pago sin cortes de línea en las tablas */
+.tabla-caja td b, .tabla-caja .fila-metodo td:first-child { white-space: nowrap; }
+@media (max-width: 700px) { .tabla-caja:not(.tabla-compacta) { min-width: 640px; } }

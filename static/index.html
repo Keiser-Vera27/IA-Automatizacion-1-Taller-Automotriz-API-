@@ -20,7 +20,7 @@
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=8">
+    <link rel="stylesheet" href="style.css?v=9">
     <!-- Librería para renderizar Markdown (negritas, listas y tablas de Geor IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
@@ -252,65 +252,65 @@
                 </aside>
               </div>
 
-                <!-- 2. APARTADO FINAL: PANEL DE CONTROL, FINANZAS, RANKING Y LIQUIDACIONES -->
-                <div class="seccion-contabilidad">
-                    <h2>Panel de Control y Finanzas</h2>
-                    
-                    <!-- BOTONES DE ACCIÓN RÁPIDA -->
-                    <div class="grupo-botones-reportes" data-modulo="inventario">
-                        <button class="btn-inventario" onclick="descargarInventario()">
-                            Descargar Auditoria de Inventario
-                        </button>
-                        <!-- Plantilla oficial para la importación masiva (evita errores de columnas) -->
-                        <button class="btn-inventario" onclick="descargarPlantillaInventario()">
-                            Descargar Plantilla de Inventario
-                        </button>
-                        <!-- Importación masiva de inventario: botón visible + input file oculto -->
-                        <button class="btn-inventario" onclick="abrirSelectorInventario()">
-                            Importar Inventario (Excel)
-                        </button>
-                        <input type="file" id="input-excel-inventario" accept=".xlsx,.xls" style="display: none;" onchange="subirInventarioExcel(event)">
+                <!-- CAJA Y FINANZAS: cuadre del día, ranking de técnicos y liquidación -->
+                <section class="seccion-contabilidad" aria-labelledby="titulo-finanzas">
+                    <div class="cabecera-seccion">
+                        <div>
+                            <h2 id="titulo-finanzas">Caja y finanzas</h2>
+                            <p>El cuadre del día se actualiza solo. Debajo, el rendimiento de los técnicos y las liquidaciones.</p>
+                        </div>
+                        <!-- Inventario: auditoría, plantilla oficial e importación masiva -->
+                        <div class="acciones-inventario" data-modulo="inventario">
+                            <button class="btn-chico" onclick="descargarInventario()">
+                                <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg>Auditoría de inventario
+                            </button>
+                            <button class="btn-chico" onclick="descargarPlantillaInventario()">
+                                <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Plantilla de inventario
+                            </button>
+                            <button class="btn-chico principal" onclick="abrirSelectorInventario()">
+                                <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V9"/><polyline points="7 14 12 9 17 14"/><path d="M5 4h14"/></svg>Importar inventario (Excel)
+                            </button>
+                            <input type="file" id="input-excel-inventario" accept=".xlsx,.xls" hidden onchange="subirInventarioExcel(event)">
+                        </div>
                     </div>
 
-                    <!-- CUADRE DE CAJA DEL DÍA: se carga solo al iniciar sesión y se refresca automáticamente -->
+                    <!-- CUADRE DE CAJA DEL DÍA: se carga al iniciar sesión y se refresca automáticamente -->
                     <div id="panel-cuadre-caja"></div>
 
-                    <!-- RANKING ANUAL DE TÉCNICOS -->
-                    <div class="panel-caja" data-modulo="tecnicos" style="margin-top: 30px; border-left: 4px solid var(--magenta);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
-                            <div>
-                                <h3 style="margin: 0;">Ranking Anual de Técnicos (En Vivo)</h3>
-                                <p style="color: var(--texto-tenue); font-size: 0.85rem; margin: 4px 0 0 0;">
-                                    Acumulado del año en curso descontando repuestos. Se actualiza automáticamente.
-                                </p>
+                    <div class="grid-finanzas">
+                        <!-- RANKING ANUAL DE TÉCNICOS -->
+                        <section class="panel-caja panel-finanzas" data-modulo="tecnicos">
+                            <div class="cabecera-panel">
+                                <div>
+                                    <h3>Ranking anual de técnicos</h3>
+                                    <p>Acumulado del año, descontando repuestos. Se actualiza solo.</p>
+                                </div>
+                                <button class="btn-chico" onclick="cargarRankingAnual()">
+                                    <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>Actualizar
+                                </button>
                             </div>
-                            <button class="btn-filtro activo" onclick="cargarRankingAnual()" style="padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer;">
-                                Actualizar Podio
-                            </button>
-                        </div>
-                        <div id="resultado-ranking-anual">
-                            <p style="color: var(--texto-tenue); text-align: center; font-size: 0.9rem; margin: 15px 0;">Cargando posiciones...</p>
-                        </div>
-                    </div>
+                            <div id="resultado-ranking-anual">
+                                <p class="cargando-panel">Cargando posiciones…</p>
+                            </div>
+                        </section>
 
-                    <!-- LIQUIDACIÓN QUINCENAL / PERSONALIZADA -->
-                    <div class="panel-caja" data-modulo="tecnicos" style="margin-top: 20px; border-left: 4px solid var(--morado);">
-                        <h3>Liquidación de Nómina (Corte por Fechas)</h3>
-                        <p style="color: var(--texto-tenue); font-size: 0.85rem; margin-bottom: 15px;">
-                            Calcula comisiones netas por mano de obra para pagos quincenales o mensuales ajustados a feriados.
-                        </p>
-                        
-                        <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center; margin-bottom: 15px;">
-                            <label style="font-size: 0.85rem;">Desde: <input type="date" id="fechaInicioLiq" style="padding: 6px; border-radius: 6px; border: 1px solid var(--borde); background: var(--bg-alterno); color: inherit;"></label>
-                            <label style="font-size: 0.85rem;">Hasta: <input type="date" id="fechaFinLiq" style="padding: 6px; border-radius: 6px; border: 1px solid var(--borde); background: var(--bg-alterno); color: inherit;"></label>
-                            <button class="btn-filtro activo" onclick="cargarLiquidacionFechas()" style="padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;">
-                                Generar Liquidación
-                            </button>
-                        </div>
-
-                        <div id="resultado-liquidacion"></div>
+                        <!-- LIQUIDACIÓN QUINCENAL / PERSONALIZADA -->
+                        <section class="panel-caja panel-finanzas" data-modulo="tecnicos">
+                            <div class="cabecera-panel">
+                                <div>
+                                    <h3>Liquidación de nómina</h3>
+                                    <p>Comisiones netas por mano de obra entre dos fechas, para pagos quincenales o mensuales.</p>
+                                </div>
+                            </div>
+                            <div class="filtros-liquidacion">
+                                <label>Desde <input type="date" id="fechaInicioLiq"></label>
+                                <label>Hasta <input type="date" id="fechaFinLiq"></label>
+                                <button class="btn btn-primario" onclick="cargarLiquidacionFechas()">Calcular</button>
+                            </div>
+                            <div id="resultado-liquidacion"></div>
+                        </section>
                     </div>
-                </div>
+                </section>
             </div> <!-- Cierra #vista-chat -->
 
             <!-- ========================================== -->
@@ -515,7 +515,7 @@
     </div> <!-- Cierra #plantilla-orden -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js?v=1003"></script>
+    <script src="script.js?v=1004"></script>
     <!-- MODAL DE AVISO (centro de pantalla, con botón OK). Reutilizable: mostrarModal({...}) -->
     <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
         <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">
