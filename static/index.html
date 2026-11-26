@@ -9,25 +9,38 @@
     <link rel="icon" href="brand/favicon.ico" sizes="48x48">
     <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
     <link rel="manifest" href="brand/site.webmanifest">
-    <meta name="theme-color" content="#7030EF">
-    <!-- Tipografías propias (se precargan las dos más usadas) -->
-    <link rel="preload" href="fonts/barlow-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="fonts/barlow-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <meta name="theme-color" content="#0A0911">
+    <!-- Tipografía propia (un archivo variable para todos los pesos y anchos) -->
+    <link rel="preload" href="fonts/mona-sans-latin-standard-normal.woff2" as="font" type="font/woff2" crossorigin>
     <!-- Aplica el tema guardado ANTES de pintar, para evitar el parpadeo de color.
-         Por defecto claro: se lee mejor en el mostrador y en el celular a pleno día. -->
+         Por defecto oscuro; el tema claro se elige desde la navegación. -->
     <script>
         (function () {
-            var tema = localStorage.getItem("as_tema") || "light";
+            var tema = localStorage.getItem("as_tema") || "dark";
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=7">
-    <!-- Librería para renderizar Markdown (negritas y listas de la IA) -->
+    <link rel="stylesheet" href="style.css?v=8">
+    <!-- Librería para renderizar Markdown (negritas, listas y tablas de Geor IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+
+    <!-- Símbolo de Geor IA: el globo de chat en celdas del logo, con la gorra lima.
+         Cada celda es un trazo aparte para poder encenderlas en secuencia mientras Geor procesa. -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <defs>
+            <symbol id="simbolo-geor" viewBox="16 18 228 226">
+                <path class="celda c1" d="M31,104 L73,104 A7,7 0 0 1 80,111 L80,139 A7,7 0 0 1 73,146 L31,146 A7,7 0 0 1 24,139 L24,111 A7,7 0 0 1 31,104 Z"/>
+                <path class="celda c2" d="M105,104 L189,104 A7,7 0 0 1 196,111 L196,139 A7,7 0 0 1 189,146 L105,146 A7,7 0 0 1 98,139 L98,111 A7,7 0 0 1 105,104 Z"/>
+                <path class="celda c3" d="M105,162 L189,162 A7,7 0 0 1 196,169 L196,168 A36,36 0 0 1 160,204 L105,204 A7,7 0 0 1 98,197 L98,169 A7,7 0 0 1 105,162 Z"/>
+                <path class="celda c4" d="M31,162 L73,162 A7,7 0 0 1 80,169 L80,197 A7,7 0 0 1 73,204 L60,204 L31,233 Q24,240 24,230 L24,169 A7,7 0 0 1 31,162 Z"/>
+                <path fill="#C6FF3D" d="M24,88 L24,72 C24,40 62,24 110,24 C158,24 196,40 196,66 L196,72 L228,72 A8,8 0 0 1 236,80 A8,8 0 0 1 228,88 Z"/>
+            </symbol>
+        </defs>
+    </svg>
 
     <!-- ========================================================== -->
     <!-- PANTALLA DE LOGIN                                           -->
@@ -42,28 +55,28 @@
                 <div class="login-mensaje">
                     <div>
                         <h2>Escribe lo que pasó en el taller.</h2>
-                        <p class="bajada">El registro se hace solo: reparaciones, gastos e inventario a partir de un mensaje, con la caja del día cuadrada.</p>
+                        <p class="bajada">Geor IA hace el registro: reparaciones, gastos e inventario a partir de un mensaje, con la caja del día cuadrada.</p>
                     </div>
 
-                <div class="demo-registro" aria-hidden="true">
-                    <div class="demo-mensaje">Entró Juan Pérez con un Spark placa GBA-1234. Cambio de aceite y filtro, cobramos 35.</div>
-                    <svg class="icono demo-flecha" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
-                    <div class="demo-ficha">
-                        <span class="placa">GBA-1234</span>
-                        <span class="demo-vehiculo">Chevrolet Spark de Juan Pérez</span>
-                        <span class="demo-monto">$35,00</span>
-                        <span class="demo-detalle">Cambio de aceite y filtro</span>
+                    <div class="demo-registro" aria-hidden="true">
+                        <div class="demo-mensaje">Entró Juan Pérez con un Spark placa GBA-1234. Cambio de aceite y filtro, cobramos 35.</div>
+                        <svg class="icono demo-flecha" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+                        <div class="demo-ficha">
+                            <span class="placa">GBA-1234</span>
+                            <span class="demo-vehiculo">Chevrolet Spark de Juan Pérez</span>
+                            <span class="demo-monto">$35,00</span>
+                            <span class="demo-detalle">Cambio de aceite y filtro</span>
+                        </div>
+                        <p class="demo-pie">Ejemplo ilustrativo.</p>
                     </div>
-                    <p class="demo-pie">Ejemplo ilustrativo.</p>
-                </div>
                 </div>
             </section>
 
             <!-- Panel del formulario -->
             <main class="login-formulario">
                 <div class="login-card">
-                    <img class="logo-movil claro" src="brand/horizontal.svg" alt="Oficial de Registros">
                     <img class="logo-movil oscuro" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
+                    <img class="logo-movil claro" src="brand/horizontal.svg" alt="Oficial de Registros">
                     <h1>Ingresa a tu taller</h1>
                     <p>Usa el correo y la contraseña que te dio el administrador.</p>
 
@@ -89,20 +102,22 @@
     <!-- ========================================================== -->
     <div id="app-container" style="display: none;">
 
-        <!-- BARRA SUPERIOR: logo, buscador de placa y taller actual -->
+        <!-- BARRA SUPERIOR: logo, buscador de placa (tecla /) y taller actual -->
         <header class="barra-app">
-            <img class="logo-barra completo" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
+            <img class="logo-barra completo oscuro" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
+            <img class="logo-barra completo claro" src="brand/horizontal.svg" alt="Oficial de Registros">
             <img class="logo-barra compacto" src="brand/simbolo-dark.svg" alt="Oficial de Registros">
 
             <form class="buscador-placa" role="search" onsubmit="buscarDesdeBarra(event)">
                 <svg class="icono" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
                 <input type="search" id="buscar-barra" autocomplete="off" enterkeyhint="search"
                        placeholder="Buscar placa o cliente" aria-label="Buscar placa, cliente o teléfono">
+                <kbd class="tecla" aria-hidden="true">/</kbd>
             </form>
 
             <div class="taller-actual">
-                <span class="rotulo">Taller</span>
                 <div id="banner-bienvenida" class="banner-bienvenida"></div>
+                <span class="inicial-taller" id="inicial-taller" aria-hidden="true"></span>
             </div>
         </header>
 
@@ -113,7 +128,7 @@
                 <span class="nav-titulo">Menú</span>
                 <button class="nav-enlace" data-vista="vista-chat" onclick="cambiarVista('vista-chat')" aria-current="page">
                     <svg class="icono" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 13.5h4.5"/></svg>
-                    Registrar
+                    Geor IA
                 </button>
                 <button class="nav-enlace" data-vista="vista-vehiculos" onclick="cambiarVista('vista-vehiculos')">
                     <svg class="icono" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M3 10.5h18"/><path d="M7 14h4"/></svg>
@@ -135,7 +150,7 @@
                 <div class="nav-pie">
                     <button class="nav-enlace theme-toggle" onclick="alternarTema()" id="boton-tema">
                         <span class="punto-icono" id="icono-tema"></span>
-                        <span class="etiqueta" id="texto-tema">Claro</span>
+                        <span class="etiqueta" id="texto-tema">Oscuro</span>
                     </button>
                     <button class="nav-enlace btn-cerrar-sesion" onclick="cerrarSesion()">
                         <svg class="icono" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>
@@ -145,11 +160,11 @@
             </nav>
             <div class="nav-fondo" onclick="toggleMenu()"></div>
 
-            <!-- BARRA INFERIOR (solo celular): las tres secciones de uso diario + menú -->
+            <!-- BARRA INFERIOR (solo celular) -->
             <nav class="nav-inferior" aria-label="Accesos rápidos">
                 <button data-vista="vista-chat" onclick="cambiarVista('vista-chat', false)" aria-current="page">
                     <svg class="icono" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 13.5h4.5"/></svg>
-                    Registrar
+                    Geor IA
                 </button>
                 <button data-vista="vista-vehiculos" onclick="cambiarVista('vista-vehiculos', false)">
                     <svg class="icono" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M3 10.5h18"/><path d="M7 14h4"/></svg>
@@ -168,37 +183,77 @@
         <main class="contenedor">
 
             <!-- ========================================== -->
-            <!-- PANTALLA 1: REGISTRAR CON GEOR IA (vista principal) -->
+            <!-- PANTALLA 1: GEOR IA + VEHÍCULOS EN EL TALLER -->
             <!-- ========================================== -->
             <div id="vista-chat" class="vista-app">
-                <div class="cabecera-vista">
-                    <h1>Registrar con Geor IA</h1>
-                    <p>Escribe un ingreso, un trabajo, un gasto o una pregunta sobre tus datos. Geor IA lo convierte en el registro correcto y te pide lo que falte.</p>
-                </div>
+              <div class="escena">
 
-                <div class="compositor">
-                    <div class="grupo-formulario">
-                        <label for="texto_reporte" class="etiqueta-campo" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Mensaje para Geor IA</label>
-                        <textarea id="texto_reporte" placeholder="Escribe aquí un registro (ej: Entró Toyota PXY9876...) o haz una pregunta analítica (ej: ¿Cuál fue el cliente que gastó más?)"></textarea>
+                <!-- Bienvenida con el pulso del día (datos reales del taller) -->
+                <section class="saludo">
+                    <div>
+                        <h1><span id="saludo-hora">Hola</span>, <span class="nombre-taller" id="saludo-taller"></span></h1>
+                        <p id="saludo-fecha">Geor IA está listo para registrar lo que pase hoy.</p>
                     </div>
-                    <div class="compositor-pie">
-                        <p class="ayuda">Enter envía el mensaje. Shift + Enter agrega una línea.</p>
-                        <button class="btn-enviar" onclick="enviarReporte()">
-                            <svg class="icono" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-                            Enviar a Geor IA
-                        </button>
+                    <dl class="cifras">
+                        <div class="cifra"><dt>En el taller</dt><dd id="cifra-taller">–</dd></div>
+                        <div class="cifra"><dt>Entregados hoy</dt><dd id="cifra-entregados">–</dd></div>
+                        <div class="cifra"><dt>Cobrado hoy</dt><dd id="cifra-cobrado">–</dd></div>
+                    </dl>
+                </section>
+
+                <!-- GEOR IA: el asistente es el protagonista -->
+                <section class="geor" aria-label="Conversación con Geor IA">
+                    <div class="geor-cabecera">
+                        <div class="marca-geor" id="marca-geor"><svg aria-hidden="true"><use href="#simbolo-geor"/></svg></div>
+                        <div>
+                            <h2>Geor IA</h2>
+                            <span class="estado-geor" id="estado-geor"><i></i><span id="estado-geor-texto">En línea</span><span class="largo">. Registra ingresos, trabajos, gastos y responde preguntas.</span></span>
+                        </div>
+                        <div class="acciones">
+                            <button class="btn-chico" type="button" onclick="nuevaConversacion()" title="Limpiar la conversación">
+                                <svg class="icono" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span class="texto-boton">Nueva conversación</span>
+                            </button>
+                        </div>
                     </div>
-                </div>
 
-                <hr>
+                    <!-- Conversación de esta sesión (se reinicia al recargar la página) -->
+                    <div class="conversacion" id="conversacion-geor" aria-live="polite"></div>
 
-                <!-- 1. LO MÁS IMPORTANTE DIARIO: CONTROL DE VEHÍCULOS -->
-                <div id="panel-vehiculos-pendientes-container"></div>
+                    <div class="compositor">
+                        <!-- Vehículo del que se está hablando (al tocar una tarjeta) -->
+                        <div class="contexto-placa" id="contexto-placa" hidden></div>
+                        <div class="grupo-formulario">
+                            <label for="texto_reporte" class="solo-lector">Mensaje para Geor IA</label>
+                            <textarea id="texto_reporte" rows="2" placeholder="Escribe un ingreso, un trabajo, un gasto o una pregunta…"></textarea>
+                        </div>
+                        <div class="compositor-pie">
+                            <button type="button" class="sugerencia" onclick="usarSugerencia('Gasto: ')">Registrar un gasto</button>
+                            <button type="button" class="sugerencia" data-modulo="consultas_ia" onclick="usarSugerencia('¿Cuánto llevo cobrado hoy?', true)">¿Cuánto llevo cobrado hoy?</button>
+                            <button type="button" class="sugerencia" data-modulo="consultas_ia" onclick="usarSugerencia('¿Qué vehículos siguen pendientes?', true)">Vehículos pendientes</button>
+                            <button class="btn-enviar" onclick="enviarReporte()">
+                                Enviar
+                                <svg class="icono" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </section>
 
-                <hr>
+                <!-- EN EL TALLER: vehículos junto a la conversación -->
+                <aside class="taller-col" aria-label="Vehículos en el taller">
+                    <div class="taller-cab">
+                        <h2 id="titulo-taller">En el taller<small id="conteo-taller"></small></h2>
+                        <div class="segmento" role="group" aria-label="Filtrar vehículos">
+                            <button type="button" id="filtro-pendiente" aria-pressed="true" onclick="cargarVehiculosPendientes('Pendiente')">En el taller</button>
+                            <button type="button" id="filtro-terminado" aria-pressed="false" onclick="cargarVehiculosPendientes('Terminado')">Entregados hoy</button>
+                        </div>
+                    </div>
+                    <div id="panel-vehiculos-pendientes-container" class="carril-taller"></div>
+                    <p class="pista-taller">Toca un vehículo para hablar de él con Geor IA.</p>
+                </aside>
+              </div>
 
                 <!-- 2. APARTADO FINAL: PANEL DE CONTROL, FINANZAS, RANKING Y LIQUIDACIONES -->
-                <div class="seccion-contabilidad" style="margin-top: 40px;">
+                <div class="seccion-contabilidad">
                     <h2>Panel de Control y Finanzas</h2>
                     
                     <!-- BOTONES DE ACCIÓN RÁPIDA -->
@@ -390,7 +445,7 @@
 
         <!-- ENCABEZADO: Taller y Número de Orden -->
         <div style="text-align: center; border-bottom: 2px solid black; padding-bottom: 10px; margin-bottom: 20px;">
-            <h1 id="orden-nombre-taller" style="margin: 0; font-size: 24px; text-transform: uppercase;">AUTOTRONIC SOLUTIONS</h1>
+            <h1 id="orden-nombre-taller" style="margin: 0; font-size: 24px; text-transform: uppercase;">Orden de servicio</h1>
             <p style="margin: 5px 0 0; font-size: 14px; color: #555;">Orden N° <span id="orden-id">---</span> | Ficha de Servicio</p>
         </div>
 
@@ -460,7 +515,7 @@
     </div> <!-- Cierra #plantilla-orden -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js?v=1002"></script>
+    <script src="script.js?v=1003"></script>
     <!-- MODAL DE AVISO (centro de pantalla, con botón OK). Reutilizable: mostrarModal({...}) -->
     <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
         <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">

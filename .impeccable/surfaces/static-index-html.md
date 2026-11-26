@@ -11,14 +11,14 @@ App principal (static/index.html), panel de control (static/admin.html) y cotiza
 
 ## Direction contract
 
-THESIS: El vehículo se reconoce por su placa, no por un número de orden. La placa ecuatoriana es el identificador visual en toda la app. Se rechaza el panel SaaS genérico de tarjetas iguales con degradados y vidrio.
+THESIS: Geor IA es el centro de la operación y los vehículos del taller conviven con la conversación. Cada vehículo se reconoce por su placa ecuatoriana y por la imagen de su modelo. Se rechaza el chatbot metido en una tarjeta y el panel SaaS de tarjetas iguales.
 
-OWN-WORLD: Fondo claro neutro con tinte violeta frío; barra superior morada #7030EF sólida con el logo oscuro (celdas blancas, gorra lima). Lima #C6FF3D solo como señal sobre morado o tinta (selección actual, foco). Barlow para la interfaz, Barlow Semi Condensed para placas y cifras de dinero. Placa: rectángulo blanco con borde de tinta, franja superior morada con la palabra Ecuador, caracteres condensados en negrita. Bordes de 1px, radios de 8 a 12px, sombras cortas con desplazamiento.
+OWN-WORLD: Oscuro premium: fondo violeta casi negro, superficies en capas con hilos finos, una sola luz morada detrás de la cabecera de Geor. Morado #7030EF para acciones, lima #C6FF3D solo como señal (Geor en línea, selección). Mona Sans; su ancho condensado para placas y cifras. Placa blanca con franja morada "ECUADOR". Tarjeta de vehículo estilo Uber: escenario de estudio con el render del modelo y su sombra, datos abajo.
 
-STORY: El personal busca o escribe una placa y encuentra el vehículo al instante; ve qué está en proceso y qué está listo; registra con Geor IA escribiendo; cierra el día con la caja cuadrada. El cliente abre su cotización y la aprueba.
+STORY: El personal escribe lo que pasó y Geor lo registra; ve al instante el vehículo en "En el taller"; toca un vehículo para hablar de él; revisa el pulso del día (en el taller, entregados, cobrado).
 
-FIRST VIEWPORT: Barra superior morada con logo a la izquierda, buscador de placa al centro (siempre visible) y caja de hoy a la derecha. Debajo, navegación lateral en escritorio (barra inferior en celular). Área de trabajo: el compositor de Geor IA arriba y la lista de vehículos del día, cada fila encabezada por su placa. La acción principal es Enviar a Geor IA.
+FIRST VIEWPORT: Barra con logo, buscador de placa (tecla /) y taller. Saludo con tres cifras del día. Columna ancha: Geor IA (cabecera con su símbolo, conversación, compositor con sugerencias). Columna derecha: vehículo destacado con imagen y lista compacta del resto. En el celular: saludo, carrusel de vehículos y Geor con el compositor fijo.
 
-FORM: Placa vehicular, candidato 1 de 7 de la lista propia, elegido por el usuario en lugar del asignado (Rótulo de taller, candidato 5). seed:f8999ec4037fb6c3 (ronda degradada, sin catálogo).
+FORM: Placa vehicular en tema oscuro premium, pedido explícito del usuario (documento "Rediseño visual definitivo"). seed: none (pinned) "Fondos oscuros elegantes", "La IA debe ser protagonista", "chat con vehículos integrados".
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance

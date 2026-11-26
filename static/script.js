@@ -5,7 +5,7 @@
 // Modo claro/oscuro (persistido en localStorage, aplicado también al cargar en index.html)
 function alternarTema() {
     const raiz = document.documentElement;
-    const temaActual = raiz.getAttribute("data-theme") || "light";
+    const temaActual = raiz.getAttribute("data-theme") || "dark";
     const nuevoTema = temaActual === "light" ? "dark" : "light";
     raiz.setAttribute("data-theme", nuevoTema);
     localStorage.setItem("as_tema", nuevoTema);
@@ -44,8 +44,8 @@ function aplicarModulos() {
     const texto = document.getElementById('texto_reporte');
     if (texto) {
         texto.placeholder = moduloActivo('consultas_ia')
-            ? "Escribe aquí un registro (ej: Entró Toyota PXY9876...) o haz una pregunta analítica (ej: ¿Cuál fue el cliente que gastó más?)"
-            : "Escribe aquí un registro (ej: Entró Toyota PXY9876 por falla de frenos...)";
+            ? "Escribe un ingreso, un trabajo, un gasto o una pregunta…"
+            : "Escribe un ingreso, un trabajo o un gasto…";
     }
     // Mientras no se conocen los módulos, lo marcado con data-modulo no se ve
     // (evita que aparezca y desaparezca un botón al cargar)
@@ -92,6 +92,11 @@ async function cargarDatosTaller() {
         // Nombre del taller en la barra superior (como texto: nunca como HTML)
         banner.textContent = data.nombre_taller || '';
         banner.title = data.nombre_taller || '';
+        ponerTexto('saludo-taller', data.nombre_taller || '');
+        // Iniciales del taller para el distintivo de la barra ("Lubricadora El Pana" -> "LP")
+        const iniciales = String(data.nombre_taller || '').split(/\s+/).filter(p => p.length > 2).slice(0, 2).map(p => p[0]).join('').toUpperCase();
+        ponerTexto('inicial-taller', iniciales);
+        iniciarConversacion();
     } catch (e) {
         console.error("No se pudo cargar el nombre del taller:", e);
     }
@@ -99,7 +104,7 @@ async function cargarDatosTaller() {
 
 // Validar sesión activa al cargar
 window.onload = function() {
-    actualizarIconoTema(document.documentElement.getAttribute("data-theme") || "light");
+    actualizarIconoTema(document.documentElement.getAttribute("data-theme") || "dark");
 
     const token = localStorage.getItem("taller_token");
     if (token) {
@@ -107,6 +112,7 @@ window.onload = function() {
         document.getElementById("app-container").style.display = "block";
         
         // Al ejecutarse estas funciones, si el token expiró, la app se cerrará sola
+        actualizarSaludo();
         cargarVehiculosPendientes();
         cargarBienvenidaTaller();
         iniciarActualizacionCuadre();   // cuadre de caja siempre visible y en vivo
@@ -169,6 +175,7 @@ async function iniciarSesion() {
             localStorage.setItem("taller_token", data.token);
             document.getElementById("login-container").style.display = "none";
             document.getElementById("app-container").style.display = "block";
+            actualizarSaludo();
             cargarVehiculosPendientes();
             cargarBienvenidaTaller();
             iniciarActualizacionCuadre();   // cuadre de caja siempre visible y en vivo
@@ -194,16 +201,16 @@ function cerrarSesion() {
     document.getElementById("login-container").style.display = "block";
     document.getElementById("password_login").value = "";
 
-    const cajaNotificacion = document.getElementById('caja-notificacion-ia');
-    if (cajaNotificacion) {
-        cajaNotificacion.innerHTML = "";
-        cajaNotificacion.style.padding = "0";
-    }
-    
-    const panelPendientes = document.getElementById('panel-vehiculos-pendientes');
-    if (panelPendientes) {
-        panelPendientes.remove();
-    }
+    // Conversación, vehículos y cifras del día no deben verse en la próxima sesión
+    const conversacion = document.getElementById('conversacion-geor');
+    if (conversacion) conversacion.innerHTML = "";
+    quitarContextoPlaca();
+    const panelPendientes = document.getElementById('panel-vehiculos-pendientes-container');
+    if (panelPendientes) panelPendientes.innerHTML = "";
+    ultimosVehiculos = [];
+    vehiculoDestacadoId = null;
+    ['cifra-taller', 'cifra-entregados', 'cifra-cobrado'].forEach(id => ponerTexto(id, '–'));
+    ['saludo-taller', 'inicial-taller', 'conteo-taller'].forEach(id => ponerTexto(id, ''));
 
     detenerActualizacionCuadre();   // no seguir consultando sin sesión
     const panelCaja = document.getElementById('panel-cuadre-caja');
@@ -558,6 +565,11 @@ async function enviarReporte() {
         return;
     }
 
+    // El mensaje queda en la conversación; el vehículo del contexto ya va escrito en el texto
+    agregarMensajeUsuario(texto.trim());
+    ultimoMensajeUsuario = texto;
+    quitarContextoPlaca();
+
     try {
         mostrarNotificacion("Analizando mensaje con inteligencia artificial...", "info");
 
@@ -571,11 +583,13 @@ async function enviarReporte() {
         });
 
         const data = await res.json().catch(() => ({}));
+        estadoConexionGeor(true);
         await manejarRespuestaRegistro(res, data, false);
 
     } catch (e) {
         console.error("Error:", e);
-        mostrarNotificacion("Error al conectar con el servidor.", "error");
+        estadoConexionGeor(false);
+        mostrarNotificacion("<b>No pude conectarme con el servidor.</b><br>Tu mensaje sigue en el campo de texto. Revisa el internet y vuelve a enviarlo.", "error");
     }
 }
 
@@ -1339,6 +1353,7 @@ async function cargarCuadreCaja(silencioso = false) {
         const data = await response.json();
         renderizarCuadreDeCaja(data);
         cuadreYaMostrado = true;
+        ponerTexto('cifra-cobrado', dinero(data.total_ingresos || 0));
     } catch (error) {
         const estado = document.getElementById('estado-cuadre');
         if (cuadreYaMostrado && estado) {
@@ -1658,148 +1673,319 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
     const token = localStorage.getItem("taller_token");
     if (!token) return;
 
+    // Botones del filtro "En el taller / Entregados hoy"
+    const btnPend = document.getElementById('filtro-pendiente');
+    const btnTerm = document.getElementById('filtro-terminado');
+    if (btnPend) btnPend.setAttribute('aria-pressed', String(estadoFiltro === 'Pendiente'));
+    if (btnTerm) btnTerm.setAttribute('aria-pressed', String(estadoFiltro === 'Terminado'));
+
     try {
         const response = await fetch('/vehiculos-pendientes', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        
-        // ¡NUEVA VALIDACIÓN! Cierre automático si el token expiró
+
+        // Cierre automático si el token expiró
         if (response.status === 401) {
             cerrarSesion();
             mostrarNotificacion("Tu sesión ha caducado por seguridad. Por favor, inicia sesión nuevamente.", "warning");
             return;
         }
-        
+
         if (!response.ok) return;
         const data = await response.json();
-        
-        let container = document.getElementById('panel-vehiculos-pendientes-container') || document.getElementById('panel-vehiculos-pendientes');
-        
-        if (!container || container.id === 'panel-vehiculos-pendientes') {
-            container = document.createElement('div');
-            container.id = 'panel-vehiculos-pendientes';
-            container.className = 'panel-pendientes';
-            
-            // Lo insertamos en el espacio dedicado entre las líneas divisorias
-            const contenedorDestino = document.getElementById('panel-vehiculos-pendientes-container');
-            if (contenedorDestino) {
-                contenedorDestino.appendChild(container);
-            } else {
-                const app = document.getElementById('app-container');
-                if (app) app.appendChild(container);
-            }
-        }
+        const container = document.getElementById('panel-vehiculos-pendientes-container');
+        if (!container) return;
 
         const listaVehiculos = data.vehiculos || [];
-        // "Terminados hoy" también muestra los cerrados sin cobro del día
-        const vehiculosFiltrados = listaVehiculos.filter(v => filtroEstadoActual === 'Terminado'
-            ? (v.estado === 'Terminado' || v.estado === 'Cerrado sin cobro')
-            : v.estado === filtroEstadoActual);
+        // "Entregados hoy" también muestra los cerrados sin cobro del día
+        const enTaller = listaVehiculos.filter(v => v.estado === 'Pendiente');
+        const entregados = listaVehiculos.filter(v => v.estado === 'Terminado' || v.estado === 'Cerrado sin cobro');
+        const vehiculosFiltrados = estadoFiltro === 'Terminado' ? entregados : enTaller;
 
-        // NUEVA ESTRUCTURA HTML: Usando las clases limpias de CSS
-        let html = `
-            <div class="cabecera-panel-vehiculos">
-                <h3>Control de Vehículos</h3>
-                <div class="grupo-filtros">
-                    <button class="btn-filtro ${filtroEstadoActual === 'Pendiente' ? 'activo' : ''}" onclick="cargarVehiculosPendientes('Pendiente')">Pendientes</button>
-                    <button class="btn-filtro ${filtroEstadoActual === 'Terminado' ? 'activo' : ''}" onclick="cargarVehiculosPendientes('Terminado')">Terminados Hoy</button>
-                </div>
-            </div>
-            <div class="grid-vehiculos">
-        `;
+        // Cifras del saludo y conteo del encabezado
+        ultimosVehiculos = listaVehiculos;
+        ponerTexto('cifra-taller', String(enTaller.length));
+        ponerTexto('cifra-entregados', String(entregados.filter(v => v.estado === 'Terminado').length));
+        const conteo = document.getElementById('conteo-taller');
+        if (conteo) conteo.textContent = vehiculosFiltrados.length ? String(vehiculosFiltrados.length) : '';
+        const titulo = document.getElementById('titulo-taller');
+        if (titulo && titulo.firstChild) titulo.firstChild.textContent = estadoFiltro === 'Terminado' ? 'Entregados hoy' : 'En el taller';
 
-        if (vehiculosFiltrados.length > 0) {
-            vehiculosFiltrados.forEach(v => {
-                // Detecta qué colores aplicar
-                let claseEstado = v.estado === 'Pendiente' ? 'estado-pendiente'
-                                 : (v.estado === 'Cerrado sin cobro' ? 'estado-sin-cobro' : 'estado-terminado');
+        // Imágenes de modelos disponibles (se carga una sola vez)
+        await cargarManifiestoVehiculos();
 
-                let detalleExtra;
-                if (v.estado === 'Terminado') {
-                    detalleExtra = `<div class="info-cobro">Cobro: $${v.cobro || 0} (${v.metodo_pago || 'Efectivo'})</div>`;
-                } else if (v.estado === 'Cerrado sin cobro') {
-                    detalleExtra = `<div class="info-taller-item"><strong>Motivo de cierre:</strong> ${escaparHTML(v.motivo_cierre || '-')}</div>`
-                        + (v.detalle_cierre ? `<div class="info-taller-item"><strong>Detalle:</strong> ${escaparHTML(v.detalle_cierre)}</div>` : '');
-                } else {
-                    detalleExtra = `<div class="info-taller-item"><strong>Falla / Motivo:</strong> ${v.motivo || 'No especificado'}</div>`;
-                }
-
-                const partesVehiculo = [v.modelo, v.color, v.anio, v.cilindraje ? `${v.cilindraje}cc` : ''].filter(Boolean);
-                const infoVehiculo = partesVehiculo.length > 0
-                    ? `<div class="info-taller-item"><strong>Vehículo:</strong> ${partesVehiculo.join(' · ')}</div>`
-                    : '';
-
-                const infoTelefono = v.telefono
-                    ? `<div class="info-taller-item"><strong>Tel:</strong> <a href="tel:${v.telefono}" class="link-telefono" onclick="event.stopPropagation()">${v.telefono}</a></div>`
-                    : '';
-
-                // INYECCIÓN DEL BOTÓN DE DESCARGA PARA ORDENES TERMINADAS
-                let botonDescarga = "";
-                if (v.estado === "Terminado") {
-                    const datosVehiculoStr = JSON.stringify(v).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
-                    botonDescarga = `
-                        <button class="btn-filtro activo" style="margin-top: 15px; width: 100%; border:none; padding: 8px; border-radius: 8px; font-weight: 600; cursor: pointer;" 
-                        onclick="event.stopPropagation(); generarComprobantePNG('${datosVehiculoStr}')">
-                            Descargar Orden
-                        </button>
-                    `;
-                }
-
-                // Botón corto "Cerrar orden" (sin cobro) solo en vehículos pendientes
-                const botonCerrar = v.estado === 'Pendiente'
-                    ? `<button class="btn-cerrar-orden" title="Cerrar la orden sin cobro (garantía, sin presupuesto...)"
-                               data-id="${escaparHTML(String(v.id))}" data-placa="${escaparHTML(v.vehiculo || '')}"
-                               data-cliente="${escaparHTML(v.cliente || '')}"
-                               onclick="event.stopPropagation(); abrirCerrarOrden(this)">Cerrar orden</button>`
-                    : '';
-
-                // Botón corto "Reabrir" en las órdenes cerradas hoy (corrige un cierre por error)
-                const botonReabrir = (v.estado === 'Terminado' || v.estado === 'Cerrado sin cobro')
-                    ? `<button class="btn-cerrar-orden" title="Volver a abrir esta orden (cerrada por error)"
-                               data-id="${escaparHTML(String(v.id))}" data-placa="${escaparHTML(v.vehiculo || '')}"
-                               onclick="event.stopPropagation(); abrirReabrirOrden(this)">Reabrir</button>`
-                    : '';
-
-                // Extraer el ID de la base de datos para mostrarlo como Número de Orden
-                let numOrden = v.id || v.id_orden || '---';
-
-                html += `
-                    <div class="tarjeta-vehiculo-pendiente" onclick="usarPlaca('${v.vehiculo}')" title="Haz clic para usar esta placa">
-                        <div class="tarjeta-header">
-                            <span class="placa-badge">${v.vehiculo}</span>
-                            <span class="badge-orden-esquina">N° ${numOrden}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <span class="badge-estado ${claseEstado}">${v.estado}</span>
-                        </div>
-                        <div class="info-taller-item"><strong>Cliente:</strong> ${v.cliente || 'N/A'}</div>
-                        ${infoVehiculo}
-                        ${infoTelefono}
-                        ${detalleExtra}
-                        ${v.estado === 'Pendiente' ? trabajosTarjetaHTML(v) : ''}
-                        ${v.estado === 'Pendiente' ? estadoCotizacionHTML(v) : ''}
-                        ${marcaGarantia(v.garantia_previa)}
-                        ${botonDescarga}
-                        <div class="acciones-tarjeta">
-                            ${v.vehiculo && v.vehiculo !== 'S/C' ? `<button class="btn-cerrar-orden" title="Ver todo el historial de este vehículo"
-                                onclick='event.stopPropagation(); abrirFichaVehiculo(${JSON.stringify(v.vehiculo)})'>Ficha</button>` : ''}
-                            ${v.estado === 'Pendiente' && moduloActivo('cotizaciones') ? `<button class="btn-cerrar-orden" title="Armar una cotización para que el cliente la apruebe"
-                                data-id="${escaparHTML(String(v.id))}" data-placa="${escaparHTML(v.vehiculo || '')}" data-cliente="${escaparHTML(v.cliente || '')}"
-                                onclick="event.stopPropagation(); abrirCotizador(this)">Cotizar</button>` : ''}
-                            ${botonCerrar}
-                            ${botonReabrir}
-                        </div>
-                    </div>
-                `;
-            });
-            html += `</div>`; // Cierra el grid
-            container.innerHTML = html;
-        } else {
-            container.innerHTML = html + `</div><p style="color: var(--texto-tenue); font-size: 0.9rem; text-align: center; margin: 20px 0; width: 100%;">No hay vehículos en la categoría '${filtroEstadoActual}'.</p>`;
+        if (!vehiculosFiltrados.length) {
+            container.innerHTML = estadoFiltro === 'Terminado'
+                ? `<div class="vacio-taller"><div class="simbolo">${ICONO_VEHICULO}</div>
+                     <b>Todavía no hay entregas hoy</b>
+                     <p>Cuando cierres una orden con Geor IA aparecerá aquí.</p></div>`
+                : `<div class="vacio-taller"><div class="simbolo">${ICONO_VEHICULO}</div>
+                     <b>No hay vehículos en el taller</b>
+                     <p>Cuando registres un ingreso con Geor IA aparecerá aquí con su placa.</p>
+                     <button type="button" class="btn-chico" onclick="usarSugerencia('Entró ')">Registrar un ingreso</button></div>`;
+            return;
         }
+
+        // El vehículo destacado: el que se eligió (o del que se habla); si no, el que ingresó último
+        const ordenados = [...vehiculosFiltrados].sort((a, b) => String(b.fecha_hora || '').localeCompare(String(a.fecha_hora || '')));
+        let destacado = ordenados.find(v => String(v.id) === String(vehiculoDestacadoId)) || ordenados[0];
+        vehiculoDestacadoId = destacado.id;
+        const resto = ordenados.filter(v => v !== destacado);
+
+        // En el celular todos se muestran como tarjetas grandes en un carrusel;
+        // en escritorio, el destacado es grande y el resto va en lista compacta.
+        container.innerHTML = tarjetaVehiculoHTML(destacado, true)
+            + resto.map(v => `<div class="solo-carrusel">${tarjetaVehiculoHTML(v, false)}</div>`).join('')
+            + `<div class="lista-taller">${resto.map(filaVehiculoHTML).join('')}</div>`;
     } catch (e) {
         console.error("Error al cargar vehículos:", e);
     }
+}
+
+// --------------------------------------------------------------------------
+// TARJETAS DE VEHÍCULO (estilo Uber: escenario con la imagen del modelo)
+// --------------------------------------------------------------------------
+let vehiculoDestacadoId = null;
+let ultimosVehiculos = [];
+const ICONO_VEHICULO = '<svg class="icono" viewBox="0 0 24 24" style="width:24px;height:24px"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M3 10.5h18M7 14h4"/></svg>';
+const ICONO_CHAT = '<svg class="icono" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>';
+
+function ponerTexto(id, texto) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = texto;
+}
+
+// "hace 20 min", "hace 5 h", "ayer", "hace 3 días"
+function haceCuanto(fecha) {
+    if (!fecha) return '';
+    const t = new Date(fecha).getTime();
+    if (isNaN(t)) return '';
+    const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (min < 1) return 'recién';
+    if (min < 60) return `hace ${min} min`;
+    const h = Math.round(min / 60);
+    if (h < 24) return `hace ${h} h`;
+    const d = Math.round(h / 24);
+    return d === 1 ? 'ayer' : `hace ${d} días`;
+}
+
+// Estado visible de la orden y cuántos tramos del recorrido van hechos
+// (ingreso, cotización, entrega). Solo usa estados que existen en el sistema.
+function estadoOrden(v) {
+    const c = v.cotizacion;
+    const conCotizacion = moduloActivo('cotizaciones');
+    const tramos = conCotizacion ? 3 : 2;
+    if (v.estado === 'Terminado') return { texto: 'Entregado', clase: 'estado-terminado', hechos: tramos, tramos, entregado: true };
+    if (v.estado === 'Cerrado sin cobro') return { texto: 'Cerrado sin cobro', clase: 'estado-sin-cobro', hechos: tramos, tramos, entregado: false };
+    if (c && c.estado === 'respondida' && c.n_aprobados) return { texto: 'Cotización aprobada', clase: 'estado-terminado', hechos: 2, tramos };
+    if (c && c.estado === 'respondida') return { texto: 'Cotización rechazada', clase: 'estado-sin-cobro', hechos: 1, tramos };
+    if (c && !c.vencida) return { texto: 'Cotización enviada', clase: 'estado-info', hechos: 1, tramos };
+    return { texto: 'En trabajo', clase: 'estado-pendiente', hechos: 1, tramos };
+}
+
+function recorridoHTML(est) {
+    const tramos = Array.from({ length: est.tramos }, (_, i) => `<span class="${i < est.hechos ? 'si' : ''}"></span>`).join('');
+    const nombres = est.tramos === 3 ? ['Ingreso', 'Cotización', 'Entrega'] : ['Ingreso', 'Entrega'];
+    return `<div><div class="recorrido ${est.entregado ? 'entregado' : ''}" aria-hidden="true">${tramos}</div>
+        <div class="recorrido-leyenda">${nombres.map(n => `<span>${n}</span>`).join('')}</div></div>`;
+}
+
+// Escenario con la imagen del modelo; si no hay imagen, la placa ocupa su lugar
+function escenaVehiculoHTML(v, est) {
+    const e = escaparHTML;
+    const img = imagenVehiculo(v);
+    const placa = e(v.vehiculo || 'S/C');
+    return `<div class="tv-escena ${img ? '' : 'sin-imagen'}" data-placa="${placa}"
+                 onclick='mencionarVehiculo(${JSON.stringify(String(v.id))})' title="Hablar de este vehículo con Geor IA">
+        <span class="badge-estado ${est.clase} flotante-izq">${e(est.texto)}</span>
+        ${v.fecha_hora ? `<span class="flotante-der">Ingresó ${e(haceCuanto(v.fecha_hora))}</span>` : ''}
+        ${img ? `<img src="${e(img)}" alt="${e(v.modelo || 'Vehículo')}" loading="lazy" onerror="imagenVehiculoFallo(this)">`
+              : `<div class="respaldo"><span class="placa">${placa}</span></div>`}
+    </div>`;
+}
+
+// Si la imagen no carga, se muestra la placa
+function imagenVehiculoFallo(img) {
+    const escena = img.parentElement;
+    escena.classList.add('sin-imagen');
+    const div = document.createElement('div');
+    div.className = 'respaldo';
+    const placa = document.createElement('span');
+    placa.className = 'placa';
+    placa.textContent = escena.dataset.placa;
+    div.appendChild(placa);
+    escena.appendChild(div);
+    img.remove();
+}
+
+function tarjetaVehiculoHTML(v, destacada) {
+    const e = escaparHTML;
+    const est = estadoOrden(v);
+    const img = imagenVehiculo(v);
+    const color = colorVehiculo(v.color);
+    const id = e(String(v.id));
+    const placa = e(v.vehiculo || '');
+    const cliente = e(v.cliente || '');
+
+    // Detalles de la orden (texto de la BD siempre escapado)
+    const detalles = [];
+    if (v.estado === 'Pendiente') detalles.push(['Motivo', v.motivo || 'No especificado']);
+    if (v.estado === 'Terminado') detalles.push(['Cobro', `${dinero(v.cobro || 0)} (${v.metodo_pago || 'Efectivo'})`]);
+    if (v.estado === 'Cerrado sin cobro') detalles.push(['Motivo de cierre', v.motivo_cierre || '-']);
+    if (v.oficial) detalles.push(['Técnico', v.oficial]);
+    if (v.kilometraje) detalles.push(['Kilometraje', `${Number(v.kilometraje).toLocaleString('es-EC')} km`]);
+    if (v.telefono) detalles.push(['Teléfono', null, `<a href="tel:${e(v.telefono)}" class="link-telefono" onclick="event.stopPropagation()">${e(v.telefono)}</a>`]);
+    if (v.detalle_cierre) detalles.push(['Detalle', v.detalle_cierre]);
+
+    // Acciones: las mismas de antes, con los mismos manejadores
+    const acciones = [];
+    acciones.push(`<button type="button" class="btn-chico principal" onclick='mencionarVehiculo(${JSON.stringify(String(v.id))})'>${ICONO_CHAT}En el chat</button>`);
+    if (v.vehiculo && v.vehiculo !== 'S/C') acciones.push(`<button type="button" class="btn-chico" title="Ver todo el historial de este vehículo"
+        onclick='event.stopPropagation(); abrirFichaVehiculo(${JSON.stringify(v.vehiculo)})'>Ficha</button>`);
+    if (v.estado === 'Pendiente' && moduloActivo('cotizaciones')) acciones.push(`<button type="button" class="btn-chico" title="Armar una cotización para que el cliente la apruebe"
+        data-id="${id}" data-placa="${placa}" data-cliente="${cliente}" onclick="event.stopPropagation(); abrirCotizador(this)">Cotizar</button>`);
+    if (v.estado === 'Terminado') {
+        const datosVehiculoStr = JSON.stringify(v).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+        acciones.push(`<button type="button" class="btn-chico" onclick="event.stopPropagation(); generarComprobantePNG('${datosVehiculoStr}')">Descargar orden</button>`);
+    }
+    if (v.estado === 'Pendiente') acciones.push(`<button type="button" class="btn-chico" style="margin-left:auto" title="Cerrar la orden sin cobro (garantía, sin presupuesto...)"
+        data-id="${id}" data-placa="${placa}" data-cliente="${cliente}" onclick="event.stopPropagation(); abrirCerrarOrden(this)">Cerrar orden</button>`);
+    if (v.estado === 'Terminado' || v.estado === 'Cerrado sin cobro') acciones.push(`<button type="button" class="btn-chico" style="margin-left:auto" title="Volver a abrir esta orden (cerrada por error)"
+        data-id="${id}" data-placa="${placa}" onclick="event.stopPropagation(); abrirReabrirOrden(this)">Reabrir</button>`);
+
+    const anio = v.anio ? ` <span class="anio">${e(v.anio)}</span>` : '';
+    const extra = [
+        v.estado === 'Pendiente' ? trabajosTarjetaHTML(v) : '',
+        v.estado === 'Pendiente' ? estadoCotizacionHTML(v) : '',
+        marcaGarantia(v.garantia_previa)
+    ].join('');
+
+    return `<article class="tv ${destacada ? 'destacada' : ''}" data-id="${id}">
+        ${escenaVehiculoHTML(v, est)}
+        <div class="tv-datos">
+            <div class="tv-fila">
+                <div style="min-width:0">
+                    <div class="tv-modelo">${e(v.modelo || 'Modelo sin registrar')}${anio}</div>
+                    <div class="tv-sub">
+                        ${color ? `<span><span class="color-veh" style="background:${color.tono}"></span>${e(v.color)}</span>` : ''}
+                        <span class="${color ? 'separado' : ''}">${cliente || 'Cliente sin nombre'}</span>
+                        <span class="separado">Orden N° ${id}</span>
+                    </div>
+                </div>
+                ${img ? `<span class="placa chica">${placa}</span>` : ''}
+            </div>
+            ${recorridoHTML(est)}
+            ${detalles.length ? `<dl class="tv-detalle">${detalles.map(([dt, dd, html]) =>
+                `<div><dt>${e(dt)}</dt><dd>${html || e(dd)}</dd></div>`).join('')}</dl>` : ''}
+            <div class="tv-extra">${extra}</div>
+            <div class="tv-acciones">${acciones.join('')}</div>
+        </div>
+    </article>`;
+}
+
+// Fila compacta (escritorio): miniatura del modelo, datos y estado
+function filaVehiculoHTML(v) {
+    const e = escaparHTML;
+    const est = estadoOrden(v);
+    const img = imagenVehiculo(v);
+    const placa = e(v.vehiculo || 'S/C');
+    return `<button type="button" class="tv-fila-lista" onclick='destacarVehiculo(${JSON.stringify(String(v.id))})'
+                title="Ver detalles de ${placa}">
+        <span class="mini" data-placa="${placa}">${img
+            ? `<img src="${e(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'placa chica',textContent:this.parentElement.dataset.placa}))">`
+            : `<span class="placa chica">${placa}</span>`}</span>
+        <span style="min-width:0">
+            <span class="t" style="display:block">${e(v.modelo || 'Modelo sin registrar')}</span>
+            <span class="s" style="display:block">${img ? `${placa}, ` : ''}${e(v.cliente || 'Cliente sin nombre')}</span>
+        </span>
+        <span class="lado">
+            <span class="badge-estado ${est.clase}">${e(est.texto)}</span>
+            ${v.fecha_hora ? `<span class="hace">${e(haceCuanto(v.fecha_hora))}</span>` : ''}
+        </span>
+    </button>`;
+}
+
+// Pasa un vehículo de la lista a la tarjeta destacada
+function destacarVehiculo(id) {
+    vehiculoDestacadoId = id;
+    cargarVehiculosPendientes(filtroEstadoActual);
+}
+
+// Tocar un vehículo lo pone como contexto de la conversación con Geor IA
+function mencionarVehiculo(id) {
+    const v = ultimosVehiculos.find(x => String(x.id) === String(id));
+    if (!v) return;
+    if (String(vehiculoDestacadoId) !== String(id)) destacarVehiculo(id);
+    usarPlaca(v.vehiculo, v);
+}
+
+// --------------------------------------------------------------------------
+// IMÁGENES DE LOS MODELOS (galería propia en /web/vehiculos)
+// manifest.json dice qué modelos y colores hay; la búsqueda es:
+//   modelo exacto en su color -> modelo en blanco -> tipo de carrocería -> placa
+// --------------------------------------------------------------------------
+let manifiestoVehiculos = null;
+
+async function cargarManifiestoVehiculos() {
+    if (manifiestoVehiculos) return manifiestoVehiculos;
+    try {
+        const res = await fetch('vehiculos/manifest.json', { cache: 'no-cache' });
+        manifiestoVehiculos = res.ok ? await res.json() : {};
+    } catch (e) {
+        manifiestoVehiculos = {};
+    }
+    return manifiestoVehiculos;
+}
+
+// Colores en español -> color de la galería y tono del punto de color
+const COLORES_VEHICULO = {
+    blanco: ['blanco', '#E9E9EC'], perla: ['blanco', '#EDEAE2'], crema: ['blanco', '#E8E0CC'],
+    negro: ['negro', '#1B1B1F'],
+    gris: ['gris', '#6E727A'], grafito: ['gris', '#4A4D53'], plomo: ['gris', '#6E727A'],
+    plata: ['plata', '#A9ADB4'], plateado: ['plata', '#A9ADB4'], plateada: ['plata', '#A9ADB4'],
+    rojo: ['rojo', '#C8323B'], roja: ['rojo', '#C8323B'], vino: ['rojo', '#7A1F2B'], guinda: ['rojo', '#7A1F2B'], granate: ['rojo', '#7A1F2B'],
+    azul: ['azul', '#2C55B8'], celeste: ['azul', '#6FA8DC'], turquesa: ['azul', '#2FA4A9'],
+    verde: [null, '#2F7D4F'], amarillo: [null, '#E8C33A'], naranja: [null, '#E07B2C'], anaranjado: [null, '#E07B2C'],
+    cafe: [null, '#6B4A33'], marron: [null, '#6B4A33'], beige: [null, '#CDB99A'], dorado: [null, '#B8975A'], morado: [null, '#6A3FB5']
+};
+
+function normalizarTexto(t) {
+    return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').trim();
+}
+
+// Toma la primera palabra del color que se reconozca ("rojo vino" -> rojo)
+function colorVehiculo(texto) {
+    for (const palabra of normalizarTexto(texto).split(/\s+/)) {
+        if (COLORES_VEHICULO[palabra]) {
+            const [galeria, tono] = COLORES_VEHICULO[palabra];
+            return { galeria, tono };
+        }
+    }
+    return null;
+}
+
+// Devuelve la ruta de la imagen del modelo, o null si no hay ninguna
+function imagenVehiculo(v) {
+    const m = manifiestoVehiculos || {};
+    const modelos = m.modelos || {};
+    const palabras = normalizarTexto(v.modelo).split(/\s+/).filter(Boolean);
+    if (!palabras.length) return null;
+
+    // Prueba de lo más específico a lo menos: "chevrolet-spark-gt", "chevrolet-spark", y sin marca ("spark")
+    const candidatos = [];
+    for (let n = palabras.length; n >= 1; n--) candidatos.push(palabras.slice(0, n).join('-'));
+    for (let n = palabras.length; n >= 2; n--) candidatos.push(palabras.slice(1, n).join('-'));
+    const clave = candidatos.find(c => modelos[c]) || Object.keys(modelos).find(k => (modelos[k].alias || []).some(a => candidatos.includes(a)));
+    const color = colorVehiculo(v.color);
+
+    if (clave) {
+        const info = modelos[clave];
+        const colores = info.colores || [];
+        const elegido = color && colores.includes(color.galeria) ? color.galeria : (colores.includes('blanco') ? 'blanco' : colores[0]);
+        if (elegido) return `vehiculos/modelos/${clave}-${elegido}.webp`;
+        if (info.tipo && (m.tipos || {})[info.tipo]) return `vehiculos/${m.tipos[info.tipo]}`;
+    }
+    return null;
 }
 
 // Marca en la tarjeta si el vehículo tiene (o tuvo hace poco) garantía de otro trabajo
@@ -1825,51 +2011,219 @@ function avisoGarantiaHTML(g) {
              ${e(g.trabajo || 'trabajo anterior')}. Venció el ${vence}${km}. El taller decide si la cubre.</div>`;
 }
 
-function usarPlaca(placa) {
-    const inputTexto = document.getElementById('texto_reporte');
-    if (inputTexto) {
-        inputTexto.value = placa + " "; 
-        inputTexto.focus();
-    }
+// ==========================================================================
+// CONVERSACIÓN CON GEOR IA
+// Las respuestas que antes se mostraban en un solo recuadro ahora se agregan
+// como mensajes. La conversación es de esta sesión: se reinicia al recargar.
+// ==========================================================================
+const SIMBOLO_GEOR = '<svg aria-hidden="true"><use href="#simbolo-geor"/></svg>';
+const ICONO_OK = '<svg class="icono" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="m5 12 5 5 9-10"/></svg>';
+// Placas ecuatorianas en el texto (ABC123, ABC-1234, AB123C de moto)
+const PATRON_PLACA = /\b([A-Z]{3})-?(\d{3,4})\b/i;
+
+function horaCorta(d = new Date()) {
+    return d.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function mostrarNotificacion(mensaje, tipo) {
-    let cajaNotificacion = document.getElementById('caja-notificacion-ia');
-    if (!cajaNotificacion) {
-        cajaNotificacion = document.createElement('div');
-        cajaNotificacion.id = 'caja-notificacion-ia';
-        cajaNotificacion.style.marginTop = '20px';
-        cajaNotificacion.style.fontFamily = 'var(--fuente-datos)';
-        cajaNotificacion.style.fontSize = '14px';
-        cajaNotificacion.style.lineHeight = '1.6';
-        cajaNotificacion.style.transition = 'all 0.3s ease';
-        cajaNotificacion.style.display = 'block';
-        cajaNotificacion.style.width = '100%';
-        cajaNotificacion.style.boxSizing = 'border-box';
+function conversacionGeor() {
+    return document.getElementById('conversacion-geor');
+}
 
-        const inputTexto = document.getElementById('texto_reporte');
-        inputTexto.parentNode.insertBefore(cajaNotificacion, inputTexto.nextSibling);
+function bajarConversacion() {
+    const c = conversacionGeor();
+    if (!c) return;
+    // En escritorio la conversación tiene su propio scroll; en el celular, la página
+    c.scrollTop = c.scrollHeight;
+    const ultimo = c.lastElementChild;
+    if (ultimo && window.matchMedia('(max-width: 1100px)').matches) ultimo.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// Saludo inicial de Geor (también al pulsar "Nueva conversación")
+function saludoGeorHTML() {
+    const consultas = moduloActivo('consultas_ia');
+    return `<span class="dia-conversacion">Hoy</span>
+        <div class="msg-geor"><div class="mini-geor">${SIMBOLO_GEOR}</div>
+            <div class="cuerpo"><p>Hola. Escríbeme lo que pasa en el taller como se lo dirías a la secretaria${consultas ? ', o pregúntame por tus números' : ''}.</p>
+            <p style="color:var(--tinta-2);font-size:var(--t-s)">Por ejemplo: “Entró Toyota PXY9876 de Juan Pérez por falla de frenos”.</p></div></div>`;
+}
+
+function iniciarConversacion() {
+    const c = conversacionGeor();
+    if (c && !c.children.length) c.innerHTML = saludoGeorHTML();
+}
+
+function nuevaConversacion() {
+    const c = conversacionGeor();
+    if (c) c.innerHTML = saludoGeorHTML();
+    quitarContextoPlaca();
+}
+
+// Mensaje del usuario (siempre como texto, nunca como HTML)
+function agregarMensajeUsuario(texto) {
+    const c = conversacionGeor();
+    if (!c) return;
+    const div = document.createElement('div');
+    div.className = 'msg-usuario';
+    div.textContent = texto;
+    const hora = document.createElement('span');
+    hora.className = 'hora';
+    hora.textContent = horaCorta();
+    div.appendChild(hora);
+    c.appendChild(div);
+    bajarConversacion();
+}
+
+// Indicador "procesando": las celdas del símbolo se encienden en secuencia
+function mostrarGeorTrabajando() {
+    const c = conversacionGeor();
+    if (!c) return;
+    quitarGeorTrabajando();
+    c.insertAdjacentHTML('beforeend', `<div class="trabajando" id="geor-trabajando">
+        <div class="mini-geor pensando">${SIMBOLO_GEOR}</div>
+        <div><div class="texto">Geor IA está procesando tu mensaje…</div><div class="sub">Normalmente tarda unos segundos.</div></div></div>`);
+    document.getElementById('marca-geor')?.classList.add('pensando');
+    bajarConversacion();
+}
+
+function quitarGeorTrabajando() {
+    document.getElementById('geor-trabajando')?.remove();
+    document.getElementById('marca-geor')?.classList.remove('pensando');
+}
+
+// Estado de conexión en la cabecera de Geor
+function estadoConexionGeor(enLinea) {
+    const est = document.getElementById('estado-geor');
+    if (!est) return;
+    est.classList.toggle('sin-conexion', !enLinea);
+    ponerTexto('estado-geor-texto', enLinea ? 'En línea' : 'Sin conexión con el servidor');
+}
+
+// Mensaje de Geor. "mensaje" puede traer HTML propio de la app (negritas, saltos);
+// las consultas analíticas llegan en Markdown y se convierten con marked.
+function agregarMensajeGeor(mensaje, tipo, { markdown = false } = {}) {
+    const c = conversacionGeor();
+    if (!c) return;
+    quitarGeorTrabajando();
+    if (tipo === 'info' && /procesando|analizando|generando/i.test(mensaje)) {
+        // Avisos de "estoy trabajando" se muestran con el indicador, no como mensaje
+        mostrarGeorTrabajando();
+        return;
     }
+    let cuerpo = markdown && typeof marked !== 'undefined' ? marked.parse(mensaje) : mensaje;
+    if (tipo === 'success') {
+        cuerpo = `<span class="resultado">${ICONO_OK}Listo</span><div style="margin-top:4px">${cuerpo}</div>`;
+    }
+    // Enlace al vehículo del que se habló, si aparece en el taller
+    const placa = (ultimoMensajeUsuario.match(PATRON_PLACA) || [])[0];
+    let pie = '';
+    if (tipo === 'success' && placa) {
+        const limpia = placa.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const v = ultimosVehiculos.find(x => String(x.vehiculo || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === limpia);
+        const texto = escaparHTML(v ? v.vehiculo : placa.toUpperCase());
+        pie = `<div class="respuesta-pie"><button type="button" class="btn-chico enlace-veh"
+                  onclick="verPlacaEnTaller(${JSON.stringify(limpia).replace(/"/g, '&quot;')})"><span class="placa chica">${texto}</span>Ver en el taller</button></div>`;
+    }
+    c.insertAdjacentHTML('beforeend', `<div class="msg-geor tipo-${tipo || 'info'}">
+        <div class="mini-geor">${SIMBOLO_GEOR}</div>
+        <div class="cuerpo">${cuerpo}${pie}</div></div>`);
+    bajarConversacion();
+}
 
-    cajaNotificacion.className = `mensaje-procesando-ia ${tipo}`;
-    cajaNotificacion.style.opacity = '1';
-    cajaNotificacion.style.padding = '15px 20px';
-    cajaNotificacion.style.borderRadius = '10px';
+let ultimoMensajeUsuario = '';
 
-    if (tipo === "info" && mensaje.includes("Respuesta del Gerente IA")) {
-        if (typeof marked !== 'undefined') cajaNotificacion.innerHTML = marked.parse(mensaje);
-        else cajaNotificacion.innerHTML = mensaje;
+// Lleva al vehículo en la columna "En el taller"
+function verPlacaEnTaller(placaLimpia) {
+    const v = ultimosVehiculos.find(x => String(x.vehiculo || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === placaLimpia);
+    if (v) {
+        vehiculoDestacadoId = v.id;
+        cargarVehiculosPendientes(v.estado === 'Pendiente' ? 'Pendiente' : 'Terminado').then(() => {
+            document.querySelector('#panel-vehiculos-pendientes-container .tv.destacada')?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+        });
     } else {
-        cajaNotificacion.innerHTML = mensaje;
-    }
-
-    if (tipo === "success") {
-        setTimeout(() => {
-            cajaNotificacion.style.opacity = '0';
-            setTimeout(() => { cajaNotificacion.innerHTML = ""; cajaNotificacion.style.padding = "0"; }, 300);
-        }, 5000);
+        cargarVehiculosPendientes(filtroEstadoActual);
     }
 }
+
+// Sugerencias rápidas del compositor
+function usarSugerencia(texto, enviar = false) {
+    const input = document.getElementById('texto_reporte');
+    if (!input) return;
+    input.value = texto;
+    input.focus();
+    if (enviar) enviarReporte();
+}
+
+// --------------------------------------------------------------------------
+// Vehículo como contexto de la conversación.
+// Igual que antes, la placa se escribe al inicio del mensaje (Geor la necesita
+// en el texto); además se muestra arriba del campo para que se vea de qué se habla.
+// --------------------------------------------------------------------------
+function usarPlaca(placa, vehiculo = null) {
+    const inputTexto = document.getElementById('texto_reporte');
+    if (!inputTexto || !placa) return;
+    const v = vehiculo || ultimosVehiculos.find(x => x.vehiculo === placa);
+    const actual = inputTexto.value.trim();
+    if (!actual.toUpperCase().includes(String(placa).toUpperCase())) {
+        inputTexto.value = placa + " " + actual;
+    }
+    const ctx = document.getElementById('contexto-placa');
+    if (ctx) {
+        const e = escaparHTML;
+        const detalle = v ? [v.modelo, v.cliente ? `de ${v.cliente}` : ''].filter(Boolean).join(' ') : '';
+        ctx.innerHTML = `<span class="placa chica">${e(placa)}</span><span>${detalle ? `Hablando de ${e(detalle)}` : 'Hablando de este vehículo'}</span>
+            <button type="button" onclick="quitarContextoPlaca(true)">Quitar</button>`;
+        ctx.dataset.placa = placa;
+        ctx.hidden = false;
+    }
+    inputTexto.focus();
+    inputTexto.setSelectionRange(inputTexto.value.length, inputTexto.value.length);
+}
+
+function quitarContextoPlaca(borrarDelTexto = false) {
+    const ctx = document.getElementById('contexto-placa');
+    if (!ctx) return;
+    const placa = ctx.dataset.placa;
+    const input = document.getElementById('texto_reporte');
+    if (borrarDelTexto && input && placa && input.value.startsWith(placa + " ")) {
+        input.value = input.value.slice(placa.length + 1);
+    }
+    ctx.hidden = true;
+    ctx.innerHTML = '';
+    delete ctx.dataset.placa;
+}
+
+// Reemplaza al recuadro único de notificaciones: cada aviso es un mensaje de Geor
+function mostrarNotificacion(mensaje, tipo) {
+    const esConsulta = tipo === 'info' && mensaje.includes("Respuesta del Gerente IA");
+    if (esConsulta) {
+        // Se quita la etiqueta interna; el resto llega en Markdown
+        const texto = mensaje.replace(/<b>Respuesta del Gerente IA:<\/b><br>/, '');
+        agregarMensajeGeor(texto, 'info', { markdown: true });
+        return;
+    }
+    agregarMensajeGeor(mensaje, tipo);
+}
+
+// --------------------------------------------------------------------------
+// Saludo del panel: momento del día, fecha y nombre del taller
+// --------------------------------------------------------------------------
+function actualizarSaludo() {
+    const ahora = new Date();
+    const h = ahora.getHours();
+    ponerTexto('saludo-hora', h < 12 ? 'Buenos días' : (h < 19 ? 'Buenas tardes' : 'Buenas noches'));
+    const fecha = ahora.toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long' });
+    ponerTexto('saludo-fecha', `${fecha.charAt(0).toUpperCase()}${fecha.slice(1)}. Geor IA está listo para registrar lo que pase hoy.`);
+}
+
+// Tecla "/" para ir al buscador de placa
+document.addEventListener('keydown', e => {
+    const enCampo = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+    if (e.key === '/' && !enCampo && document.getElementById('app-container')?.style.display !== 'none') {
+        e.preventDefault();
+        document.getElementById('buscar-barra')?.focus();
+    }
+});
+
 /// ==============================================================================
 // FUNCIÓN MAESTRA PARA LLENAR LA PLANTILLA (Evita código duplicado)
 // ==============================================================================
