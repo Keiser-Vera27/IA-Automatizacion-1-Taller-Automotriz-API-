@@ -20,7 +20,7 @@
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=9">
+    <link rel="stylesheet" href="style.css?v=10">
     <!-- Librería para renderizar Markdown (negritas, listas y tablas de Geor IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
@@ -257,7 +257,7 @@
                     <div class="cabecera-seccion">
                         <div>
                             <h2 id="titulo-finanzas">Caja y finanzas</h2>
-                            <p>El cuadre del día se actualiza solo. Debajo, el rendimiento de los técnicos y las liquidaciones.</p>
+                            <p>El cuadre del día se actualiza solo.</p>
                         </div>
                         <!-- Inventario: auditoría, plantilla oficial e importación masiva -->
                         <div class="acciones-inventario" data-modulo="inventario">
@@ -277,14 +277,23 @@
                     <!-- CUADRE DE CAJA DEL DÍA: se carga al iniciar sesión y se refresca automáticamente -->
                     <div id="panel-cuadre-caja"></div>
 
-                    <div class="grid-finanzas">
-                        <!-- RANKING ANUAL DE TÉCNICOS -->
-                        <section class="panel-caja panel-finanzas" data-modulo="tecnicos">
-                            <div class="cabecera-panel">
-                                <div>
-                                    <h3>Ranking anual de técnicos</h3>
-                                    <p>Acumulado del año, descontando repuestos. Se actualiza solo.</p>
-                                </div>
+                    <!-- TÉCNICOS: ranking del año y liquidación en un solo panel con pestañas -->
+                    <section class="panel-caja panel-finanzas" data-modulo="tecnicos">
+                        <div class="cabecera-panel">
+                            <div>
+                                <h3>Técnicos</h3>
+                                <p>Lo que cada técnico lleva en el año y lo que le corresponde por fechas.</p>
+                            </div>
+                        </div>
+                        <div class="pestanas" role="tablist" aria-label="Técnicos">
+                            <button type="button" role="tab" class="pestana" id="tab-ranking" aria-controls="panel-ranking" aria-selected="true" onclick="mostrarPestanaCuadre(this)">Ranking del año</button>
+                            <button type="button" role="tab" class="pestana" id="tab-liquidacion" aria-controls="panel-liquidacion" aria-selected="false" onclick="mostrarPestanaCuadre(this)">Liquidación de nómina</button>
+                        </div>
+
+                        <!-- RANKING ANUAL (acumulado del año, descontando repuestos) -->
+                        <div class="panel-pestana" role="tabpanel" id="panel-ranking" aria-labelledby="tab-ranking">
+                            <div class="fila-accion">
+                                <span>Acumulado del año, descontando repuestos.</span>
                                 <button class="btn-chico" onclick="cargarRankingAnual()">
                                     <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>Actualizar
                                 </button>
@@ -292,24 +301,20 @@
                             <div id="resultado-ranking-anual">
                                 <p class="cargando-panel">Cargando posiciones…</p>
                             </div>
-                        </section>
+                        </div>
 
                         <!-- LIQUIDACIÓN QUINCENAL / PERSONALIZADA -->
-                        <section class="panel-caja panel-finanzas" data-modulo="tecnicos">
-                            <div class="cabecera-panel">
-                                <div>
-                                    <h3>Liquidación de nómina</h3>
-                                    <p>Comisiones netas por mano de obra entre dos fechas, para pagos quincenales o mensuales.</p>
-                                </div>
-                            </div>
+                        <div class="panel-pestana" role="tabpanel" id="panel-liquidacion" aria-labelledby="tab-liquidacion" hidden>
                             <div class="filtros-liquidacion">
                                 <label>Desde <input type="date" id="fechaInicioLiq"></label>
                                 <label>Hasta <input type="date" id="fechaFinLiq"></label>
                                 <button class="btn btn-primario" onclick="cargarLiquidacionFechas()">Calcular</button>
                             </div>
-                            <div id="resultado-liquidacion"></div>
-                        </section>
-                    </div>
+                            <div id="resultado-liquidacion">
+                                <p class="cargando-panel">Elige las fechas del corte para ver las comisiones de cada técnico.</p>
+                            </div>
+                        </div>
+                    </section>
                 </section>
             </div> <!-- Cierra #vista-chat -->
 
@@ -515,7 +520,7 @@
     </div> <!-- Cierra #plantilla-orden -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js?v=1004"></script>
+    <script src="script.js?v=1005"></script>
     <!-- MODAL DE AVISO (centro de pantalla, con botón OK). Reutilizable: mostrarModal({...}) -->
     <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
         <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">

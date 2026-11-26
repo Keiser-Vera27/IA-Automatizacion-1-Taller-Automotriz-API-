@@ -1422,6 +1422,10 @@ async function descargarCuadreCaja(panelId = 'panel-cuadre-caja') {
                 copia.style.backdropFilter = 'none';
                 copia.style.background = oscuro ? "#100E18" : "#FFFFFF";
                 copia.querySelectorAll('.tabla-scroll').forEach(t => t.style.overflow = 'visible');
+                // En la imagen va todo el detalle: se abren las secciones y se muestran todas las tablas
+                copia.querySelectorAll('details').forEach(d => d.open = true);
+                copia.querySelectorAll('.pestanas').forEach(p => p.remove());
+                copia.querySelectorAll('.panel-pestana').forEach(p => { p.hidden = false; p.style.marginTop = '18px'; });
                 if (nombreTaller) {
                     const titulo = copia.querySelector('.titulo-cuadre');
                     if (titulo) titulo.textContent = `${nombreTaller}: ${titulo.textContent}`;
@@ -1482,11 +1486,6 @@ function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
 
     // ---------- Alertas: datos incompletos que impiden cuadrar bien ----------
     const alertas = data.alertas || [];
-    const bloqueAlertas = alertas.length ? `
-        <div class="alertas-caja">
-            <b>Revisar antes de cerrar caja (${alertas.length})</b>
-            <ul>${alertas.map(a => `<li>${e(a)}</li>`).join('')}</ul>
-        </div>` : '';
 
     // ---------- Ingresos por método de pago ----------
     const metodos = data.ingresos_por_metodo || [];
@@ -1576,102 +1575,133 @@ function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
             <tr class="fila-total"><td colspan="4">Total comisiones a pagar</td><td class="num comision">${dinero(data.total_comisiones)}</td></tr>`
         : `<tr><td colspan="5" class="vacio">Sin datos de técnicos ${cuando}.</td></tr>`;
 
+    // Pestañas del detalle (una tabla a la vez). El id evita choques si hay
+    // dos cuadres en pantalla (el de hoy y uno pedido desde el chat).
+    const idc = `cuadre-${panelId}`;
+    const pestana = (clave, texto, n, activa) => `<button type="button" role="tab" class="pestana" id="${idc}-tab-${clave}"
+        aria-controls="${idc}-${clave}" aria-selected="${activa}" onclick="mostrarPestanaCuadre(this)">${texto}${n !== null ? ` <span class="n">${n}</span>` : ''}</button>`;
+
+    // Leyenda corta de métodos de pago (nombre y porcentaje)
+    const leyendaMetodos = metodos.map(m =>
+        `<span><span class="punto-metodo" style="background:${COLORES_METODO[m.metodo]}"></span>${e(m.metodo)} <b>${m.porcentaje}%</b></span>`).join('');
+
     panel.innerHTML = `
-        <div class="panel-caja" data-fecha="${e(data.fecha)}">
+        <div class="panel-caja cuadre" data-fecha="${e(data.fecha)}">
             <div class="cabecera-caja">
                 <div class="titulo-caja-wrap">
                     <h3 class="titulo-cuadre">Cuadre de caja</h3>
                     <span class="fecha-cuadre">${e(fechaLarga(data.fecha))}</span>
-                    <span id="estado-cuadre" class="estado-cuadre" data-html2canvas-ignore="true">Actualizado ${new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
-                <button id="btn-descargar-cuadre" class="btn-chico btn-descargar-cuadre" onclick="descargarCuadreCaja()" data-html2canvas-ignore="true"
-                        title="Descargar cuadre de caja (imagen PNG)"><svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg>Descargar</button>
-            </div>
-
-            <!-- Resumen principal -->
-            <div class="tarjetas-resumen-caja">
-                <div class="tarjeta-resumen-caja">
-                    <div class="etiqueta">Ingresos</div>
-                    <div class="monto monto-positivo">${dinero(data.total_ingresos)}</div>
-                </div>
-                <div class="tarjeta-resumen-caja">
-                    <div class="etiqueta">Egresos</div>
-                    <div class="monto monto-negativo">${dinero(data.total_egresos)}</div>
-                </div>
-                <div class="tarjeta-resumen-caja">
-                    <div class="etiqueta">Neto del día</div>
-                    <div class="monto ${claseNeto}">${dinero(data.neto)}</div>
-                </div>
-                <div class="tarjeta-resumen-caja tarjeta-efectivo">
-                    <div class="etiqueta">Efectivo en caja</div>
-                    <div class="monto ${claseCaja}">${dinero(data.efectivo_en_caja)}</div>
+                <div class="acciones-cuadre" data-html2canvas-ignore="true">
+                    <span id="estado-cuadre" class="estado-cuadre">Actualizado ${new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <button id="btn-descargar-cuadre" class="btn-chico btn-descargar-cuadre" onclick="descargarCuadreCaja()"
+                            title="Descargar cuadre de caja (imagen PNG)"><svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg>Descargar</button>
                 </div>
             </div>
-            <dl class="linea-detalle">
-                <div><dt>Mano de obra</dt><dd>${dinero(data.total_mano_obra)}</dd></div>
-                <div><dt>Repuestos</dt><dd>${dinero(data.total_repuestos)}</dd></div>
-                <div><dt>Comisiones</dt><dd>${dinero(data.total_comisiones)}</dd></div>
-                <div><dt>Ingresaron</dt><dd>${v.ingresados_hoy || 0}</dd></div>
-                <div><dt>Entregados</dt><dd>${v.entregados_hoy || 0}</dd></div>
-                ${v.cerrados_sin_cobro ? `<div><dt>Sin cobro</dt><dd>${v.cerrados_sin_cobro}</dd></div>` : ''}
-                <div><dt>${esHoy ? 'En el taller' : 'Quedaron en el taller'}</dt><dd>${v.pendientes_en_taller || 0}</dd></div>
-            </dl>
 
-            ${bloqueAlertas}
-
-            <!-- Métodos de pago + cuadre de efectivo -->
-            <div class="grid-caja">
-                <div>
-                    <h4>Ingresos por método de pago</h4>
-                    ${barra}
-                    <table class="tabla-caja tabla-compacta">
-                        <thead><tr><th>Método</th><th style="text-align:center;">Órdenes</th><th style="text-align:right;">Total</th><th style="text-align:right;">%</th></tr></thead>
-                        <tbody>${filasMetodos}</tbody>
-                    </table>
+            <!-- Lo que se mira a diario: cuánto debe haber en caja y el balance del día -->
+            <div class="cuadre-resumen">
+                <div class="cuadre-principal">
+                    <span class="etiqueta">Debe haber en caja</span>
+                    <span class="monto ${claseCaja}">${dinero(data.efectivo_en_caja)}</span>
+                    <span class="explica">Efectivo cobrado ${dinero(data.efectivo_cobrado)} menos egresos ${dinero(data.total_egresos)}</span>
                 </div>
-                <div class="cuadre-efectivo">
-                    <h4>Cuadre de efectivo</h4>
-                    <div class="linea-cuadre"><span>Efectivo cobrado</span><span class="monto-positivo">+ ${dinero(data.efectivo_cobrado)}</span></div>
-                    <div class="linea-cuadre"><span>Egresos pagados de caja</span><span class="monto-negativo">− ${dinero(data.total_egresos)}</span></div>
-                    <div class="linea-cuadre total"><span>Debe haber en caja</span><span class="${claseCaja}">${dinero(data.efectivo_en_caja)}</span></div>
+                <dl class="cuadre-cifras">
+                    <div><dt>Ingresos</dt><dd class="monto-positivo">${dinero(data.total_ingresos)}</dd></div>
+                    <div><dt>Egresos</dt><dd class="monto-negativo">${dinero(data.total_egresos)}</dd></div>
+                    <div><dt>Neto del día</dt><dd class="${claseNeto}">${dinero(data.neto)}</dd></div>
+                </dl>
+            </div>
+
+            ${metodos.length ? `<div class="cuadre-metodos">${barra}<div class="leyenda-metodos">${leyendaMetodos}</div></div>` : ''}
+
+            ${alertas.length ? `
+            <details class="alertas-caja">
+                <summary>Hay ${alertas.length === 1 ? '1 dato por revisar' : `${alertas.length} datos por revisar`} antes de cerrar caja</summary>
+                <ul>${alertas.map(a => `<li>${e(a)}</li>`).join('')}</ul>
+            </details>` : ''}
+
+            <!-- El detalle queda guardado: se abre solo cuando se necesita -->
+            <details class="cuadre-detalle">
+                <summary>
+                    <span>Ver detalle del día</span>
+                    <span class="resumen-detalle">${ordenes.length} ${ordenes.length === 1 ? 'orden cerrada' : 'órdenes cerradas'}, ${egresos.length} ${egresos.length === 1 ? 'egreso' : 'egresos'}</span>
+                </summary>
+
+                <div class="pestanas" role="tablist" aria-label="Detalle del cuadre">
+                    ${pestana('ordenes', 'Órdenes', ordenes.length, true)}
+                    ${pestana('egresos', 'Egresos', egresos.length, false)}
+                    ${pestana('tecnicos', 'Técnicos', tecnicos.length, false)}
+                    ${pestana('pagos', 'Pagos', null, false)}
+                </div>
+
+                <div class="panel-pestana" role="tabpanel" id="${idc}-ordenes" aria-labelledby="${idc}-tab-ordenes">
+                    <div class="tabla-scroll">
+                        <table class="tabla-caja">
+                            <thead><tr>
+                                <th>Hora</th><th>Placa</th><th>Cliente</th><th>Trabajo</th><th>Técnico</th><th>Pago</th><th style="text-align:right;">Cobro</th>
+                            </tr></thead>
+                            <tbody>${filasOrdenes}</tbody>
+                        </table>
+                    </div>
+                    ${bloqueSinCobro}
+                </div>
+
+                <div class="panel-pestana" role="tabpanel" id="${idc}-egresos" aria-labelledby="${idc}-tab-egresos" hidden>
+                    ${bloqueResponsables}
+                    <div class="tabla-scroll">
+                        <table class="tabla-caja">
+                            <thead><tr>
+                                <th>Hora</th><th>Motivo</th><th>Placa</th><th>Responsable</th><th style="text-align:right;">Monto</th>
+                            </tr></thead>
+                            <tbody>${filasEgresos}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel-pestana" role="tabpanel" id="${idc}-tecnicos" aria-labelledby="${idc}-tab-tecnicos" hidden>
+                    <div class="tabla-scroll">
+                        <table class="tabla-caja">
+                            <thead><tr>
+                                <th>Técnico</th><th style="text-align:center;">Trabajos</th><th style="text-align:right;">Generado</th><th style="text-align:right;">Mano de obra</th><th style="text-align:right;">Comisión</th>
+                            </tr></thead>
+                            <tbody>${filasTecnicos}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel-pestana" role="tabpanel" id="${idc}-pagos" aria-labelledby="${idc}-tab-pagos" hidden>
+                    <div class="grid-caja">
+                        <table class="tabla-caja tabla-compacta">
+                            <thead><tr><th>Método</th><th style="text-align:center;">Órdenes</th><th style="text-align:right;">Total</th><th style="text-align:right;">%</th></tr></thead>
+                            <tbody>${filasMetodos}</tbody>
+                        </table>
+                        <dl class="linea-detalle">
+                            <div><dt>Mano de obra</dt><dd>${dinero(data.total_mano_obra)}</dd></div>
+                            <div><dt>Repuestos</dt><dd>${dinero(data.total_repuestos)}</dd></div>
+                            <div><dt>Comisiones</dt><dd>${dinero(data.total_comisiones)}</dd></div>
+                            <div><dt>Vehículos que ingresaron</dt><dd>${v.ingresados_hoy || 0}</dd></div>
+                            <div><dt>Entregados</dt><dd>${v.entregados_hoy || 0}</dd></div>
+                            ${v.cerrados_sin_cobro ? `<div><dt>Cerrados sin cobro</dt><dd>${v.cerrados_sin_cobro}</dd></div>` : ''}
+                            <div><dt>${esHoy ? 'En el taller' : 'Quedaron en el taller'}</dt><dd>${v.pendientes_en_taller || 0}</dd></div>
+                        </dl>
+                    </div>
                     <p class="nota-cuadre">Transferencias y tarjeta van directo al banco; no se cuentan en caja. Se asume que los egresos se pagan en efectivo.</p>
                 </div>
-            </div>
-
-            <h4>Órdenes cerradas ${cuando} (${ordenes.length})</h4>
-            <div class="tabla-scroll">
-                <table class="tabla-caja">
-                    <thead><tr>
-                        <th>Hora</th><th>Placa</th><th>Cliente</th><th>Trabajo</th><th>Técnico</th><th>Pago</th><th style="text-align:right;">Cobro</th>
-                    </tr></thead>
-                    <tbody>${filasOrdenes}</tbody>
-                </table>
-            </div>
-
-            ${bloqueSinCobro}
-
-            <h4>Egresos ${esHoy ? 'de hoy' : 'del día'} (${egresos.length})</h4>
-            ${bloqueResponsables}
-            <div class="tabla-scroll">
-                <table class="tabla-caja">
-                    <thead><tr>
-                        <th>Hora</th><th>Motivo</th><th>Placa</th><th>Responsable</th><th style="text-align:right;">Monto</th>
-                    </tr></thead>
-                    <tbody>${filasEgresos}</tbody>
-                </table>
-            </div>
-
-            <h4>Rendimiento y comisiones por técnico</h4>
-            <div class="tabla-scroll">
-                <table class="tabla-caja">
-                    <thead><tr>
-                        <th>Técnico</th><th style="text-align:center;">Trabajos</th><th style="text-align:right;">Generado</th><th style="text-align:right;">Mano de obra</th><th style="text-align:right;">Comisión</th>
-                    </tr></thead>
-                    <tbody>${filasTecnicos}</tbody>
-                </table>
-            </div>
+            </details>
         </div>
     `;
+}
+
+// Pestañas del detalle del cuadre: muestra una tabla a la vez
+function mostrarPestanaCuadre(boton) {
+    const lista = boton.closest('.pestanas');
+    lista.querySelectorAll('[role="tab"]').forEach(t => {
+        const activa = t === boton;
+        t.setAttribute('aria-selected', String(activa));
+        const panel = document.getElementById(t.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !activa;
+    });
 }
 // ==============================================================================
 // GESTIÓN DEL PANEL VISUAL DE VEHÍCULOS
@@ -2545,11 +2575,12 @@ function renderizarRankingAnual(data) {
     const contenedor = document.getElementById('resultado-ranking-anual');
     if (!contenedor) return;
 
-    let filas = data.leaderboard && data.leaderboard.length > 0
-        ? data.leaderboard.map(t => {
+    const lista = data.leaderboard || [];
+    let filas = lista.length > 0
+        ? lista.map((t, i) => {
             const clasePuesto = t.posicion <= 3 ? `puesto-top puesto-${t.posicion}` : '';
             return `
-                <tr>
+                <tr${i >= 5 ? ' class="fila-extra" hidden' : ''}>
                     <td><span class="puesto ${clasePuesto}">${t.posicion}</span></td>
                     <td>${escaparHTML(t.tecnico)}</td>
                     <td class="centro">${t.trabajos_totales}</td>
@@ -2576,6 +2607,7 @@ function renderizarRankingAnual(data) {
                 <tbody>${filas}</tbody>
             </table>
         </div>
+        ${lista.length > 5 ? `<button type="button" class="btn-chico ver-todos" onclick="this.closest('#resultado-ranking-anual').querySelectorAll('.fila-extra').forEach(f => f.hidden = false); this.remove();">Ver los ${lista.length} técnicos</button>` : ''}
     `;
 }
 // ==============================================================================
