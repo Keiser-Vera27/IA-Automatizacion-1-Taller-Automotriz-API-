@@ -3224,16 +3224,21 @@ async function buscarVehiculos() {
         if (document.getElementById('buscar-vehiculo').value.trim() !== q) return;
         if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
         const e = escaparHTML;
+        await cargarManifiestoVehiculos();
         cont.innerHTML = data.resultados.length
-            ? data.resultados.map(r => `
+            ? data.resultados.map(r => {
+                const img = imagenVehiculo({ modelo: r.modelo, color: r.color });
+                return `
                 <button type="button" class="resultado-vehiculo" onclick='abrirFichaVehiculo(${JSON.stringify(r.placa)})'>
-                    <span class="placa-badge">${e(r.placa)}</span>
+                    <span class="resultado-mini" data-placa="${e(r.placa)}">${img
+                        ? `<img src="${e(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'placa chica',textContent:this.parentElement.dataset.placa}))">`
+                        : `<span class="placa chica">${e(r.placa)}</span>`}</span>
                     <span class="resultado-datos">
                         <b>${e(r.cliente || 'Sin cliente registrado')}</b>
-                        <span>${[r.modelo, r.telefono].filter(Boolean).map(e).join(' · ') || '&nbsp;'}</span>
+                        <span class="separados">${[img ? r.placa : null, r.modelo, r.telefono].filter(Boolean).map(x => `<span>${e(x)}</span>`).join('') || '&nbsp;'}</span>
                     </span>
-                    <span class="resultado-fecha">${r.en_taller ? '<span class="badge-estado estado-pendiente">En el taller</span>' : `Última visita<br>${fechaCorta(r.ultima_visita)}`}</span>
-                </button>`).join('')
+                    <span class="resultado-fecha">${r.en_taller ? '<span class="badge-estado estado-pendiente">En el taller</span>' : `Última visita<br> <b>${fechaCorta(r.ultima_visita)}</b>`}</span>
+                </button>`; }).join('')
             : `<p class="vacio-vehiculos">No hay vehículos ni clientes que coincidan con "${e(q)}".</p>`;
     } catch (err) {
         cont.innerHTML = `<p class="vacio-vehiculos">No se pudo buscar: ${escaparHTML(err.message)}</p>`;
@@ -3254,35 +3259,39 @@ async function abrirFichaVehiculo(placa) {
         const res = await fetch(`/vehiculos/${encodeURIComponent(placa)}/ficha`, { headers: cabeceraAuth() });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`);
-        renderFichaVehiculo(data);
+        await renderFichaVehiculo(data);
     } catch (err) {
         cont.innerHTML = `<button type="button" class="btn-link" onclick="mostrarBusquedaVehiculos()">← Volver a la búsqueda</button>
             <p class="vacio-vehiculos">${escaparHTML(err.message)}</p>`;
     }
 }
 
-function renderFichaVehiculo(f) {
+async function renderFichaVehiculo(f) {
     const e = escaparHTML;
     const v = f.vehiculo, d = f.dueno, r = f.resumen;
     ordenesFichaActual = {};
     f.ordenes.forEach(o => { ordenesFichaActual[String(o.id)] = o; });
 
-    const detalles = [v.modelo, v.color, v.anio, v.cilindraje, v.cilindros ? `${v.cilindros} cilindros` : null].filter(Boolean).map(e).join(' · ');
-    const contacto = [
+    // Datos del vehículo y contacto como piezas separadas (sin puntos medios)
+    const piezas = lista => lista.filter(Boolean).map(x => `<span>${x}</span>`).join('');
+    // Modelo y año van en el título; color con su muestra. Aquí solo el resto de datos técnicos.
+    const colorFicha = colorVehiculo(v.color);
+    const detalles = piezas([colorFicha ? null : v.color, v.cilindraje, v.cilindros ? `${v.cilindros} cilindros` : null].filter(Boolean).map(x => e(x)));
+    const contacto = piezas([
         d.cedula ? `Cédula ${e(d.cedula)}` : null,
         d.telefono ? `<a href="tel:${e(d.telefono)}">${e(d.telefono)}</a>` : null,
         d.whatsapp ? `<a href="https://wa.me/${e(d.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : null
-    ].filter(Boolean).join(' · ');
+    ]);
     const anteriores = d.anteriores.length
         ? `<div class="ficha-nota">También estuvo a nombre de: ${d.anteriores.map(a => `${e(a.nombre)} (hasta ${fechaCorta(a.ultima_vez)})`).join(', ')}</div>` : '';
     const enTaller = r.orden_abierta
-        ? `<span class="badge-estado estado-pendiente">En el taller ahora · Orden N° ${e(String(r.orden_abierta))}</span>` : '';
+        ? `<span class="badge-estado estado-pendiente">En el taller ahora, orden N° ${e(String(r.orden_abierta))}</span>` : '';
 
     const kpi = (etiqueta, valor, extra = '') => `<div class="dash-kpi"><div class="dash-kpi-etiqueta">${etiqueta}</div>
         <div class="dash-kpi-valor">${valor}</div>${extra ? `<div class="dash-kpi-extra">${extra}</div>` : ''}</div>`;
     const kpis = [
-        kpi('Visitas', r.visitas, `Desde ${fechaCorta(r.primera_visita)}`),
-        kpi('Total gastado', dinero(r.total_gastado)),
+        kpi('Total gastado', dinero(r.total_gastado), `${r.visitas} ${r.visitas === 1 ? 'visita' : 'visitas'} desde ${fechaCorta(r.primera_visita)}`),
+        kpi('Visitas', r.visitas),
         kpi('Promedio por visita', dinero(r.promedio_visita)),
         kpi('Kilometraje', r.km_actual ? `${Number(r.km_actual).toLocaleString('es-EC')} km` : '—',
             r.km_por_mes ? `≈ ${Number(r.km_por_mes).toLocaleString('es-EC')} km por mes` : '')
@@ -3290,20 +3299,36 @@ function renderFichaVehiculo(f) {
 
     const garantias = f.garantias.length
         ? `<div class="aviso-garantia vigente"><b>Garantías vigentes</b><ul class="ficha-garantias">${f.garantias.map(g =>
-            `<li>Orden N° ${e(String(g.orden_id))}: ${e(g.trabajo || 'trabajo')} · hasta ${fechaCorta(g.vence)}${g.km_limite ? ` o ${Number(g.km_limite).toLocaleString('es-EC')} km` : ''}</li>`).join('')}</ul></div>`
+            `<li>Orden N° ${e(String(g.orden_id))}: ${e(g.trabajo || 'trabajo')}, hasta ${fechaCorta(g.vence)}${g.km_limite ? ` o ${Number(g.km_limite).toLocaleString('es-EC')} km` : ''}</li>`).join('')}</ul></div>`
         : '';
 
+    // Escenario con la imagen del modelo (o la placa si no hay imagen)
+    await cargarManifiestoVehiculos();
+    const img = imagenVehiculo({ modelo: v.modelo, color: v.color });
+    const color = colorFicha;
+
     document.getElementById('ficha-vehiculo').innerHTML = `
-        <button type="button" class="btn-link" onclick="mostrarBusquedaVehiculos()">← Volver a la búsqueda</button>
-        <div class="ficha-cabecera panel-caja">
-            <div class="ficha-placa-fila"><span class="placa-badge ficha-placa">${e(v.placa)}</span>${enTaller}</div>
-            <div class="ficha-detalle">${detalles || 'Sin datos del vehículo'}</div>
-            <div class="ficha-dueno"><b>${e(d.nombre || 'Sin cliente registrado')}</b>${contacto ? ` · ${contacto}` : ''}</div>
-            ${anteriores}
-        </div>
+        <button type="button" class="btn-chico volver" onclick="mostrarBusquedaVehiculos()">
+            <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Volver a la búsqueda</button>
+        <section class="ficha-cabecera">
+            <div class="ficha-escena tv-escena ${img ? '' : 'sin-imagen'}" data-placa="${e(v.placa)}">
+                ${img ? `<img src="${e(img)}" alt="${e(v.modelo || 'Vehículo')}" onerror="imagenVehiculoFallo(this)">`
+                      : `<div class="respaldo"><span class="placa">${e(v.placa)}</span></div>`}
+            </div>
+            <div class="ficha-info">
+                ${img || enTaller ? `<div class="ficha-placa-fila">${img ? `<span class="placa ficha-placa">${e(v.placa)}</span>` : ''}${enTaller}</div>` : ''}
+                <h1 class="ficha-modelo">${e(v.modelo || 'Modelo sin registrar')}${v.anio ? ` <span>${e(String(v.anio))}</span>` : ''}</h1>
+                <div class="ficha-detalle separados">${color ? `<span><span class="color-veh" style="background:${color.tono}"></span>${e(v.color)}</span>` : ''}${detalles || (color ? '' : '<span>Sin datos del vehículo</span>')}</div>
+                <div class="ficha-dueno">
+                    <span class="avatar-tecnico" style="--tono:#8B5CF6">${e(String(d.nombre || '?').trim().charAt(0).toUpperCase())}</span>
+                    <div><b>${e(d.nombre || 'Sin cliente registrado')}</b>${contacto ? `<div class="separados">${contacto}</div>` : ''}</div>
+                </div>
+                ${anteriores}
+            </div>
+        </section>
         <div class="dash-kpis ficha-kpis">${kpis}</div>
         ${garantias}
-        <h3 class="ficha-titulo-historial">Historial (${f.ordenes.length === 1 ? '1 orden' : `${f.ordenes.length} órdenes`})</h3>
+        <h3 class="ficha-titulo-historial">Historial <span>${f.ordenes.length === 1 ? '1 orden' : `${f.ordenes.length} órdenes`}</span></h3>
         ${f.truncado ? '<p class="ficha-nota">Se muestran las órdenes más recientes.</p>' : ''}
         <div class="ficha-historial">${f.ordenes.map(ordenHistorialHTML).join('')}</div>`;
 }
@@ -3315,8 +3340,8 @@ function ordenHistorialHTML(o) {
     const meta = [
         o.kilometraje ? `${Number(o.kilometraje).toLocaleString('es-EC')} km` : null,
         o.oficial ? `Técnico: ${e(o.oficial)}` : null,
-        o.estado === 'Terminado' && o.metodo_pago ? `Pago: ${e([o.metodo_pago, o.banco].filter(Boolean).join(' · '))}` : null
-    ].filter(Boolean).join(' · ');
+        o.estado === 'Terminado' && o.metodo_pago ? `Pago: ${e([o.metodo_pago, o.banco].filter(Boolean).join(', '))}` : null
+    ].filter(Boolean).map(x => `<span>${x}</span>`).join('');
     const trabajos = (o._trabajos || []).map(t =>
         `<li><span>${e(t.descripcion)}</span>${Number(t.precio) > 0 ? `<span class="num">${dinero(t.precio)}</span>` : ''}</li>`).join('');
     const repuestos = (o.reparacion_detalles || []).map(x => {
@@ -3325,7 +3350,7 @@ function ordenHistorialHTML(o) {
             <span class="num">${x.incluido ? 'incluido' : dinero(Number(x.cantidad) * Number(x.precio_unitario || 0))}</span></li>`;
     }).join('');
     const notas = [];
-    if (o.estado === 'Cerrado sin cobro') notas.push(`Cerrada sin cobro: ${e(o._motivo_cierre || 'sin motivo')}${o.detalle_cierre ? ` — ${e(o.detalle_cierre)}` : ''}`);
+    if (o.estado === 'Cerrado sin cobro') notas.push(`Cerrada sin cobro: ${e(o._motivo_cierre || 'sin motivo')}${o.detalle_cierre ? `. ${e(o.detalle_cierre)}` : ''}`);
     if (o.garantia_orden_origen) notas.push(`Reclamo de garantía de la orden N° ${e(String(o.garantia_orden_origen))}`);
     if (o.estado === 'Terminado' && o.garantia_vence) notas.push(`Garantía hasta ${fechaCorta(String(o.garantia_vence).slice(0, 10))}`);
 
@@ -3336,12 +3361,13 @@ function ordenHistorialHTML(o) {
             <span class="oh-fecha">${fechas}</span>
             ${o.estado === 'Terminado' ? `<span class="oh-monto">${dinero(o.cobro)}</span>` : ''}
         </header>
-        ${meta ? `<div class="oh-meta">${meta}</div>` : ''}
+        ${meta ? `<div class="oh-meta separados">${meta}</div>` : ''}
         ${o.motivo ? `<div class="oh-motivo"><b>Motivo de ingreso:</b> ${e(o.motivo)}</div>` : ''}
         ${trabajos ? `<ul class="oh-lista">${trabajos}</ul>` : ''}
         ${repuestos ? `<div class="oh-subtitulo">Repuestos y materiales</div><ul class="oh-lista oh-repuestos">${repuestos}</ul>` : ''}
         ${notas.length ? `<div class="oh-notas">${notas.join('<br>')}</div>` : ''}
-        ${o.estado === 'Terminado' ? `<button type="button" class="btn-link" onclick='descargarOrdenFicha(${JSON.stringify(String(o.id))})'>Descargar orden (PNG)</button>` : ''}
+        ${o.estado === 'Terminado' ? `<button type="button" class="btn-chico" onclick='descargarOrdenFicha(${JSON.stringify(String(o.id))})'>
+            <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg>Descargar orden</button>` : ''}
     </article>`;
 }
 
