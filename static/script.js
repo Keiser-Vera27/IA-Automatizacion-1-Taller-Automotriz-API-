@@ -209,6 +209,8 @@ function cerrarSesion() {
     if (panelPendientes) panelPendientes.innerHTML = "";
     ultimosVehiculos = [];
     vehiculoDestacadoId = null;
+    historialCaja = null;
+    try { sessionStorage.removeItem('historial_caja'); } catch (e) {}
     ['cifra-taller', 'cifra-entregados', 'cifra-cobrado'].forEach(id => ponerTexto(id, '–'));
     ['saludo-taller', 'inicial-taller', 'conteo-taller'].forEach(id => ponerTexto(id, ''));
 
@@ -1354,6 +1356,7 @@ async function cargarCuadreCaja(silencioso = false) {
         renderizarCuadreDeCaja(data);
         cuadreYaMostrado = true;
         ponerTexto('cifra-cobrado', dinero(data.total_ingresos || 0));
+        pintarTendenciaCaja(data.total_ingresos);
     } catch (error) {
         const estado = document.getElementById('estado-cuadre');
         if (cuadreYaMostrado && estado) {
@@ -1489,10 +1492,6 @@ function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
 
     // ---------- Ingresos por método de pago ----------
     const metodos = data.ingresos_por_metodo || [];
-    const barra = metodos.length ? `
-        <div class="barra-metodos">${metodos.map(m =>
-            `<span style="width:${m.porcentaje}%; background:${COLORES_METODO[m.metodo]}" title="${e(m.metodo)} ${m.porcentaje}%"></span>`).join('')}
-        </div>` : '';
     const filasMetodos = metodos.length ? metodos.map(m => `
             <tr class="fila-metodo">
                 <td><span class="punto-metodo" style="background:${COLORES_METODO[m.metodo]}"></span>${e(m.metodo)}</td>
@@ -1599,21 +1598,45 @@ function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
                 </div>
             </div>
 
-            <!-- Lo que se mira a diario: cuánto debe haber en caja y el balance del día -->
-            <div class="cuadre-resumen">
-                <div class="cuadre-principal">
+            <!-- Lo que se mira a diario: cuánto debe haber en caja y cómo va la semana -->
+            <div class="cuadre-banda">
+                <div class="banda-cifra">
                     <span class="etiqueta">Debe haber en caja</span>
                     <span class="monto ${claseCaja}">${dinero(data.efectivo_en_caja)}</span>
-                    <span class="explica">Efectivo cobrado ${dinero(data.efectivo_cobrado)} menos egresos ${dinero(data.total_egresos)}</span>
+                    <span class="explica"><span class="pastilla">Efectivo</span>${dinero(data.efectivo_cobrado)} cobrado menos ${dinero(data.total_egresos)} de egresos</span>
                 </div>
-                <dl class="cuadre-cifras">
-                    <div><dt>Ingresos</dt><dd class="monto-positivo">${dinero(data.total_ingresos)}</dd></div>
-                    <div><dt>Egresos</dt><dd class="monto-negativo">${dinero(data.total_egresos)}</dd></div>
-                    <div><dt>Neto del día</dt><dd class="${claseNeto}">${dinero(data.neto)}</dd></div>
-                </dl>
+                <!-- Tendencia de ingresos de los últimos 7 días (se completa con datos reales) -->
+                <div class="banda-tendencia" id="tendencia-${panelId}" ${esHoy ? '' : 'hidden'}></div>
             </div>
 
-            ${metodos.length ? `<div class="cuadre-metodos">${barra}<div class="leyenda-metodos">${leyendaMetodos}</div></div>` : ''}
+            <div class="cuadre-cuerpo">
+                <dl class="cuadre-cifras">
+                    <div class="cifra-caja ingreso">
+                        <span class="icono-cifra" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span>
+                        <dt>Ingresos</dt><dd>${dinero(data.total_ingresos)}</dd>
+                        <span class="delta" id="delta-ingresos-${panelId}"></span>
+                    </div>
+                    <div class="cifra-caja egreso">
+                        <span class="icono-cifra" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg></span>
+                        <dt>Egresos</dt><dd>${dinero(data.total_egresos)}</dd>
+                    </div>
+                    <div class="cifra-caja neto">
+                        <span class="icono-cifra" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24"><path d="M5 9h14M5 15h14"/></svg></span>
+                        <dt>Neto del día</dt><dd class="${claseNeto}">${dinero(data.neto)}</dd>
+                    </div>
+                </dl>
+
+                ${metodos.length ? `
+                <div class="cuadre-metodos">
+                    ${donaMetodos(metodos, data.total_ingresos)}
+                    <ul class="leyenda-metodos">${metodos.map(m => `
+                        <li><span class="punto-metodo" style="background:${COLORES_METODO[m.metodo]}"></span>
+                            <span class="nombre">${e(m.metodo)}</span>
+                            <span class="valor">${dinero(m.total)}</span>
+                            <span class="pct">${m.porcentaje}%</span></li>`).join('')}
+                    </ul>
+                </div>` : `<p class="cargando-panel">Sin cobros registrados ${cuando}.</p>`}
+            </div>
 
             ${alertas.length ? `
             <details class="alertas-caja">
@@ -1691,6 +1714,92 @@ function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
             </details>
         </div>
     `;
+}
+
+// Gráfico circular de métodos de pago (SVG), con el total al centro
+function donaMetodos(metodos, total) {
+    const R = 42, C = 2 * Math.PI * R;
+    let acumulado = 0;
+    const arcos = metodos.map(m => {
+        const largo = Math.max(0, (m.porcentaje / 100) * C - 3);   // 3 = separación entre tramos
+        const arco = `<circle r="${R}" cx="50" cy="50" fill="none" stroke="${COLORES_METODO[m.metodo]}" stroke-width="11"
+            stroke-dasharray="${largo} ${C - largo}" stroke-dashoffset="${-acumulado}" stroke-linecap="round"/>`;
+        acumulado += (m.porcentaje / 100) * C;
+        return arco;
+    }).join('');
+    return `<div class="dona" role="img" aria-label="Ingresos por método de pago">
+        <svg viewBox="0 0 100 100"><g transform="rotate(-90 50 50)">
+            <circle r="${R}" cx="50" cy="50" fill="none" stroke="var(--linea)" stroke-width="11"/>${arcos}</g></svg>
+        <div class="dona-centro"><span>Cobrado</span><b>${dinero(total)}</b></div>
+    </div>`;
+}
+
+// --------------------------------------------------------------------------
+// TENDENCIA DE 7 DÍAS: ingresos de los 6 días anteriores (se piden una vez por
+// sesión y se guardan, porque un día cerrado ya no cambia) + el de hoy en vivo.
+// --------------------------------------------------------------------------
+let historialCaja = null;
+
+async function cargarHistorialCaja() {
+    if (historialCaja) return historialCaja;
+    let guardado = {};
+    try { guardado = JSON.parse(sessionStorage.getItem('historial_caja') || '{}'); } catch (e) {}
+    const dias = [];
+    for (let i = 6; i >= 1; i--) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        dias.push(isoLocal(d));
+    }
+    const faltan = dias.filter(f => guardado[f] === undefined);
+    await Promise.all(faltan.map(async f => {
+        try {
+            const r = await fetch(`/reporte-dia?fecha=${encodeURIComponent(f)}`, { headers: cabeceraAuth() });
+            if (r.ok) guardado[f] = Number((await r.json()).total_ingresos || 0);
+        } catch (e) { /* sin ese día: la tendencia lo omite */ }
+    }));
+    try { sessionStorage.setItem('historial_caja', JSON.stringify(guardado)); } catch (e) {}
+    historialCaja = dias.filter(f => guardado[f] !== undefined).map(f => ({ fecha: f, total: guardado[f] }));
+    return historialCaja;
+}
+
+// Dibuja la línea de los 7 días y el cambio frente a ayer
+async function pintarTendenciaCaja(totalHoy, panelId = 'panel-cuadre-caja') {
+    const caja = document.getElementById(`tendencia-${panelId}`);
+    if (!caja) return;
+    const previos = await cargarHistorialCaja();
+    const puntos = [...previos, { fecha: isoLocal(new Date()), total: Number(totalHoy || 0) }];
+    if (puntos.length < 2) { caja.hidden = true; return; }
+
+    const W = 260, H = 74, P = 6;
+    const max = Math.max(...puntos.map(p => p.total), 1);
+    const x = i => P + (i * (W - 2 * P)) / (puntos.length - 1);
+    const y = v => H - P - (v / max) * (H - 2 * P - 8);
+    const linea = puntos.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.total).toFixed(1)}`).join(' ');
+    const area = `${linea} L${x(puntos.length - 1).toFixed(1)},${H} L${x(0).toFixed(1)},${H} Z`;
+    const ultimo = puntos[puntos.length - 1];
+    const diasCortos = puntos.map(p => new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-EC', { weekday: 'narrow' }).toUpperCase());
+    const semana = puntos.reduce((s, p) => s + p.total, 0);
+
+    caja.innerHTML = `
+        <div class="tendencia-cab"><span>Ingresos de los últimos 7 días</span><b>${dinero(semana)}</b></div>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+            <defs><linearGradient id="grad-tendencia" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stop-color="#C6FF3D" stop-opacity=".28"/><stop offset="1" stop-color="#C6FF3D" stop-opacity="0"/>
+            </linearGradient></defs>
+            <path d="${area}" fill="url(#grad-tendencia)"/>
+            <path d="${linea}" fill="none" stroke="#C6FF3D" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+            <circle cx="${x(puntos.length - 1)}" cy="${y(ultimo.total)}" r="3.5" fill="#C6FF3D"/>
+        </svg>
+        <div class="tendencia-dias">${diasCortos.map((d, i) => `<span${i === diasCortos.length - 1 ? ' class="hoy"' : ''}>${i === diasCortos.length - 1 ? 'Hoy' : d}</span>`).join('')}</div>`;
+    caja.hidden = false;
+
+    // Cambio frente a ayer en la cifra de ingresos
+    const ayer = previos.length ? previos[previos.length - 1].total : null;
+    const delta = document.getElementById(`delta-ingresos-${panelId}`);
+    if (delta && ayer !== null && ayer > 0) {
+        const cambio = Math.round(((ultimo.total - ayer) / ayer) * 100);
+        delta.textContent = `${cambio >= 0 ? '+' : ''}${cambio}% frente a ayer`;
+        delta.className = `delta ${cambio >= 0 ? 'sube' : 'baja'}`;
+    }
 }
 
 // Pestañas del detalle del cuadre: muestra una tabla a la vez
@@ -2574,45 +2683,47 @@ async function cargarRankingAnual() {
 function renderizarRankingAnual(data) {
     const contenedor = document.getElementById('resultado-ranking-anual');
     if (!contenedor) return;
-
+    const e = escaparHTML;
     const lista = data.leaderboard || [];
-    let filas = lista.length > 0
-        ? lista.map((t, i) => {
-            const clasePuesto = t.posicion <= 3 ? `puesto-top puesto-${t.posicion}` : '';
-            return `
-                <tr${i >= 5 ? ' class="fila-extra" hidden' : ''}>
-                    <td><span class="puesto ${clasePuesto}">${t.posicion}</span></td>
-                    <td>${escaparHTML(t.tecnico)}</td>
-                    <td class="centro">${t.trabajos_totales}</td>
-                    <td class="num">${dinero(t.facturacion_anual)}</td>
-                    <td class="num">${dinero(t.mano_de_obra_acumulada)}</td>
-                    <td class="num comision">${dinero(t.comision_acumulada)}</td>
-                </tr>`;
-        }).join('')
-        : `<tr><td colspan="6" class="vacio">Aún no hay registros de técnicos este año.</td></tr>`;
+    if (!lista.length) {
+        contenedor.innerHTML = `<p class="cargando-panel">Aún no hay órdenes con técnico asignado este año.</p>`;
+        return;
+    }
+
+    // La barra de cada técnico se mide contra la comisión más alta del año
+    const maxComision = Math.max(...lista.map(t => Number(t.comision_acumulada) || 0), 1);
+    // Color estable por técnico para su inicial
+    const TONOS = ['#8B5CF6', '#34C77B', '#3B82F6', '#F59E0B', '#EC4899', '#14B8A6', '#F97316'];
+    const tono = nombre => TONOS[[...String(nombre)].reduce((a, c) => a + c.charCodeAt(0), 0) % TONOS.length];
+
+    const filas = lista.map((t, i) => {
+        const medalla = t.posicion <= 3 ? `puesto-top puesto-${t.posicion}` : '';
+        const ancho = Math.max(4, Math.round(((Number(t.comision_acumulada) || 0) / maxComision) * 100));
+        const inicial = String(t.tecnico || '?').trim().charAt(0).toUpperCase();
+        return `
+            <li class="fila-tecnico${i >= 5 ? ' fila-extra' : ''}"${i >= 5 ? ' hidden' : ''}>
+                <span class="puesto ${medalla}">${t.posicion}</span>
+                <span class="avatar-tecnico" style="--tono:${tono(t.tecnico)}">${e(inicial)}</span>
+                <div class="datos-tecnico">
+                    <div class="fila-nombre">
+                        <b>${e(t.tecnico)}</b>
+                        <span class="comision">${dinero(t.comision_acumulada)}</span>
+                    </div>
+                    <div class="barra-tecnico"><span style="width:${ancho}%"></span></div>
+                    <div class="fila-meta">
+                        <span>${t.trabajos_totales} trabajos</span>
+                        <span>Facturado ${dinero(t.facturacion_anual)}</span>
+                        <span>Mano de obra ${dinero(t.mano_de_obra_acumulada)}</span>
+                    </div>
+                </div>
+            </li>`;
+    }).join('');
 
     contenedor.innerHTML = `
-        <div class="tabla-scroll">
-            <table class="tabla-caja">
-                <thead>
-                    <tr>
-                        <th>Puesto</th>
-                        <th>Técnico</th>
-                        <th style="text-align: center;">Trabajos</th>
-                        <th style="text-align: right;">Facturado</th>
-                        <th style="text-align: right;">Mano de obra (neto)</th>
-                        <th style="text-align: right;">Comisión acumulada</th>
-                    </tr>
-                </thead>
-                <tbody>${filas}</tbody>
-            </table>
-        </div>
+        <ol class="lista-ranking">${filas}</ol>
         ${lista.length > 5 ? `<button type="button" class="btn-chico ver-todos" onclick="this.closest('#resultado-ranking-anual').querySelectorAll('.fila-extra').forEach(f => f.hidden = false); this.remove();">Ver los ${lista.length} técnicos</button>` : ''}
     `;
 }
-// ==============================================================================
-// ACTUALIZACIÓN AUTOMÁTICA AL RETOMAR LA PESTAÑA (WAKE UP)
-// ==============================================================================
 document.addEventListener("visibilitychange", function() {
     // Si el usuario vuelve a poner la pestaña en primer plano (estado visible)
     if (document.visibilityState === "visible") {

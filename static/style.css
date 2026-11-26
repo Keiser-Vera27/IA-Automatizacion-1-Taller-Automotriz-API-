@@ -1850,3 +1850,126 @@ details.alertas-caja ul { margin: 0; padding: 0 14px 12px 32px; color: var(--tin
     .acciones-cuadre .estado-cuadre { display: none; }
     .cuadre-detalle .resumen-detalle { display: none; }
 }
+
+/* ==================================================================
+   CUADRE CON MÁS PRESENCIA: banda de marca, tendencia, dona y ranking con barras
+   ================================================================== */
+.cuadre { padding: 0 !important; overflow: hidden; }
+.cuadre .cabecera-caja { padding: 18px 22px 0; margin-bottom: 14px; }
+
+/* Banda principal: morado profundo con una luz suave, cifra grande y tendencia */
+.cuadre-banda {
+    position: relative; overflow: hidden;
+    margin: 0 14px; border-radius: 16px;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 24px; align-items: end;
+    padding: 22px 24px 18px;
+    background:
+        radial-gradient(90% 140% at 0% 0%, rgba(139, 92, 246, 0.55) 0%, transparent 55%),
+        radial-gradient(70% 120% at 100% 100%, rgba(198, 255, 61, 0.10) 0%, transparent 60%),
+        linear-gradient(135deg, #2A1361 0%, #1A0E3D 55%, #120A2A 100%);
+    border: 1px solid rgba(185, 162, 255, 0.22);
+    color: #fff;
+}
+.cuadre-banda > * { position: relative; }
+.banda-cifra { display: grid; gap: 4px; }
+.banda-cifra .etiqueta { font-size: var(--t-s); color: #D9CCFF; }
+.banda-cifra .monto { font-size: clamp(2.4rem, 4.2vw, 3.25rem); font-weight: 700; font-stretch: 82%; letter-spacing: -0.03em; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; }
+.banda-cifra .monto.monto-negativo { color: #FFB1B6; }
+.banda-cifra .explica { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: var(--t-xs); color: #CBBEF2; margin-top: 4px; }
+.pastilla { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; background: rgba(198, 255, 61, 0.16); color: var(--lima); font-weight: 600; font-size: 11.5px; }
+
+.banda-tendencia { display: grid; gap: 6px; }
+.banda-tendencia[hidden] { display: none; }
+.tendencia-cab { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--t-xs); color: #CBBEF2; }
+.tendencia-cab b { color: #fff; font-weight: 650; font-variant-numeric: tabular-nums; }
+.banda-tendencia svg { width: 100%; height: 74px; display: block; overflow: visible; }
+.tendencia-dias { display: flex; justify-content: space-between; font-size: 11px; color: #9F92C9; }
+.tendencia-dias .hoy { color: var(--lima); font-weight: 600; }
+
+/* Cuerpo: tres cifras con ícono + dona de métodos */
+.cuadre-cuerpo { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; padding: 14px 14px 0; }
+.cuadre .cuadre-cifras { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; background: none; }
+.cifra-caja {
+    position: relative; display: grid; align-content: start; gap: 2px;
+    padding: 14px 16px; border-radius: 14px;
+    background: var(--superficie-2); border: 1px solid var(--linea);
+}
+.cuadre .cuadre-cifras .cifra-caja + .cifra-caja { border-left: 1px solid var(--linea); }
+.icono-cifra { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; margin-bottom: 8px; }
+.icono-cifra .icono { width: 16px; height: 16px; stroke-width: 2.2; }
+.cifra-caja.ingreso .icono-cifra { background: rgba(52, 199, 123, 0.16); color: #4FE0A0; }
+.cifra-caja.egreso .icono-cifra { background: rgba(255, 122, 133, 0.16); color: #FF8F99; }
+.cifra-caja.neto .icono-cifra { background: rgba(139, 92, 246, 0.2); color: #C2AEFF; }
+.cifra-caja dt { font-size: var(--t-xs); color: var(--tinta-3); }
+.cifra-caja dd { margin: 0; font-size: 1.5rem; font-weight: 680; font-stretch: 85%; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; color: var(--tinta); }
+.cifra-caja.neto dd.monto-positivo { color: var(--tinta); }
+.delta { font-size: 11.5px; font-weight: 600; margin-top: 2px; }
+.delta:empty { display: none; }
+.delta.sube { color: var(--exito); }
+.delta.baja { color: var(--peligro); }
+
+/* Dona de métodos de pago con leyenda */
+.cuadre .cuadre-metodos {
+    margin: 0; display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 16px; align-items: center;
+    padding: 12px 16px; border-radius: 14px; background: var(--superficie-2); border: 1px solid var(--linea);
+}
+.dona { position: relative; width: 112px; height: 112px; }
+.dona svg { width: 100%; height: 100%; display: block; }
+.dona-centro { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.dona-centro span { font-size: 10.5px; color: var(--tinta-3); }
+.dona-centro b { font-size: 0.875rem; font-weight: 680; font-stretch: 85%; font-variant-numeric: tabular-nums; }
+.cuadre .leyenda-metodos { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: var(--t-s); }
+.cuadre .leyenda-metodos li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 4px 10px; }
+.cuadre .leyenda-metodos .punto-metodo { margin: 0; width: 9px; height: 9px; border-radius: 3px; }
+.cuadre .leyenda-metodos .nombre { color: var(--tinta-2); }
+.cuadre .leyenda-metodos .valor { font-weight: 600; font-variant-numeric: tabular-nums; }
+.cuadre .leyenda-metodos .pct { color: var(--tinta-3); font-size: var(--t-xs); min-width: 34px; text-align: right; }
+
+.cuadre details.alertas-caja { margin: 14px 14px 0; }
+.cuadre .cuadre-detalle { margin: 14px 14px 0; padding-bottom: 14px; }
+
+/* Ranking como lista con barras de comisión */
+.lista-ranking { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.fila-tecnico {
+    display: grid; grid-template-columns: 28px 38px minmax(0, 1fr); align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: 14px; background: var(--superficie-2); border: 1px solid var(--linea);
+    transition: border-color var(--movimiento), transform var(--movimiento);
+}
+.fila-tecnico:hover { border-color: var(--linea-intensa); transform: translateY(-1px); }
+.fila-tecnico[hidden] { display: none; }
+.avatar-tecnico {
+    width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center;
+    font-weight: 700; font-size: var(--t-s); color: #fff;
+    background: linear-gradient(150deg, color-mix(in srgb, var(--tono) 85%, #fff), color-mix(in srgb, var(--tono) 70%, #000));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.2);
+}
+.datos-tecnico { min-width: 0; display: grid; gap: 6px; }
+.fila-nombre { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.fila-nombre b { font-weight: 600; }
+.fila-nombre .comision { font-weight: 680; font-stretch: 88%; font-size: 1.0625rem; color: var(--exito); font-variant-numeric: tabular-nums; }
+.barra-tecnico { height: 6px; border-radius: 3px; background: var(--linea); overflow: hidden; }
+.barra-tecnico span { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #7030EF, #B9A2FF); }
+.fila-tecnico:first-child .barra-tecnico span { background: linear-gradient(90deg, #7030EF, var(--lima)); }
+.fila-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: var(--t-xs); color: var(--tinta-3); }
+.fila-meta span + span { padding-left: 14px; border-left: 1px solid var(--linea-fuerte); }
+
+/* Tema claro: la banda conserva su morado; superficies claras en el resto */
+html[data-theme="light"] .cuadre-banda { box-shadow: 0 10px 30px rgba(42, 19, 97, 0.18); }
+
+@media (max-width: 1100px) {
+    .cuadre-cuerpo { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+    .cuadre-banda { grid-template-columns: minmax(0, 1fr); gap: 18px; margin: 0 10px; padding: 18px; }
+    .cuadre .cabecera-caja { padding: 16px 16px 0; }
+    .cuadre-cuerpo { padding: 10px 10px 0; }
+    .cuadre .cuadre-cifras { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .cifra-caja { padding: 12px; }
+    .cifra-caja dd { font-size: 1.125rem; }
+    .icono-cifra { width: 26px; height: 26px; margin-bottom: 6px; }
+    .cuadre .cuadre-metodos { grid-template-columns: 92px minmax(0, 1fr); padding: 12px; }
+    .dona { width: 92px; height: 92px; }
+    .fila-meta span:nth-child(3) { display: none; }
+}
+.cuadre .cuadre-cifras .cifra-caja { align-content: start; padding: 14px 16px; }
+@media (max-width: 760px) { .cuadre .cuadre-cifras .cifra-caja { padding: 12px; } }
