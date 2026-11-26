@@ -3,7 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Autotronic Solutions</title>
+    <title>Oficial de Registros</title>
+    <!-- Identidad: favicon, ícono de app y color del navegador -->
+    <link rel="icon" href="brand/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="brand/favicon.ico" sizes="48x48">
+    <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
+    <link rel="manifest" href="brand/site.webmanifest">
+    <meta name="theme-color" content="#7030EF">
     <!-- Aplica el tema guardado ANTES de pintar, para evitar el parpadeo de color -->
     <script>
         (function () {
@@ -11,7 +17,7 @@
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=5">
+    <link rel="stylesheet" href="style.css?v=6">
     <!-- Librería para renderizar Markdown (negritas y listas de la IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
@@ -64,7 +70,8 @@
             </svg>
 
             <div class="marca-visual">
-                <div class="eyebrow">Autotronic Solutions</div>
+                <!-- Logo sobre el panel oscuro del login (celdas blancas, gorra lima) -->
+                <img class="logo-login" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
                 <h2>Gestión inteligente para talleres que van adelante.</h2>
                 <p>Control de reparaciones, gastos e inventario asistido por IA, en un solo lugar.</p>
             </div>
@@ -73,7 +80,8 @@
         <!-- Panel del formulario -->
         <div class="login-form-panel">
             <div class="login-card">
-                <div class="badge-marca">AS</div>
+                <!-- Símbolo de marca: baldosa morada con el oficial con gorra -->
+                <div class="badge-marca"><img src="brand/simbolo-baldosa.svg" alt="Oficial de Registros"></div>
                 <h2>Acceso al sistema</h2>
                 <p>Ingresa tus credenciales de taller para continuar.</p>
 
@@ -124,7 +132,11 @@
             <!-- ========================================== -->
             <div id="vista-chat" class="vista-app">
                 <div class="cabecera">
-                    <h1>Keiser Labs</h1>
+                    <!-- Logo de cabecera: se muestra la versión que corresponde al tema activo -->
+                    <h1 class="logo-cabecera">
+                        <img class="logo-tema-claro" src="brand/horizontal.svg" alt="Oficial de Registros">
+                        <img class="logo-tema-oscuro" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
+                    </h1>
                     <p>Geor IA le ayudará con la organización de gastos, ingresos, inventario y consultas analíticas.</p>
                 </div>
 
@@ -400,7 +412,7 @@
 
         <!-- MARCA DE AGUA / CRÉDITOS -->
         <div style="margin-top: 40px; border-top: 1px dashed #ccc; padding-top: 15px; text-align: center; font-size: 11px; color: #888;">
-            Generado digitalmente con <strong>Autotronic Solutions IA</strong><br>
+            Generado digitalmente con <strong>Oficial de Registros</strong><br>
             Software Developer: Keiser Vera
         </div>
 

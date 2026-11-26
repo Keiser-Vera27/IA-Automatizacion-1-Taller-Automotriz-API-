@@ -210,10 +210,10 @@ hr {
     border-radius: 20px;
 }
 .login-card .badge-marca {
-    width: 46px;
-    height: 46px;
+    width: 52px;
+    height: 52px;
     border-radius: 12px;
-    background: var(--gradiente-marca);
+    background: transparent;          /* la baldosa del logo ya trae su propio fondo morado */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -223,6 +223,18 @@ hr {
     margin-bottom: 20px;
     box-shadow: 0 8px 20px var(--sombra-marca);
 }
+.login-card .badge-marca img { width: 100%; height: 100%; display: block; }
+
+/* Logo horizontal en el panel visual del login */
+.login-visual .marca-visual .logo-login { display: block; height: 40px; width: auto; margin-bottom: 14px; }
+
+/* Logo de la cabecera de la app: una versión por tema (claro = baldosa + texto tinta, oscuro = texto blanco) */
+.cabecera h1.logo-cabecera { background: none; color: inherit; line-height: 0; margin-bottom: 10px; }
+.cabecera h1.logo-cabecera img { height: 44px; width: auto; max-width: 100%; }
+.logo-tema-oscuro { display: none; }
+html[data-theme="dark"] .logo-tema-claro { display: none; }
+html[data-theme="dark"] .logo-tema-oscuro { display: inline-block; }
+
 .login-card h2 { font-size: 24px; color: var(--texto); }
 .login-card > p { color: var(--texto-tenue); font-size: 14px; margin-bottom: 26px; font-family: var(--fuente-datos); }
 

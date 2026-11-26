@@ -632,3 +632,6 @@ button {
     .modal-box.modal-ancho { padding: 20px; margin: 0 10px; }
     .historial-modulos li { flex-direction: column; gap: 2px; }
 }
+
+/* Símbolo de marca (baldosa del oficial con gorra) junto al título del panel */
+.logo-simbolo { width: 34px; height: 34px; display: block; flex-shrink: 0; }

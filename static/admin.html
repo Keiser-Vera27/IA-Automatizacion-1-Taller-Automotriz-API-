@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SaaS Control Center - Autotronic</title>
+    <title>Oficial de Registros · Panel de control</title>
+    <!-- Identidad: favicon y color del navegador -->
+    <link rel="icon" href="brand/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="brand/favicon.ico" sizes="48x48">
+    <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
+    <meta name="theme-color" content="#7030EF">
     <link rel="stylesheet" href="admin_style.css">
 </head>
 <body>
@@ -28,8 +33,8 @@
     <!-- LOGIN SUPERADMIN -->
     <div id="login-admin" style="max-width: 380px; margin: 100px auto; padding: 35px;" class="panel-box">
         <div class="logo-title" style="justify-content: center; margin-bottom: 25px;">
-            <div class="logo-dot"></div>
-            <span>Autotronic SaaS</span>
+            <img class="logo-simbolo" src="brand/simbolo-baldosa.svg" alt="">
+            <span>Oficial de Registros</span>
         </div>
         <div style="display: flex; flex-direction: column; gap: 15px;">
             <input type="email" id="admin_email" placeholder="Correo Master">
@@ -42,7 +47,7 @@
     <div id="panel-admin" style="display: none;">
         <div class="header-bar">
             <div class="logo-title">
-                <div class="logo-dot"></div>
+                <img class="logo-simbolo" src="brand/simbolo-baldosa.svg" alt="">
                 <span>Panel GEO'S SaaS</span>
             </div>
             <button class="btn-ghost" onclick="cerrarSesionAdmin()">Cerrar Sesión</button>
