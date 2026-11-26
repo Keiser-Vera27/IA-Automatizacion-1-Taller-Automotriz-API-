@@ -2256,7 +2256,7 @@ html[data-theme="dark"] .dash-barras li:first-child .dash-barra { background: va
    (las reglas antiguas de .resultado-vehiculo / .ficha-* / .oh-* quedan arriba;
    aquí se sobrescriben sin tocar la lógica de script.js)
    ========================================================================== */
-#vista-vehiculos { padding: var(--e-5) var(--e-5) var(--e-6); max-width: 1080px; }
+#vista-vehiculos { padding: var(--e-5) var(--e-6) var(--e-6); }
 
 /* Lista de datos sin puntos medios: cada dato es un <span> separado por un punto pequeño */
 .separados { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0; row-gap: 2px; }
@@ -2379,4 +2379,180 @@ html[data-theme="dark"] .orden-historial { backdrop-filter: var(--vidrio-blur); 
     .orden-historial { padding: 14px 16px; }
     .orden-historial::before { left: -19px; }
     .ficha-historial::before { left: 5px; }
+}
+
+/* ==========================================================================
+   VEHÍCULOS Y CLIENTES — maestro-detalle de alta densidad
+   Cabecera con acción, 4 cifras, lista (42%) y detalle (58%).
+   ========================================================================== */
+/* El buscador de la barra superior se oculta aquí: la vista tiene el suyo */
+body[data-vista="vista-vehiculos"] .buscador-placa { visibility: hidden; }
+
+.veh-cabecera { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--e-4); margin-bottom: var(--e-5); }
+.veh-cabecera h1 { margin: 0 0 4px; }
+.veh-cabecera p { margin: 0; color: var(--tinta-3); font-size: var(--t-s); }
+.veh-cabecera .btn { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.veh-cabecera .btn .icono { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+
+/* Cifras compactas: vidrio sutil, borde de 1px y números tabulares */
+.veh-cifras { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: var(--e-5); }
+.veh-cifra {
+    display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 18px;
+    background: var(--superficie-1); border: 1px solid var(--linea);
+    --acento: #A58BFF;
+}
+html[data-theme="dark"] .veh-cifra { background: rgba(255, 255, 255, 0.045); border-color: rgba(255, 255, 255, 0.08); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.veh-cifra.ambar { --acento: #F7C56A; }
+.veh-cifra.menta { --acento: #9BF3C9; }
+.veh-cifra.lila { --acento: #F3A6E3; }
+.veh-cifra-icono {
+    flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--acento) 16%, transparent); color: var(--acento);
+}
+html[data-theme="light"] .veh-cifra-icono { color: color-mix(in srgb, var(--acento) 60%, #1E1B4B); }
+.veh-cifra-icono .icono { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.veh-cifra-etiqueta { font-size: var(--t-xs); color: var(--tinta-3); font-weight: 550; }
+.veh-cifra-valor { font-size: 1.45rem; font-weight: 800; letter-spacing: -0.02em; color: var(--tinta); font-variant-numeric: tabular-nums; line-height: 1.2; }
+
+/* Maestro-detalle: ambas columnas desplazan por dentro y ocupan el alto disponible */
+.veh-layout {
+    display: grid; grid-template-columns: minmax(0, 42fr) minmax(0, 58fr); gap: 16px; align-items: start;
+}
+.veh-col-lista, .veh-col-detalle {
+    border-radius: 24px; background: var(--superficie-1); border: 1px solid var(--linea);
+    height: calc(100dvh - 300px); min-height: 520px; overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-width: thin; scrollbar-color: rgba(165, 139, 255, 0.35) transparent;
+}
+html[data-theme="dark"] :is(.veh-col-lista, .veh-col-detalle) {
+    background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+}
+.veh-col-lista { padding: 14px 12px 14px 14px; display: flex; flex-direction: column; }
+.veh-col-detalle { padding: 18px 20px 22px; }
+
+/* Buscador y filtros fijos arriba de la lista */
+.veh-col-lista .buscador-grande, .veh-filtros { flex: none; }
+.veh-col-lista .buscador-grande { max-width: none; }
+.veh-col-lista .buscador-grande .buscador-vehiculos { height: 46px; font-size: var(--t-s); }
+.veh-filtros { display: flex; gap: 6px; margin: 12px 0 10px; flex-wrap: wrap; }
+.veh-chip {
+    display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 999px;
+    border: 1px solid var(--linea-fuerte); background: transparent; color: var(--tinta-2);
+    font: 550 var(--t-xs) var(--fuente-ui); cursor: pointer; transition: background 150ms, color 150ms, border-color 150ms;
+}
+.veh-chip span { font-variant-numeric: tabular-nums; color: var(--tinta-3); font-weight: 600; }
+.veh-chip:hover { color: var(--tinta); border-color: rgba(165, 139, 255, 0.5); }
+.veh-chip[aria-pressed="true"] { background: rgba(165, 139, 255, 0.18); border-color: rgba(165, 139, 255, 0.55); color: var(--tinta); }
+.veh-chip[aria-pressed="true"] span { color: inherit; }
+html[data-theme="dark"] .veh-chip[aria-pressed="true"] { background: var(--holo); color: var(--sobre-holo); border-color: transparent; }
+
+/* Filas de la lista: compactas, la activa resaltada en violeta */
+.veh-col-lista .resultados-vehiculos { max-width: none; margin-top: 0; gap: 4px; }
+.veh-col-lista .resultado-vehiculo {
+    grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; padding: 8px 12px 8px 8px; border-radius: 16px;
+    background: transparent; border: 1px solid transparent; backdrop-filter: none; -webkit-backdrop-filter: none; transform: none;
+}
+.veh-col-lista .resultado-vehiculo:hover { background: var(--superficie-2); border-color: var(--linea); transform: none; }
+.veh-col-lista .resultado-vehiculo.activo {
+    background: rgba(165, 139, 255, 0.14); border-color: rgba(165, 139, 255, 0.55);
+    box-shadow: inset 3px 0 0 #A58BFF;
+}
+.veh-col-lista .resultado-mini { width: 64px; height: 44px; border-radius: 12px; }
+.veh-col-lista .resultado-mini .placa.chica { font-size: 0.58rem; }
+.veh-col-lista .resultado-datos b { font-size: var(--t-s); }
+.veh-col-lista .resultado-datos .separados { font-size: var(--t-xs); }
+.veh-col-lista .resultado-fecha { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-variant-numeric: tabular-nums; }
+.veh-col-lista .resultado-fecha b { font-size: var(--t-xs); }
+.veh-col-lista .resultado-fecha span:not(.badge-estado) { font-size: 0.72rem; color: var(--tinta-3); }
+.veh-nota-lista { color: var(--tinta-3); font-size: var(--t-xs); text-align: center; margin: 10px 0 2px; }
+
+/* Panel de detalle */
+.veh-col-detalle .volver { display: none; }
+.veh-detalle-vacio { height: 100%; display: grid; place-content: center; justify-items: center; gap: 14px; text-align: center; color: var(--tinta-3); }
+.veh-detalle-vacio .placa { opacity: 0.35; font-size: 1.4rem; }
+.veh-detalle-vacio p { max-width: 34ch; margin: 0; }
+
+.det-cabecera { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; align-items: center; }
+.det-cabecera .ficha-escena { aspect-ratio: 16 / 10; border-radius: 18px; }
+.det-cabecera .ficha-escena .respaldo .placa { font-size: 1.35rem; }
+.det-titulo { min-width: 0; }
+.det-titulo .ficha-placa-fila { gap: 8px; }
+.det-titulo .ficha-modelo { font-size: clamp(1.35rem, 2.1vw, 1.75rem); margin: 10px 0 4px; }
+
+.det-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.det-acciones .btn-chico { height: 36px; padding: 0 14px; border-radius: 999px; text-decoration: none; }
+.det-acciones .icono { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.det-bloque { border-radius: 18px; padding: 12px 14px; background: var(--superficie-2); border: 1px solid var(--linea); }
+.veh-col-detalle .ficha-dueno { margin-top: 0; }
+.det-etiqueta { font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta-3); font-weight: 650; margin-bottom: 2px; }
+.veh-col-detalle .ficha-nota { margin: 6px 4px 0; }
+
+.det-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 10px; margin-top: 12px; }
+.det-kpis .dash-kpi { padding: 12px 14px; border-radius: 18px; }
+.det-kpis .dash-kpi:first-child { grid-column: auto; }
+.det-kpis .dash-kpi-valor { font-size: 1.25rem; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.det-kpis .dash-kpi-extra { font-size: 0.72rem; }
+.veh-col-detalle .aviso-garantia.vigente { margin-top: 12px; padding: 10px 14px; border-radius: 16px; }
+
+.det-servicios { margin-top: 12px; padding: 12px 8px 8px; }
+.det-servicios h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 6px 6px; font-size: var(--t-s); font-weight: 700; color: var(--tinta); }
+.det-servicios h3 span { font-weight: 500; color: var(--tinta-3); font-size: var(--t-xs); }
+.orden-mini {
+    width: 100%; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+    padding: 8px 6px; border: 0; border-radius: 12px; background: transparent; color: var(--tinta);
+    font-family: var(--fuente-ui); text-align: left; cursor: pointer;
+}
+.orden-mini + .orden-mini { border-top: 1px solid var(--linea); border-radius: 0 0 12px 12px; }
+.orden-mini:hover { background: var(--superficie-3); }
+.om-fecha { display: grid; justify-items: center; font-size: 0.68rem; color: var(--tinta-3); text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.1; }
+.om-fecha b { font-size: 1.1rem; color: var(--tinta); letter-spacing: 0; }
+.om-datos { min-width: 0; display: grid; gap: 3px; }
+.om-fila { display: flex; align-items: center; gap: 8px; font-size: var(--t-s); }
+.om-trabajo { font-size: var(--t-xs); color: var(--tinta-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.om-monto { font-weight: 750; font-variant-numeric: tabular-nums; font-size: var(--t-s); }
+.orden-mini .badge-estado { font-size: 0.68rem; }
+
+#veh-historial-completo .ficha-titulo-historial { margin-top: var(--e-5); }
+.veh-col-detalle .orden-historial { padding: 14px 16px; }
+
+/* Pantallas medianas: cifras en 2 x 2 */
+@media (max-width: 1180px) {
+    .veh-cifras { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .veh-col-lista, .veh-col-detalle { height: calc(100dvh - 380px); }
+    .det-cabecera { grid-template-columns: 170px minmax(0, 1fr); }
+}
+/* Celular y tableta: lista y detalle se alternan */
+@media (max-width: 900px) {
+    #vista-vehiculos { padding: var(--e-4) var(--e-3) calc(var(--e-7) + 60px); }
+    .veh-cabecera { align-items: center; }
+    .veh-cabecera p { display: none; }
+    .veh-cifras { gap: 8px; }
+    .veh-cifra { padding: 10px 12px; gap: 10px; }
+    .veh-cifra-icono { width: 34px; height: 34px; border-radius: 10px; }
+    .veh-cifra-valor { font-size: 1.2rem; }
+    .veh-layout { grid-template-columns: minmax(0, 1fr); }
+    .veh-col-lista, .veh-col-detalle { height: auto; min-height: 0; overflow: visible; }
+    .veh-col-detalle { display: none; }
+    .veh-layout.con-detalle .veh-col-detalle { display: block; }
+    .veh-layout.con-detalle .veh-col-lista { display: none; }
+    .veh-layout.con-detalle ~ * { display: none; }
+    #vista-vehiculos:has(.veh-layout.con-detalle) :is(.veh-cifras, .veh-cabecera) { display: none; }
+    .veh-col-detalle .volver { display: inline-flex; margin-bottom: 12px; }
+    .det-cabecera { grid-template-columns: minmax(0, 1fr); }
+    .det-cabecera .ficha-escena { aspect-ratio: 5 / 2; }
+    .det-kpis .dash-kpi-valor { font-size: 1.05rem; }
+}
+@media (max-width: 520px) {
+    .veh-cabecera .btn { padding: 0 14px; height: 40px; font-size: var(--t-s); }
+    .det-kpis { gap: 6px; }
+    .det-kpis .dash-kpi { padding: 10px; }
+}
+/* Ajustes: la línea de datos de cada fila no se parte; en el celular las cifras de la ficha en 1 + 2 */
+.veh-col-lista .resultado-datos .separados { flex-wrap: nowrap; overflow: hidden; }
+.veh-col-lista .resultado-datos .separados > span { flex: none; }
+.veh-col-lista .resultado-datos .separados > span:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 520px) {
+    .det-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    .det-kpis .dash-kpi:first-child { grid-column: 1 / -1; }
 }

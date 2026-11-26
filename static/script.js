@@ -210,6 +210,9 @@ function cerrarSesion() {
     ultimosVehiculos = [];
     vehiculoDestacadoId = null;
     historialCaja = null;
+    vehiculosResumen = null; resultadosBusquedaVeh = null; placaActivaVehiculos = null;
+    const fichaVeh = document.getElementById('ficha-vehiculo');
+    if (fichaVeh) fichaVeh.innerHTML = '';
     try { sessionStorage.removeItem('historial_caja'); } catch (e) {}
     ['cifra-taller', 'cifra-entregados', 'cifra-cobrado'].forEach(id => ponerTexto(id, '–'));
     ['saludo-taller', 'inicial-taller', 'conteo-taller'].forEach(id => ponerTexto(id, ''));
@@ -2370,7 +2373,8 @@ document.addEventListener('keydown', e => {
     const enCampo = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
     if (e.key === '/' && !enCampo && document.getElementById('app-container')?.style.display !== 'none') {
         e.preventDefault();
-        document.getElementById('buscar-barra')?.focus();
+        const enVehiculos = document.getElementById('vista-vehiculos')?.style.display !== 'none';
+        document.getElementById(enVehiculos ? 'buscar-vehiculo' : 'buscar-barra')?.focus();
     }
 });
 
@@ -2787,6 +2791,7 @@ function cambiarVista(idVista, desdeMenu = true) {
     
     // Mostrar la vista seleccionada
     document.getElementById(idVista).style.display = 'block';
+    document.body.dataset.vista = idVista;
 
     // Marcar la sección actual en el menú lateral y en la barra inferior
     document.querySelectorAll('[data-vista]').forEach(b => {
@@ -3184,24 +3189,146 @@ function buscarDesdeBarra(evento) {
     cambiarVista('vista-vehiculos', false);
     const input = document.getElementById('buscar-vehiculo');
     input.value = texto;
-    if (texto) buscarVehiculos();
+    // Con la búsqueda hecha, en escritorio se abre el primer resultado en el panel derecho
+    if (texto) buscarVehiculos().then(() => {
+        const primero = listaVisibleVehiculos()[0];
+        if (primero && esEscritorioVeh()) abrirFichaVehiculo(primero.placa);
+    });
     barra.value = '';
     barra.blur();
 }
 
+// --- Estado de la vista (se conserva al cambiar de sección dentro de la sesión) ---
+let vehiculosResumen = null;          // { cifras, vehiculos, truncado } de /vehiculos/resumen
+let resultadosBusquedaVeh = null;     // resultados de /vehiculos/buscar mientras hay texto en el buscador
+let filtroVehiculos = 'todos';        // 'todos' | 'en_taller' | 'recientes'
+let placaActivaVehiculos = null;      // vehículo abierto en el panel de detalle
+const DIAS_RECIENTES_VEH = 30;
+
+const esEscritorioVeh = () => window.matchMedia('(min-width: 901px)').matches;
+
 function iniciarVistaVehiculos() {
-    mostrarBusquedaVehiculos();
-    const input = document.getElementById('buscar-vehiculo');
-    if (!input.value.trim()) {
-        document.getElementById('resultados-vehiculos').innerHTML =
-            '<p class="vacio-vehiculos">Escribe al menos 2 letras o números para buscar.</p>';
-    }
-    setTimeout(() => input.focus(), 50);
+    document.getElementById('veh-layout').classList.remove('con-detalle');
+    cargarResumenVehiculos();
 }
 
+// Cifras de cabecera y lista inicial. Si falla (p. ej. backend sin actualizar),
+// la vista sigue funcionando con el buscador.
+async function cargarResumenVehiculos() {
+    pintarCifrasVehiculos(vehiculosResumen?.cifras);
+    if (vehiculosResumen) pintarListaVehiculos();
+    else document.getElementById('resultados-vehiculos').innerHTML = '<p class="vacio-vehiculos">Cargando vehículos...</p>';
+    try {
+        const res = await fetch('/vehiculos/resumen', { headers: cabeceraAuth() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+        vehiculosResumen = data;
+    } catch (err) {
+        console.warn('Resumen de vehículos no disponible:', err.message);
+        if (!vehiculosResumen) vehiculosResumen = { cifras: null, vehiculos: [], truncado: false, sinResumen: true };
+    }
+    pintarCifrasVehiculos(vehiculosResumen.cifras);
+    await cargarManifiestoVehiculos();
+    pintarListaVehiculos();
+    // En escritorio el panel derecho nunca queda vacío: se abre el primero de la lista
+    if (!placaActivaVehiculos && esEscritorioVeh()) {
+        const primero = listaVisibleVehiculos()[0];
+        if (primero) abrirFichaVehiculo(primero.placa);
+        else pintarDetalleVacio();
+    }
+}
+
+function pintarCifrasVehiculos(c) {
+    const n = v => (v === null || v === undefined) ? '—' : Number(v).toLocaleString('es-EC');
+    const cifra = (clase, etiqueta, valor, icono) => `
+        <div class="veh-cifra ${clase}">
+            <span class="veh-cifra-icono" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24">${icono}</svg></span>
+            <div><div class="veh-cifra-etiqueta">${etiqueta}</div><div class="veh-cifra-valor">${valor}</div></div>
+        </div>`;
+    document.getElementById('veh-cifras').innerHTML = [
+        cifra('', 'Vehículos registrados', n(c?.vehiculos), '<path d="M5 16l1.5-5A2 2 0 0 1 8.4 9.5h7.2a2 2 0 0 1 1.9 1.5L19 16"/><rect x="3" y="16" width="18" height="4" rx="1.5"/>'),
+        cifra('ambar', 'En el taller ahora', n(c?.en_taller), '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>'),
+        cifra('menta', 'Garantías activas', n(c?.garantias_activas), '<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="m9 12 2 2 4-4"/>'),
+        cifra('lila', 'Visitas este mes', n(c?.visitas_mes), '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>')
+    ].join('');
+}
+
+// Lista que se ve según el texto buscado y el filtro rápido
+function listaVisibleVehiculos(filtro = filtroVehiculos) {
+    const base = resultadosBusquedaVeh ?? (vehiculosResumen?.vehiculos || []);
+    if (filtro === 'en_taller') return base.filter(v => v.en_taller);
+    if (filtro === 'recientes') {
+        const limite = new Date(); limite.setDate(limite.getDate() - DIAS_RECIENTES_VEH);
+        const corte = limite.toISOString().slice(0, 10);
+        return base.filter(v => v.ultima_visita && v.ultima_visita >= corte);
+    }
+    return base;
+}
+
+function filtrarVehiculos(filtro) {
+    filtroVehiculos = filtro;
+    pintarListaVehiculos();
+}
+
+function filaVehiculoListaHTML(r) {
+    const e = escaparHTML;
+    const img = imagenVehiculo({ modelo: r.modelo, color: r.color });
+    const activo = r.placa === placaActivaVehiculos;
+    return `
+    <button type="button" class="resultado-vehiculo${activo ? ' activo' : ''}" ${activo ? 'aria-current="true"' : ''} data-placa="${e(r.placa)}"
+            onclick='abrirFichaVehiculo(${JSON.stringify(r.placa)})'>
+        <span class="resultado-mini" data-placa="${e(r.placa)}">${img
+            ? `<img src="${e(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'placa chica',textContent:this.parentElement.dataset.placa}))">`
+            : `<span class="placa chica">${e(r.placa)}</span>`}</span>
+        <span class="resultado-datos">
+            <b>${e(r.cliente || 'Sin cliente registrado')}</b>
+            <span class="separados">${[img ? r.placa : null, r.modelo, r.telefono].filter(Boolean).map(x => `<span>${e(x)}</span>`).join('') || '&nbsp;'}</span>
+        </span>
+        <span class="resultado-fecha">${r.en_taller
+            ? '<span class="badge-estado estado-pendiente">En taller</span>'
+            : `<b>${fechaCorta(r.ultima_visita)}</b>${r.visitas ? `<span>${r.visitas} ${r.visitas === 1 ? 'visita' : 'visitas'}</span>` : ''}`}</span>
+    </button>`;
+}
+
+function pintarListaVehiculos() {
+    const cont = document.getElementById('resultados-vehiculos');
+    const q = document.getElementById('buscar-vehiculo').value.trim();
+    // Conteos de cada filtro y botón activo
+    ['todos', 'en_taller', 'recientes'].forEach(f => {
+        ponerTexto(`veh-n-${f}`, String(listaVisibleVehiculos(f).length));
+        document.querySelector(`.veh-chip[data-filtro="${f}"]`)?.setAttribute('aria-pressed', String(f === filtroVehiculos));
+    });
+    const lista = listaVisibleVehiculos();
+    if (lista.length) {
+        const nota = !resultadosBusquedaVeh && vehiculosResumen?.truncado && filtroVehiculos === 'todos'
+            ? '<p class="veh-nota-lista">Se muestran los vehículos más recientes. Usa el buscador para encontrar los demás.</p>' : '';
+        cont.innerHTML = lista.map(filaVehiculoListaHTML).join('') + nota;
+        return;
+    }
+    const e = escaparHTML;
+    if (resultadosBusquedaVeh) {
+        cont.innerHTML = `<p class="vacio-vehiculos">No hay vehículos ni clientes que coincidan con "${e(q)}"${filtroVehiculos !== 'todos' ? ' con este filtro' : ''}.</p>`;
+    } else if (vehiculosResumen?.sinResumen) {
+        cont.innerHTML = '<p class="vacio-vehiculos">Escribe al menos 2 letras o números para buscar.</p>';
+    } else {
+        cont.innerHTML = `<p class="vacio-vehiculos">${filtroVehiculos === 'en_taller' ? 'No hay vehículos en el taller ahora.'
+            : filtroVehiculos === 'recientes' ? `Ningún vehículo vino en los últimos ${DIAS_RECIENTES_VEH} días.`
+            : 'Todavía no hay vehículos registrados. Registra el primero escribiéndole a Geor IA.'}</p>`;
+    }
+}
+
+function pintarDetalleVacio() {
+    document.getElementById('ficha-vehiculo').innerHTML = `
+        <div class="veh-detalle-vacio">
+            <span class="placa">ABC1234</span>
+            <p>Selecciona un vehículo de la lista para ver su propietario, su estado y sus servicios.</p>
+        </div>`;
+}
+
+// En el celular: vuelve de la ficha a la lista
 function mostrarBusquedaVehiculos() {
-    document.getElementById('vehiculos-busqueda').hidden = false;
-    document.getElementById('ficha-vehiculo').hidden = true;
+    document.getElementById('veh-layout').classList.remove('con-detalle');
+    document.getElementById('vehiculos-busqueda').scrollIntoView?.({ block: 'start' });
 }
 
 // Busca mientras se escribe, sin disparar una consulta por cada tecla
@@ -3214,7 +3341,8 @@ async function buscarVehiculos() {
     const q = document.getElementById('buscar-vehiculo').value.trim();
     const cont = document.getElementById('resultados-vehiculos');
     if (q.length < 2) {
-        cont.innerHTML = '<p class="vacio-vehiculos">Escribe al menos 2 letras o números para buscar.</p>';
+        resultadosBusquedaVeh = null;
+        pintarListaVehiculos();
         return;
     }
     try {
@@ -3223,47 +3351,64 @@ async function buscarVehiculos() {
         // Si mientras tanto el texto cambió, esta respuesta ya no sirve
         if (document.getElementById('buscar-vehiculo').value.trim() !== q) return;
         if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
-        const e = escaparHTML;
         await cargarManifiestoVehiculos();
-        cont.innerHTML = data.resultados.length
-            ? data.resultados.map(r => {
-                const img = imagenVehiculo({ modelo: r.modelo, color: r.color });
-                return `
-                <button type="button" class="resultado-vehiculo" onclick='abrirFichaVehiculo(${JSON.stringify(r.placa)})'>
-                    <span class="resultado-mini" data-placa="${e(r.placa)}">${img
-                        ? `<img src="${e(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'placa chica',textContent:this.parentElement.dataset.placa}))">`
-                        : `<span class="placa chica">${e(r.placa)}</span>`}</span>
-                    <span class="resultado-datos">
-                        <b>${e(r.cliente || 'Sin cliente registrado')}</b>
-                        <span class="separados">${[img ? r.placa : null, r.modelo, r.telefono].filter(Boolean).map(x => `<span>${e(x)}</span>`).join('') || '&nbsp;'}</span>
-                    </span>
-                    <span class="resultado-fecha">${r.en_taller ? '<span class="badge-estado estado-pendiente">En el taller</span>' : `Última visita<br> <b>${fechaCorta(r.ultima_visita)}</b>`}</span>
-                </button>`; }).join('')
-            : `<p class="vacio-vehiculos">No hay vehículos ni clientes que coincidan con "${e(q)}".</p>`;
+        resultadosBusquedaVeh = data.resultados || [];
+        pintarListaVehiculos();
     } catch (err) {
         cont.innerHTML = `<p class="vacio-vehiculos">No se pudo buscar: ${escaparHTML(err.message)}</p>`;
     }
 }
 
-// Se puede abrir desde la búsqueda, desde una tarjeta de vehículo o desde el dashboard
+// Se puede abrir desde la lista, desde una tarjeta de vehículo o desde el dashboard
 async function abrirFichaVehiculo(placa) {
+    placaActivaVehiculos = placa;
     if (document.getElementById('vista-vehiculos').style.display === 'none') {
         cambiarVista('vista-vehiculos', false);
     }
-    document.getElementById('vehiculos-busqueda').hidden = true;
+    // Marcar la fila activa sin volver a pintar la lista
+    document.querySelectorAll('#resultados-vehiculos .resultado-vehiculo').forEach(b => {
+        const es = b.dataset.placa === placa;
+        b.classList.toggle('activo', es);
+        if (es) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+    });
+    document.getElementById('veh-layout').classList.add('con-detalle');
     const cont = document.getElementById('ficha-vehiculo');
-    cont.hidden = false;
     cont.innerHTML = '<p class="vacio-vehiculos">Cargando ficha...</p>';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!esEscritorioVeh()) window.scrollTo({ top: 0, behavior: 'smooth' });
     try {
         const res = await fetch(`/vehiculos/${encodeURIComponent(placa)}/ficha`, { headers: cabeceraAuth() });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`);
+        if (placaActivaVehiculos !== placa) return;   // se eligió otro mientras cargaba
         await renderFichaVehiculo(data);
     } catch (err) {
-        cont.innerHTML = `<button type="button" class="btn-link" onclick="mostrarBusquedaVehiculos()">← Volver a la búsqueda</button>
+        cont.innerHTML = `<button type="button" class="btn-chico volver" onclick="mostrarBusquedaVehiculos()">Volver a la lista</button>
             <p class="vacio-vehiculos">${escaparHTML(err.message)}</p>`;
     }
+}
+
+// "Registrar vehículo": los registros entran por Geor IA, así que lleva al chat listo para escribir
+function registrarVehiculoDesdeVista() {
+    cambiarVista('vista-chat');
+    const input = document.getElementById('texto_reporte');
+    if (input) setTimeout(() => input.focus(), 50);
+}
+
+// "Nueva orden" / "Actualizar orden": abre Geor IA con la placa ya puesta como contexto
+function nuevaOrdenVehiculo(placa, modelo, cliente) {
+    cambiarVista('vista-chat');
+    setTimeout(() => usarPlaca(placa, { vehiculo: placa, modelo, cliente }), 50);
+}
+
+// Muestra (u oculta) el historial completo; si se pasa una orden, baja hasta ella
+function verHistorialVehiculo(idOrden = null) {
+    const bloque = document.getElementById('veh-historial-completo');
+    if (!bloque) return;
+    const mostrar = idOrden !== null || bloque.hidden;
+    bloque.hidden = !mostrar;
+    const boton = document.getElementById('veh-btn-historial');
+    if (boton) boton.setAttribute('aria-expanded', String(mostrar));
+    if (mostrar) (document.getElementById(`oh-${idOrden}`) || bloque).scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function renderFichaVehiculo(f) {
@@ -3274,25 +3419,21 @@ async function renderFichaVehiculo(f) {
 
     // Datos del vehículo y contacto como piezas separadas (sin puntos medios)
     const piezas = lista => lista.filter(Boolean).map(x => `<span>${x}</span>`).join('');
-    // Modelo y año van en el título; color con su muestra. Aquí solo el resto de datos técnicos.
     const colorFicha = colorVehiculo(v.color);
     const detalles = piezas([colorFicha ? null : v.color, v.cilindraje, v.cilindros ? `${v.cilindros} cilindros` : null].filter(Boolean).map(x => e(x)));
-    const contacto = piezas([
-        d.cedula ? `Cédula ${e(d.cedula)}` : null,
-        d.telefono ? `<a href="tel:${e(d.telefono)}">${e(d.telefono)}</a>` : null,
-        d.whatsapp ? `<a href="https://wa.me/${e(d.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : null
-    ]);
+    const contacto = piezas([d.cedula ? `Cédula ${e(d.cedula)}` : null, d.telefono ? e(d.telefono) : null]);
     const anteriores = d.anteriores.length
         ? `<div class="ficha-nota">También estuvo a nombre de: ${d.anteriores.map(a => `${e(a.nombre)} (hasta ${fechaCorta(a.ultima_vez)})`).join(', ')}</div>` : '';
-    const enTaller = r.orden_abierta
-        ? `<span class="badge-estado estado-pendiente">En el taller ahora, orden N° ${e(String(r.orden_abierta))}</span>` : '';
+    const estado = r.orden_abierta
+        ? `<span class="badge-estado estado-pendiente">En el taller, orden N° ${e(String(r.orden_abierta))}</span>`
+        : (r.visitas ? `<span class="badge-estado estado-terminado">Entregado</span>` : '');
 
+    // Cifras compactas (la primera holográfica en oscuro)
     const kpi = (etiqueta, valor, extra = '') => `<div class="dash-kpi"><div class="dash-kpi-etiqueta">${etiqueta}</div>
         <div class="dash-kpi-valor">${valor}</div>${extra ? `<div class="dash-kpi-extra">${extra}</div>` : ''}</div>`;
     const kpis = [
-        kpi('Total gastado', dinero(r.total_gastado), `${r.visitas} ${r.visitas === 1 ? 'visita' : 'visitas'} desde ${fechaCorta(r.primera_visita)}`),
-        kpi('Visitas', r.visitas),
-        kpi('Promedio por visita', dinero(r.promedio_visita)),
+        kpi('Total gastado', dinero(r.total_gastado), `desde ${fechaCorta(r.primera_visita)}`),
+        kpi('Visitas', r.visitas, r.visitas ? `promedio ${dinero(r.promedio_visita)}` : ''),
         kpi('Kilometraje', r.km_actual ? `${Number(r.km_actual).toLocaleString('es-EC')} km` : '—',
             r.km_por_mes ? `≈ ${Number(r.km_por_mes).toLocaleString('es-EC')} km por mes` : '')
     ].join('');
@@ -3302,35 +3443,81 @@ async function renderFichaVehiculo(f) {
             `<li>Orden N° ${e(String(g.orden_id))}: ${e(g.trabajo || 'trabajo')}, hasta ${fechaCorta(g.vence)}${g.km_limite ? ` o ${Number(g.km_limite).toLocaleString('es-EC')} km` : ''}</li>`).join('')}</ul></div>`
         : '';
 
+    // Servicios recientes: las 3 últimas órdenes en filas compactas
+    const resumenOrden = o => {
+        const trabajos = (o._trabajos || []).map(t => t.descripcion).filter(Boolean);
+        if (trabajos.length) return trabajos.slice(0, 2).join(', ') + (trabajos.length > 2 ? ` y ${trabajos.length - 2} más` : '');
+        return o.motivo || (o.estado === 'Cerrado sin cobro' ? (o._motivo_cierre || 'Cerrada sin cobro') : 'Sin trabajos registrados');
+    };
+    const claseEstado = o => o.estado === 'Pendiente' ? 'estado-pendiente' : (o.estado === 'Cerrado sin cobro' ? 'estado-sin-cobro' : 'estado-terminado');
+    const recientes = f.ordenes.slice(0, 3).map(o => {
+        const fecha = o._ingreso ? new Date(o._ingreso + 'T12:00:00') : null;
+        return `
+        <button type="button" class="orden-mini" onclick='verHistorialVehiculo(${JSON.stringify(String(o.id))})'>
+            <span class="om-fecha">${fecha ? `<b>${fecha.getDate()}</b>${fecha.toLocaleDateString('es-EC', { month: 'short' }).replace('.', '')} ${String(fecha.getFullYear()).slice(2)}` : '—'}</span>
+            <span class="om-datos">
+                <span class="om-fila"><b>Orden N° ${e(String(o.id))}</b><span class="badge-estado ${claseEstado(o)}">${e(o.estado)}</span></span>
+                <span class="om-trabajo">${e(resumenOrden(o))}</span>
+            </span>
+            <span class="om-monto">${o.estado === 'Terminado' ? dinero(o.cobro) : ''}</span>
+        </button>`;
+    }).join('');
+
     // Escenario con la imagen del modelo (o la placa si no hay imagen)
     await cargarManifiestoVehiculos();
     const img = imagenVehiculo({ modelo: v.modelo, color: v.color });
-    const color = colorFicha;
+    const tel = String(d.telefono || '').trim();
+    const icono = cuerpo => `<svg class="icono" viewBox="0 0 24 24" aria-hidden="true">${cuerpo}</svg>`;
+    const datos = JSON.stringify([v.placa, v.modelo || '', d.nombre || '']).slice(1, -1);
 
     document.getElementById('ficha-vehiculo').innerHTML = `
         <button type="button" class="btn-chico volver" onclick="mostrarBusquedaVehiculos()">
-            <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>Volver a la búsqueda</button>
-        <section class="ficha-cabecera">
+            ${icono('<path d="M15 6l-6 6 6 6"/>')}Volver a la lista</button>
+        <div class="det-cabecera">
             <div class="ficha-escena tv-escena ${img ? '' : 'sin-imagen'}" data-placa="${e(v.placa)}">
                 ${img ? `<img src="${e(img)}" alt="${e(v.modelo || 'Vehículo')}" onerror="imagenVehiculoFallo(this)">`
                       : `<div class="respaldo"><span class="placa">${e(v.placa)}</span></div>`}
             </div>
-            <div class="ficha-info">
-                ${img || enTaller ? `<div class="ficha-placa-fila">${img ? `<span class="placa ficha-placa">${e(v.placa)}</span>` : ''}${enTaller}</div>` : ''}
-                <h1 class="ficha-modelo">${e(v.modelo || 'Modelo sin registrar')}${v.anio ? ` <span>${e(String(v.anio))}</span>` : ''}</h1>
-                <div class="ficha-detalle separados">${color ? `<span><span class="color-veh" style="background:${color.tono}"></span>${e(v.color)}</span>` : ''}${detalles || (color ? '' : '<span>Sin datos del vehículo</span>')}</div>
-                <div class="ficha-dueno">
-                    <span class="avatar-tecnico" style="--tono:#8B5CF6">${e(String(d.nombre || '?').trim().charAt(0).toUpperCase())}</span>
-                    <div><b>${e(d.nombre || 'Sin cliente registrado')}</b>${contacto ? `<div class="separados">${contacto}</div>` : ''}</div>
-                </div>
-                ${anteriores}
+            <div class="det-titulo">
+                <div class="ficha-placa-fila">${img ? `<span class="placa ficha-placa">${e(v.placa)}</span>` : ''}${estado}</div>
+                <h2 class="ficha-modelo">${e(v.modelo || 'Modelo sin registrar')}${v.anio ? ` <span>${e(String(v.anio))}</span>` : ''}</h2>
+                <div class="ficha-detalle separados">${colorFicha ? `<span><span class="color-veh" style="background:${colorFicha.tono}"></span>${e(v.color)}</span>` : ''}${detalles}</div>
             </div>
-        </section>
-        <div class="dash-kpis ficha-kpis">${kpis}</div>
+        </div>
+
+        <div class="det-acciones">
+            <button type="button" class="btn-chico principal" onclick='nuevaOrdenVehiculo(${datos})'>
+                ${icono('<path d="M12 5v14M5 12h14"/>')}${r.orden_abierta ? 'Actualizar orden' : 'Nueva orden'}</button>
+            <button type="button" class="btn-chico" id="veh-btn-historial" aria-expanded="false" onclick="verHistorialVehiculo()">
+                ${icono('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/>')}Ver historial</button>
+            ${d.whatsapp ? `<a class="btn-chico" href="https://wa.me/${e(d.whatsapp)}" target="_blank" rel="noopener">
+                ${icono('<path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/>')}WhatsApp</a>` : ''}
+            ${tel ? `<a class="btn-chico" href="tel:${e(tel)}">${icono('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>')}Llamar</a>` : ''}
+        </div>
+
+        <div class="det-bloque ficha-dueno">
+            <span class="avatar-tecnico" style="--tono:#8B5CF6">${e(String(d.nombre || '?').trim().charAt(0).toUpperCase())}</span>
+            <div>
+                <div class="det-etiqueta">Propietario</div>
+                <b>${e(d.nombre || 'Sin cliente registrado')}</b>
+                ${contacto ? `<div class="separados">${contacto}</div>` : ''}
+            </div>
+        </div>
+        ${anteriores}
+
+        <div class="dash-kpis ficha-kpis det-kpis">${kpis}</div>
         ${garantias}
-        <h3 class="ficha-titulo-historial">Historial <span>${f.ordenes.length === 1 ? '1 orden' : `${f.ordenes.length} órdenes`}</span></h3>
-        ${f.truncado ? '<p class="ficha-nota">Se muestran las órdenes más recientes.</p>' : ''}
-        <div class="ficha-historial">${f.ordenes.map(ordenHistorialHTML).join('')}</div>`;
+
+        <div class="det-bloque det-servicios">
+            <h3>Servicios recientes <span>${f.ordenes.length === 1 ? '1 orden' : `${f.ordenes.length} órdenes`}</span></h3>
+            ${recientes || '<p class="vacio-vehiculos">Este vehículo aún no tiene órdenes.</p>'}
+        </div>
+
+        <div id="veh-historial-completo" hidden>
+            <h3 class="ficha-titulo-historial">Historial completo</h3>
+            ${f.truncado ? '<p class="ficha-nota">Se muestran las órdenes más recientes.</p>' : ''}
+            <div class="ficha-historial">${f.ordenes.map(ordenHistorialHTML).join('')}</div>
+        </div>`;
 }
 
 function ordenHistorialHTML(o) {
@@ -3354,7 +3541,7 @@ function ordenHistorialHTML(o) {
     if (o.garantia_orden_origen) notas.push(`Reclamo de garantía de la orden N° ${e(String(o.garantia_orden_origen))}`);
     if (o.estado === 'Terminado' && o.garantia_vence) notas.push(`Garantía hasta ${fechaCorta(String(o.garantia_vence).slice(0, 10))}`);
 
-    return `<article class="orden-historial">
+    return `<article class="orden-historial" id="oh-${e(String(o.id))}">
         <header class="oh-cabecera">
             <b>Orden N° ${e(String(o.id))}</b>
             <span class="badge-estado ${clase}">${e(o.estado)}</span>

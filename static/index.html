@@ -20,7 +20,7 @@
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=14">
+    <link rel="stylesheet" href="style.css?v=15">
     <!-- Librería para renderizar Markdown (negritas, listas y tablas de Geor IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
@@ -416,22 +416,39 @@
                 </div>
             </div>
 
-            <!-- VISTA: VEHÍCULOS Y CLIENTES (búsqueda y ficha de cada vehículo) -->
+            <!-- VISTA: VEHÍCULOS Y CLIENTES
+                 Maestro-detalle: cifras arriba, lista con filtros a la izquierda y
+                 la ficha del vehículo seleccionado a la derecha (en el celular, una tras otra) -->
             <div id="vista-vehiculos" class="vista-app" style="display: none;">
-                <div id="vehiculos-busqueda">
-                    <div class="cabecera-vista">
+                <header class="veh-cabecera">
+                    <div>
                         <h1>Vehículos y clientes</h1>
-                        <p>Busca por placa, nombre del cliente, cédula o teléfono para ver su historial completo.</p>
+                        <p>Historial de cada vehículo y su propietario.</p>
                     </div>
-                    <div class="buscador-grande">
-                        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-                        <input id="buscar-vehiculo" type="search" class="buscador-vehiculos" autocomplete="off"
-                               placeholder="Ej. GTH6787, Juan Pérez, 0991234567" oninput="buscarVehiculosDiferido()"
-                               aria-label="Buscar vehículo o cliente">
-                    </div>
-                    <div id="resultados-vehiculos" class="resultados-vehiculos" aria-live="polite"></div>
+                    <button type="button" class="btn btn-primario" onclick="registrarVehiculoDesdeVista()" title="Los vehículos se registran escribiéndole a Geor IA">
+                        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Registrar vehículo
+                    </button>
+                </header>
+
+                <div id="veh-cifras" class="veh-cifras" aria-live="polite"></div>
+
+                <div id="veh-layout" class="veh-layout">
+                    <section id="vehiculos-busqueda" class="veh-col-lista" aria-label="Lista de vehículos">
+                        <div class="buscador-grande">
+                            <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                            <input id="buscar-vehiculo" type="search" class="buscador-vehiculos" autocomplete="off"
+                                   placeholder="Placa, cliente, cédula o teléfono" oninput="buscarVehiculosDiferido()"
+                                   aria-label="Buscar vehículo o cliente">
+                        </div>
+                        <div class="veh-filtros" role="group" aria-label="Filtrar vehículos">
+                            <button type="button" class="veh-chip" data-filtro="todos" aria-pressed="true" onclick="filtrarVehiculos('todos')">Todos <span id="veh-n-todos"></span></button>
+                            <button type="button" class="veh-chip" data-filtro="en_taller" aria-pressed="false" onclick="filtrarVehiculos('en_taller')">En taller <span id="veh-n-en_taller"></span></button>
+                            <button type="button" class="veh-chip" data-filtro="recientes" aria-pressed="false" onclick="filtrarVehiculos('recientes')" title="Con visita en los últimos 30 días">Recientes <span id="veh-n-recientes"></span></button>
+                        </div>
+                        <div id="resultados-vehiculos" class="resultados-vehiculos" aria-live="polite"></div>
+                    </section>
+                    <section id="ficha-vehiculo" class="veh-col-detalle" aria-label="Detalle del vehículo" aria-live="polite"></section>
                 </div>
-                <div id="ficha-vehiculo" hidden></div>
             </div>
 
             <!-- VISTA: CONTROL DE GARANTÍAS (reclamos, tasa de retorno, proveedores) -->
@@ -525,7 +542,7 @@
     </div> <!-- Cierra #plantilla-orden -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js?v=1009"></script>
+    <script src="script.js?v=1010"></script>
     <!-- MODAL DE AVISO (centro de pantalla, con botón OK). Reutilizable: mostrarModal({...}) -->
     <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
         <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">
