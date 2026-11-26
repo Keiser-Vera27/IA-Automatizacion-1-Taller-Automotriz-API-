@@ -20,7 +20,7 @@
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=15">
+    <link rel="stylesheet" href="style.css?v=16">
     <!-- Librería para renderizar Markdown (negritas, listas y tablas de Geor IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
@@ -383,36 +383,84 @@
             <!-- ========================================== -->
             <!-- PANTALLA 3: CATÁLOGO DE SERVICIOS -->
             <!-- ========================================== -->
-            <div id="vista-servicios" class="vista-app" style="display: none; padding: 20px;">
-                <h2>Gestión de Servicios y Precios Base</h2>
-                <p style="color: var(--texto-tenue); margin-bottom: 20px;">La IA usará estos precios automáticamente cuando registres un trabajo en el chat.</p>
-                
-                <!-- Formulario para agregar -->
-                <div class="panel-caja form-servicio">
-                    <input type="text" id="nuevo-servicio-nombre" placeholder="Ej: Cambio de Aceite" class="campo-servicio campo-nombre">
-                    <input type="number" id="nuevo-servicio-precio" placeholder="Precio ($)" min="0" step="0.01" class="campo-servicio">
-                    <input type="number" id="nuevo-servicio-garantia-dias" placeholder="Garantía (días)" min="0" class="campo-servicio" title="Vacío = garantía por defecto del taller. 0 = sin garantía.">
-                    <input type="number" id="nuevo-servicio-garantia-km" placeholder="Garantía (km)" min="0" class="campo-servicio" title="Vacío = garantía por defecto del taller.">
-                    <button onclick="guardarServicio()" class="btn-agregar-servicio">+ Agregar</button>
-                </div>
-                <p id="nota-garantia-defecto" class="nota-servicios">Si dejas la garantía vacía se aplica la del taller por defecto. Pon 0 días para servicios sin garantía (ej. diagnóstico).</p>
+            <!-- VISTA: SERVICIOS Y PRECIOS
+                 Cifras del catálogo, la lista (con buscador) a la izquierda y, a la derecha,
+                 el formulario para agregar y la garantía por defecto del taller -->
+            <div id="vista-servicios" class="vista-app" style="display: none;">
+                <header class="veh-cabecera">
+                    <div>
+                        <h1>Servicios y precios</h1>
+                        <p>Geor IA usa estos precios automáticamente cuando registras un trabajo en el chat.</p>
+                    </div>
+                    <button type="button" class="btn btn-primario" onclick="enfocarNuevoServicio()">
+                        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Nuevo servicio
+                    </button>
+                </header>
 
-                <!-- Tabla de servicios -->
-                <div class="tabla-scroll" style="max-width: 820px;">
-                    <table class="tabla-servicios-catalogo">
-                        <thead>
-                            <tr>
-                                <th style="text-align: left;">Servicio</th>
-                                <th style="text-align: right;">Precio ($)</th>
-                                <th style="text-align: left;">Garantía</th>
-                                <th style="text-align: center;" data-modulo="materiales_servicio">Materiales</th>
-                                <th style="text-align: center;">Acción</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabla-servicios">
-                            <tr><td colspan="5" class="vacio">Cargando catálogo...</td></tr>
-                        </tbody>
-                    </table>
+                <div id="srv-cifras" class="veh-cifras" aria-live="polite"></div>
+
+                <div class="srv-layout">
+                    <section class="srv-catalogo" aria-label="Catálogo de servicios">
+                        <div class="srv-catalogo-barra">
+                            <div class="buscador-grande">
+                                <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                                <input id="buscar-servicio" type="search" class="buscador-vehiculos" autocomplete="off"
+                                       placeholder="Buscar servicio" oninput="pintarServicios()" aria-label="Buscar servicio">
+                            </div>
+                            <span id="srv-conteo" class="srv-conteo"></span>
+                        </div>
+                        <div class="tabla-scroll">
+                            <table class="tabla-servicios-catalogo">
+                                <thead>
+                                    <tr>
+                                        <th>Servicio</th>
+                                        <th class="num">Precio</th>
+                                        <th>Garantía</th>
+                                        <th data-modulo="materiales_servicio">Materiales</th>
+                                        <th class="centro"><span class="solo-lectores">Acciones</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabla-servicios">
+                                    <tr><td colspan="5" class="vacio">Cargando catálogo...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <aside class="srv-lateral">
+                        <section class="srv-tarjeta" aria-labelledby="titulo-nuevo-servicio">
+                            <h2 id="titulo-nuevo-servicio">Agregar servicio</h2>
+                            <form class="form-servicio" onsubmit="event.preventDefault(); guardarServicio();">
+                                <label class="srv-campo">
+                                    <span>Nombre del servicio</span>
+                                    <input type="text" id="nuevo-servicio-nombre" placeholder="Ej. Cambio de aceite" class="campo-servicio" autocomplete="off">
+                                </label>
+                                <label class="srv-campo">
+                                    <span>Precio base ($)</span>
+                                    <input type="number" id="nuevo-servicio-precio" placeholder="0.00" min="0" step="0.01" inputmode="decimal" class="campo-servicio">
+                                </label>
+                                <div class="srv-campos-dobles">
+                                    <label class="srv-campo">
+                                        <span>Garantía (días)</span>
+                                        <input type="number" id="nuevo-servicio-garantia-dias" placeholder="Del taller" min="0" inputmode="numeric" class="campo-servicio" title="Vacío = garantía por defecto del taller. 0 = sin garantía.">
+                                    </label>
+                                    <label class="srv-campo">
+                                        <span>Garantía (km)</span>
+                                        <input type="number" id="nuevo-servicio-garantia-km" placeholder="Del taller" min="0" inputmode="numeric" class="campo-servicio" title="Vacío = garantía por defecto del taller.">
+                                    </label>
+                                </div>
+                                <p class="srv-ayuda">Deja la garantía vacía para usar la del taller. Pon 0 días en servicios sin garantía, como un diagnóstico.</p>
+                                <button type="submit" class="btn btn-primario btn-agregar-servicio">
+                                    <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Agregar al catálogo
+                                </button>
+                            </form>
+                        </section>
+
+                        <section class="srv-tarjeta srv-garantia" aria-labelledby="titulo-garantia-taller">
+                            <h2 id="titulo-garantia-taller">Garantía por defecto</h2>
+                            <div id="nota-garantia-defecto" class="nota-servicios"></div>
+                        </section>
+                    </aside>
                 </div>
             </div>
 
@@ -542,7 +590,7 @@
     </div> <!-- Cierra #plantilla-orden -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js?v=1010"></script>
+    <script src="script.js?v=1011"></script>
     <!-- MODAL DE AVISO (centro de pantalla, con botón OK). Reutilizable: mostrarModal({...}) -->
     <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
         <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">

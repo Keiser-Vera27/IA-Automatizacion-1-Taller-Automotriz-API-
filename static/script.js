@@ -4174,52 +4174,101 @@ function cabeceraAuth(json = false) {
     return h;
 }
 
+let serviciosCatalogo = [];   // última lista recibida de /servicios (se filtra en pantalla)
+
 async function cargarServicios() {
     if (!localStorage.getItem("taller_token")) return;
-    const e = escaparHTML;
     try {
         const res = await fetch("/servicios", { headers: cabeceraAuth() });
         const data = await res.json();
         garantiaTallerActual = data.garantia_defecto || garantiaTallerActual;
+        serviciosCatalogo = data.servicios || [];
 
         // Garantía por defecto del taller (la define el dueño)
         const nota = document.getElementById('nota-garantia-defecto');
         if (nota) {
-            nota.innerHTML = `<b>Garantía por defecto de tu taller: ${textoGarantia(garantiaTallerActual.dias, garantiaTallerActual.km)}</b>
-                <button class="btn-link" onclick="editarGarantiaTaller()">Cambiar</button><br>
-                Se aplica a los servicios que no tienen garantía propia. En cada trabajo también puedes indicarla al cerrar
-                (ej. "...se le dio garantía de 3 meses"), y esa tiene prioridad.`;
+            nota.innerHTML = `
+                <div class="srv-garantia-valor">${textoGarantia(garantiaTallerActual.dias, garantiaTallerActual.km)}</div>
+                <p>Se aplica a los servicios que no tienen garantía propia. En cada trabajo también puedes indicarla al cerrar
+                (ej. "...se le dio garantía de 3 meses"), y esa tiene prioridad.</p>
+                <button type="button" class="btn-chico" onclick="editarGarantiaTaller()">Cambiar garantía</button>`;
         }
-
-        const tbody = document.getElementById('tabla-servicios');
-        const servicios = data.servicios || [];
-        if (!servicios.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="vacio">No hay servicios registrados.</td></tr>';
-            return;
-        }
-        tbody.innerHTML = servicios.map(s => {
-            const propia = s.garantia_dias !== null && s.garantia_dias !== undefined;
-            const dias = propia ? s.garantia_dias : garantiaTallerActual.dias;
-            const km = (s.garantia_km !== null && s.garantia_km !== undefined) ? s.garantia_km : garantiaTallerActual.km;
-            return `
-                <tr>
-                    <td>${e(s.nombre_servicio)}</td>
-                    <td class="num">$${Number(s.precio_base || 0).toFixed(2)}</td>
-                    <td>${e(textoGarantia(dias, km))}${propia ? '' : ' <span class="sub">(del taller)</span>'}
-                        <button class="btn-link" onclick='editarGarantiaServicio(${JSON.stringify(String(s.id))}, ${JSON.stringify(s.nombre_servicio)}, ${JSON.stringify(s.garantia_dias)}, ${JSON.stringify(s.garantia_km)})'>Editar</button>
-                    </td>
-                    <td class="centro" data-modulo="materiales_servicio">
-                        <button class="btn-link" onclick='abrirMaterialesServicio(${JSON.stringify(String(s.id))})'>${s.n_materiales ? `Materiales (${s.n_materiales})` : 'Agregar materiales'}</button>
-                    </td>
-                    <td class="centro">
-                        <button onclick='eliminarServicio(${JSON.stringify(String(s.id))})' class="btn-icono-eliminar" title="Eliminar" aria-label="Eliminar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
-                    </td>
-                </tr>`;
-        }).join('');
-        aplicarModulos();   // oculta la columna de materiales si el plan no la incluye
+        pintarServicios();
     } catch (error) {
         console.error("Error cargando servicios:", error);
     }
+}
+
+// Cifras del catálogo y tabla (filtrada por el buscador de la vista)
+function pintarServicios() {
+    const e = escaparHTML;
+    const servicios = serviciosCatalogo;
+    const conMateriales = servicios.filter(s => s.n_materiales).length;
+    const precios = servicios.map(s => Number(s.precio_base || 0));
+    const propias = servicios.filter(s => s.garantia_dias !== null && s.garantia_dias !== undefined).length;
+    const cifra = (clase, etiqueta, valor, icono, modulo = '') => `
+        <div class="veh-cifra ${clase}" ${modulo ? `data-modulo="${modulo}"` : ''}>
+            <span class="veh-cifra-icono" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24">${icono}</svg></span>
+            <div><div class="veh-cifra-etiqueta">${etiqueta}</div><div class="veh-cifra-valor">${valor}</div></div>
+        </div>`;
+    const cifras = document.getElementById('srv-cifras');
+    if (cifras) cifras.innerHTML = [
+        cifra('', 'Servicios en el catálogo', servicios.length, '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>'),
+        cifra('lila', 'Precio promedio', precios.length ? dinero(precios.reduce((a, b) => a + b, 0) / precios.length) : '—', '<path d="M12 3v18M16.5 7.5C16 6 14.4 5 12 5c-2.8 0-4.5 1.3-4.5 3.2 0 4.6 9 2.5 9 7 0 2-1.8 3.3-4.5 3.3-2.5 0-4.2-1-4.8-2.6"/>'),
+        cifra('menta', 'Con garantía propia', propias, '<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="m9 12 2 2 4-4"/>'),
+        cifra('ambar', 'Con materiales', conMateriales, '<path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>', 'materiales_servicio')
+    ].join('');
+
+    const q = normalizarTexto(document.getElementById('buscar-servicio')?.value || '');
+    const visibles = q ? servicios.filter(s => normalizarTexto(s.nombre_servicio).includes(q)) : servicios;
+    ponerTexto('srv-conteo', servicios.length ? (q ? `${visibles.length} de ${servicios.length}` : `${servicios.length} ${servicios.length === 1 ? 'servicio' : 'servicios'}`) : '');
+
+    const tbody = document.getElementById('tabla-servicios');
+    if (!servicios.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="vacio">Aún no hay servicios. Agrega el primero con el formulario de la derecha.</td></tr>';
+    } else if (!visibles.length) {
+        tbody.innerHTML = `<tr><td colspan="5" class="vacio">Ningún servicio coincide con "${e(document.getElementById('buscar-servicio').value.trim())}".</td></tr>`;
+    } else {
+        const icono = cuerpo => `<svg class="icono" viewBox="0 0 24 24" aria-hidden="true">${cuerpo}</svg>`;
+        tbody.innerHTML = visibles.map(s => {
+            const propia = s.garantia_dias !== null && s.garantia_dias !== undefined;
+            const dias = propia ? s.garantia_dias : garantiaTallerActual.dias;
+            const km = (s.garantia_km !== null && s.garantia_km !== undefined) ? s.garantia_km : garantiaTallerActual.km;
+            const id = JSON.stringify(String(s.id));
+            return `
+                <tr>
+                    <td><div class="srv-nombre">
+                        <span class="srv-inicial" aria-hidden="true">${e(String(s.nombre_servicio || '?').trim().charAt(0).toUpperCase())}</span>
+                        <b>${e(s.nombre_servicio)}</b>
+                    </div></td>
+                    <td class="num srv-precio">${dinero(s.precio_base || 0)}</td>
+                    <td>
+                        <span class="srv-garantia-texto">${e(textoGarantia(dias, km))}</span>
+                        <span class="srv-origen ${propia ? 'propia' : ''}">${propia ? 'Propia' : 'Del taller'}</span>
+                    </td>
+                    <td data-modulo="materiales_servicio">
+                        <button type="button" class="btn-chico ${s.n_materiales ? 'con-datos' : ''}" onclick='abrirMaterialesServicio(${id})'>
+                            ${icono('<path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/>')}${s.n_materiales ? `${s.n_materiales} ${s.n_materiales === 1 ? 'material' : 'materiales'}` : 'Agregar'}</button>
+                    </td>
+                    <td class="centro srv-acciones">
+                        <button type="button" class="btn-icono" title="Editar garantía" aria-label="Editar garantía de ${e(s.nombre_servicio)}"
+                            onclick='editarGarantiaServicio(${id}, ${JSON.stringify(s.nombre_servicio)}, ${JSON.stringify(s.garantia_dias)}, ${JSON.stringify(s.garantia_km)})'>
+                            ${icono('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>')}</button>
+                        <button type="button" class="btn-icono peligro" title="Eliminar" aria-label="Eliminar ${e(s.nombre_servicio)}" onclick='eliminarServicio(${id})'>
+                            ${icono('<path d="M4 7h16"/><path d="M18 7l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7"/><path d="M10 11v6M14 11v6"/><path d="M9 7V4h6v3"/>')}</button>
+                    </td>
+                </tr>`;
+        }).join('');
+    }
+    aplicarModulos();   // oculta la columna y la cifra de materiales si el plan no la incluye
+}
+
+// Botón "Nuevo servicio" de la cabecera: lleva al formulario de la derecha
+function enfocarNuevoServicio() {
+    const input = document.getElementById('nuevo-servicio-nombre');
+    if (!input) return;
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => input.focus(), 250);
 }
 
 // Lee un número entero opcional de un input (vacío -> null)
@@ -4259,8 +4308,21 @@ async function guardarServicio() {
     }
 }
 
-async function eliminarServicio(id) {
-    if (!confirm("¿Estás seguro de eliminar este servicio?")) return;
+// Pide confirmación en el modal (en lugar del confirm() del navegador) y luego elimina
+function eliminarServicio(id) {
+    const sv = serviciosCatalogo.find(x => String(x.id) === String(id));
+    const overlay = document.getElementById('modal-aviso');
+    mostrarModal({ tipo: 'warning', titulo: 'Eliminar servicio',
+        mensaje: `<b>${escaparHTML(sv?.nombre_servicio || 'Este servicio')}</b> saldrá del catálogo y Geor IA dejará de usar su precio. Las órdenes ya registradas no cambian.` });
+    const btnCancelar = document.getElementById('modal-btn-cancelar');
+    btnCancelar.hidden = false;
+    btnCancelar.onclick = () => { overlay.dataset.modo = ''; cerrarModal(); };
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Eliminar';
+    btnOk.onclick = () => { cerrarModal(); eliminarServicioConfirmado(id); };
+}
+
+async function eliminarServicioConfirmado(id) {
     try {
         const res = await fetch(`/servicios/${encodeURIComponent(id)}`, { method: "DELETE", headers: cabeceraAuth() });
         if (res.ok) cargarServicios();
