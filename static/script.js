@@ -1783,7 +1783,7 @@ async function pintarTendenciaCaja(totalHoy, panelId = 'panel-cuadre-caja') {
         <div class="tendencia-cab"><span>Ingresos de los últimos 7 días</span><b>${dinero(semana)}</b></div>
         <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
             <defs><linearGradient id="grad-tendencia" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0" stop-color="#C6FF3D" stop-opacity=".28"/><stop offset="1" stop-color="#C6FF3D" stop-opacity="0"/>
+                <stop offset="0" stop-color="currentColor" stop-opacity=".25"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/>
             </linearGradient></defs>
             <path d="${area}" fill="url(#grad-tendencia)"/>
             <path d="${linea}" fill="none" stroke="#C6FF3D" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>

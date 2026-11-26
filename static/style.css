@@ -3,7 +3,7 @@
    - Fondo oscuro con tinte violeta, superficies en capas, hilos finos.
    - Geor IA es el protagonista; la placa ecuatoriana identifica cada vehículo.
    - Morado #7030EF para acciones; lima #C6FF3D solo como señal (Geor en línea,
-     selección actual). Mona Sans en todo; su ancho condensado para placas y cifras.
+     selección actual). Plus Jakarta Sans en todo; el tema holográfico nocturno está al final.
    ============================================================================== */
 
 /* ------------------------------------------------------------------
@@ -11,10 +11,9 @@
    Un solo archivo variable con ejes de peso (200-900) y ancho (75-125%).
    ------------------------------------------------------------------ */
 @font-face {
-    font-family: "Mona Sans";
-    src: url("fonts/mona-sans-latin-standard-normal.woff2") format("woff2");
-    font-weight: 200 900;
-    font-stretch: 75% 125%;
+    font-family: "Plus Jakarta Sans";
+    src: url("fonts/plus-jakarta-sans-latin-wght-normal.woff2") format("woff2");
+    font-weight: 200 800;
     font-display: swap;
 }
 
@@ -110,7 +109,7 @@ html[data-theme="light"] {
 
 :root {
     /* Tipografía (escala 1.2, rem fijos) */
-    --fuente-ui: "Mona Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --fuente-ui: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
     --fuente-cifra: var(--fuente-ui);
     --t-xs: 0.8125rem;
     --t-s: 0.875rem;
@@ -1973,3 +1972,181 @@ html[data-theme="light"] .cuadre-banda { box-shadow: 0 10px 30px rgba(42, 19, 97
 }
 .cuadre .cuadre-cifras .cifra-caja { align-content: start; padding: 14px 16px; }
 @media (max-width: 760px) { .cuadre .cuadre-cifras .cifra-caja { padding: 12px; } }
+
+/* ==============================================================================
+   TEMA HOLOGRÁFICO NOCTURNO (por defecto)
+   Noche azul-índigo con luces violeta y estrellas, vidrio oscuro translúcido y
+   un degradado holográfico (menta, lima, amarillo, rosa, violeta) reservado para
+   lo que debe destacar: la cifra de caja, la sección actual, la acción principal
+   y el avance de cada vehículo. El lima del degradado es el de la gorra del logo.
+   ============================================================================== */
+:root,
+html[data-theme="dark"] {
+    --fondo: #0A0D26;
+    --superficie-1: rgba(255, 255, 255, 0.055);
+    --superficie-2: rgba(255, 255, 255, 0.075);
+    --superficie-3: rgba(255, 255, 255, 0.11);
+    --superficie-hundida: rgba(8, 10, 32, 0.45);
+    --linea: rgba(255, 255, 255, 0.09);
+    --linea-fuerte: rgba(255, 255, 255, 0.13);
+    --linea-intensa: rgba(255, 255, 255, 0.22);
+    --tinta: #F4F2FF;
+    --tinta-2: #C9C5E8;
+    --tinta-3: #9C98C2;
+    --marca-fuerte: #C7B8FF;
+    --exito: #7CF2B8;   --exito-fondo: rgba(124, 242, 184, 0.13);
+    --aviso: #F6D365;   --aviso-fondo: rgba(246, 211, 101, 0.12);
+    --peligro: #FF8FB1; --peligro-fondo: rgba(255, 143, 177, 0.13);
+    --info: #C7B8FF;    --info-fondo: rgba(199, 184, 255, 0.13);
+    --escena-arriba: rgba(165, 139, 255, 0.35);
+    --escena-1: rgba(255, 255, 255, 0.06);
+    --escena-2: rgba(255, 255, 255, 0.035);
+    --escena-3: rgba(255, 255, 255, 0.02);
+    --holo: linear-gradient(120deg, #9BF3C9 0%, #D6F56A 38%, #F7E58A 55%, #F3A6E3 78%, #A58BFF 100%);
+    --sobre-holo: #10122E;
+    --vidrio-blur: blur(18px) saturate(140%);
+    --sombra-vidrio: 0 16px 40px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+/* Fondo: degradado nocturno con luces en las esquinas y estrellas finas */
+html[data-theme="dark"] body {
+    background:
+        radial-gradient(1.2px 1.2px at 12% 18%, rgba(255,255,255,.8), transparent),
+        radial-gradient(1px 1px at 78% 12%, rgba(255,255,255,.7), transparent),
+        radial-gradient(1.4px 1.4px at 64% 72%, rgba(255,255,255,.7), transparent),
+        radial-gradient(1px 1px at 28% 84%, rgba(255,255,255,.6), transparent),
+        radial-gradient(1.2px 1.2px at 92% 46%, rgba(255,255,255,.7), transparent),
+        radial-gradient(1px 1px at 44% 38%, rgba(255,255,255,.5), transparent),
+        radial-gradient(120% 90% at 0% 0%, #3A1D7A 0%, transparent 45%),
+        radial-gradient(90% 80% at 100% 100%, #1D2F7A 0%, transparent 50%),
+        linear-gradient(160deg, #0A0D26, #121842 60%, #1A1450);
+    background-attachment: fixed;
+}
+
+/* Vidrio en los paneles grandes (el contenido de fondo pasa difuminado) */
+html[data-theme="dark"] :is(.geor, .tv, .tv-fila-lista, .panel-caja, .cifras, .vacio-taller, .modal-caja, .compositor) {
+    backdrop-filter: var(--vidrio-blur);
+    -webkit-backdrop-filter: var(--vidrio-blur);
+}
+html[data-theme="dark"] :is(.geor, .tv, .panel-caja, .cifras) { box-shadow: var(--sombra-vidrio); }
+html[data-theme="dark"] .modal-caja { background: rgba(20, 22, 60, 0.85) !important; }
+
+/* Formas más suaves: contenedores muy redondeados, controles en píldora */
+.geor, .panel-caja, .seccion-contabilidad .panel-caja { border-radius: 28px; }
+.tv { border-radius: 26px; }
+.tv-fila-lista { border-radius: 20px; }
+.cifras { border-radius: 22px; }
+.btn, .btn-enviar, .btn-login, .btn-agregar-servicio, .modal-btn-ok, .btn-inventario, .modal-btn-secundario,
+.btn-chico, .sugerencia, .segmento, .segmento button, .buscador-placa input, .nav-enlace, .pestana { border-radius: 9999px; }
+.compositor { border-radius: 26px; }
+
+/* ---------- Degradado holográfico: solo en lo que debe destacar ---------- */
+html[data-theme="dark"] :is(.btn-primario, .btn-enviar, .btn-login, .btn-agregar-servicio, .modal-btn-ok) {
+    background: var(--holo); color: var(--sobre-holo);
+    box-shadow: 0 8px 22px rgba(214, 245, 106, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+html[data-theme="dark"] :is(.btn-primario, .btn-enviar, .btn-login, .btn-agregar-servicio, .modal-btn-ok):hover {
+    background: var(--holo); filter: brightness(1.06) saturate(1.05);
+}
+html[data-theme="dark"] .btn-chico.principal { background: var(--holo); color: var(--sobre-holo); border-color: transparent; font-weight: 650; }
+html[data-theme="dark"] .btn-chico.principal:hover { filter: brightness(1.06); }
+html[data-theme="dark"] .segmento button[aria-pressed="true"] { background: var(--holo); color: var(--sobre-holo); box-shadow: none; }
+html[data-theme="dark"] .recorrido span.si,
+html[data-theme="dark"] .recorrido.entregado span.si { background: var(--holo); }
+html[data-theme="dark"] .pestana[aria-selected="true"]::after { background: var(--holo); height: 3px; }
+
+/* Navegación: la sección actual es una píldora holográfica */
+html[data-theme="dark"] .nav-app { background: rgba(8, 10, 32, 0.35); backdrop-filter: var(--vidrio-blur); -webkit-backdrop-filter: var(--vidrio-blur); }
+html[data-theme="dark"] .nav-enlace[aria-current="page"] { background: var(--holo); color: var(--sobre-holo); box-shadow: 0 8px 20px rgba(214, 245, 106, 0.18); font-weight: 650; }
+html[data-theme="dark"] .nav-enlace[aria-current="page"] .icono { stroke: var(--sobre-holo); }
+html[data-theme="dark"] .barra-app { background: rgba(10, 13, 38, 0.55); }
+html[data-theme="dark"] .inicial-taller { background: var(--holo); color: var(--sobre-holo); border: 0; border-radius: 50%; }
+
+/* Barra inferior del celular: píldora flotante de vidrio */
+@media (max-width: 959px) {
+    html[data-theme="dark"] .nav-inferior {
+        left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
+        border-radius: 9999px; border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(14, 18, 54, 0.72); padding: 6px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    html[data-theme="dark"] .nav-inferior button { border-radius: 9999px; min-height: 50px; }
+    html[data-theme="dark"] .nav-inferior button[aria-current="page"] { background: var(--holo); color: var(--sobre-holo); }
+    html[data-theme="dark"] .nav-inferior button[aria-current="page"] .icono { stroke: var(--sobre-holo); }
+    html[data-theme="dark"] .compositor { bottom: calc(86px + env(safe-area-inset-bottom)); }
+    html[data-theme="dark"] .contenedor { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
+}
+
+/* ---------- Geor IA ---------- */
+html[data-theme="dark"] .marca-geor {
+    background: #7030EF;
+    box-shadow: 0 0 0 3px #0E1236, 0 0 0 5px #D6F56A, 0 12px 30px rgba(112, 48, 239, 0.55);
+}
+html[data-theme="dark"] .marca-geor.pensando { box-shadow: 0 0 0 3px #0E1236, 0 0 0 5px #F3A6E3, 0 12px 30px rgba(243, 166, 227, 0.45); }
+html[data-theme="dark"] .mini-geor { background: #7030EF; }
+html[data-theme="dark"] .geor::before { background: radial-gradient(closest-side, rgba(155, 91, 255, 0.35), transparent 70%); }
+html[data-theme="dark"] .msg-usuario {
+    background: linear-gradient(135deg, #6B3CF2, #9A6BFF); border: 0; color: #fff;
+    border-radius: 22px 22px 6px 22px; box-shadow: 0 10px 26px rgba(112, 48, 239, 0.35);
+}
+html[data-theme="dark"] .msg-usuario .hora { color: rgba(255, 255, 255, 0.72); }
+html[data-theme="dark"] .msg-geor .cuerpo {
+    background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 22px 22px 22px 6px; padding: 12px 16px; color: var(--tinta-2);
+}
+html[data-theme="dark"] .msg-geor .cuerpo strong, html[data-theme="dark"] .msg-geor .cuerpo b { color: #fff; }
+html[data-theme="dark"] .msg-geor.tipo-error .cuerpo { background: var(--peligro-fondo); border-color: rgba(255, 143, 177, 0.3); }
+html[data-theme="dark"] .resultado { background: var(--exito-fondo); padding: 3px 10px; border-radius: 9999px; }
+html[data-theme="dark"] .dia-conversacion { background: rgba(255, 255, 255, 0.07); padding: 3px 12px; border-radius: 9999px; }
+html[data-theme="dark"] .compositor { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); }
+html[data-theme="dark"] .compositor:focus-within { border-color: rgba(214, 245, 106, 0.55); box-shadow: 0 0 0 4px rgba(214, 245, 106, 0.12); }
+html[data-theme="dark"] .sugerencia { background: rgba(255, 255, 255, 0.05); }
+html[data-theme="dark"] .estado-geor i { background: #7CF2B8; box-shadow: 0 0 0 3px rgba(124, 242, 184, 0.16); }
+
+/* ---------- Cifras del saludo ---------- */
+html[data-theme="dark"] .cifras { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.11); }
+html[data-theme="dark"] .cifra dd { font-weight: 750; }
+
+/* ---------- Tarjeta del vehículo ---------- */
+html[data-theme="dark"] .tv-datos { background: rgba(8, 10, 32, 0.35); }
+html[data-theme="dark"] .tv-escena .badge-estado { background: rgba(10, 13, 38, 0.7); }
+html[data-theme="dark"] .placa::before, html[data-theme="dark"] .placa-badge::before { background: #7030EF; }
+
+/* ---------- Cuadre: la banda principal es la tarjeta holográfica ---------- */
+html[data-theme="dark"] .cuadre-banda {
+    background: var(--holo); color: var(--sobre-holo);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 20px 50px rgba(165, 139, 255, 0.22), inset 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+html[data-theme="dark"] .cuadre-banda::after {
+    content: ""; position: absolute; width: 260px; height: 260px; right: -70px; top: -120px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.22); pointer-events: none;
+}
+html[data-theme="dark"] .banda-cifra .etiqueta,
+html[data-theme="dark"] .banda-cifra .explica,
+html[data-theme="dark"] .tendencia-cab { color: rgba(16, 18, 46, 0.72); }
+html[data-theme="dark"] .banda-cifra .monto,
+html[data-theme="dark"] .tendencia-cab b { color: var(--sobre-holo); }
+html[data-theme="dark"] .banda-cifra .monto.monto-negativo { color: #B0124A; }
+html[data-theme="dark"] .pastilla { background: rgba(16, 18, 46, 0.12); color: var(--sobre-holo); }
+html[data-theme="dark"] .tendencia-dias { color: rgba(16, 18, 46, 0.6); }
+html[data-theme="dark"] .tendencia-dias .hoy { color: var(--sobre-holo); }
+/* Sobre el holograma, la línea de tendencia va en tinta oscura */
+html[data-theme="dark"] .banda-tendencia svg path:nth-of-type(2) { stroke: rgba(16, 18, 46, 0.75); }
+html[data-theme="dark"] .banda-tendencia svg path:nth-of-type(1) { fill: rgba(16, 18, 46, 0.08); }
+html[data-theme="dark"] .banda-tendencia svg circle { fill: var(--sobre-holo); }
+html[data-theme="dark"] .cifra-caja,
+html[data-theme="dark"] .cuadre .cuadre-metodos,
+html[data-theme="dark"] .fila-tecnico { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); border-radius: 20px; }
+html[data-theme="dark"] .cifra-caja dd { color: #fff; font-weight: 750; }
+html[data-theme="dark"] .barra-tecnico span { background: linear-gradient(90deg, #A58BFF, #F3A6E3); }
+html[data-theme="dark"] .fila-tecnico:first-child .barra-tecnico span { background: var(--holo); }
+
+/* Login: el panel de marca con las luces del tema */
+html[data-theme="dark"] .login-marca { background: linear-gradient(160deg, #1A1450, #0A0D26); }
+html[data-theme="dark"] .login-formulario { background: transparent; }
+html[data-theme="dark"] .demo-ficha .demo-monto { background: var(--holo); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* Plus Jakarta no tiene ancho condensado: la placa gana aire a los lados */
+.placa, .placa-badge { letter-spacing: 0.02em; padding-left: 0.4em; padding-right: 0.4em; font-weight: 800; }
+.placa::before, .placa-badge::before { margin-left: -0.4em; margin-right: -0.4em; }
+.tv-fila-lista .mini .placa.chica { font-size: 0.72rem; }
