@@ -4242,13 +4242,14 @@ function pintarServicios() {
                         <b>${e(s.nombre_servicio)}</b>
                     </div></td>
                     <td class="num srv-precio">${dinero(s.precio_base || 0)}</td>
-                    <td>
+                    <td class="srv-garantia-celda">
+                        ${icono('<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/>').replace('class="icono"', 'class="icono srv-garantia-icono"')}
                         <span class="srv-garantia-texto">${e(textoGarantia(dias, km))}</span>
                         <span class="srv-origen ${propia ? 'propia' : ''}">${propia ? 'Propia' : 'Del taller'}</span>
                     </td>
                     <td data-modulo="materiales_servicio">
                         <button type="button" class="btn-chico ${s.n_materiales ? 'con-datos' : ''}" onclick='abrirMaterialesServicio(${id})'>
-                            ${icono('<path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/>')}${s.n_materiales ? `${s.n_materiales} ${s.n_materiales === 1 ? 'material' : 'materiales'}` : 'Agregar'}</button>
+                            ${icono('<path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/>')}${s.n_materiales ? `${s.n_materiales} ${s.n_materiales === 1 ? 'material' : 'materiales'}` : '<span class="srv-mas" aria-hidden="true">+ </span>Agregar'}</button>
                     </td>
                     <td class="centro srv-acciones">
                         <button type="button" class="btn-icono" title="Editar garantía" aria-label="Editar garantía de ${e(s.nombre_servicio)}"
@@ -4263,13 +4264,34 @@ function pintarServicios() {
     aplicarModulos();   // oculta la columna y la cifra de materiales si el plan no la incluye
 }
 
-// Botón "Nuevo servicio" de la cabecera: lleva al formulario de la derecha
+// Botón "Nuevo servicio" de la cabecera: en escritorio lleva al formulario de la derecha;
+// en el celular abre el mismo formulario como hoja inferior
+const esCelularServicios = () => window.matchMedia('(max-width: 767px)').matches;
+
 function enfocarNuevoServicio() {
     const input = document.getElementById('nuevo-servicio-nombre');
     if (!input) return;
+    if (esCelularServicios()) { abrirHojaServicio(); return; }
     input.scrollIntoView({ behavior: 'smooth', block: 'center' });
     setTimeout(() => input.focus(), 250);
 }
+
+function abrirHojaServicio() {
+    document.getElementById('vista-servicios').classList.add('hoja-abierta');
+    document.body.classList.add('sin-desplazamiento');
+    setTimeout(() => document.getElementById('nuevo-servicio-nombre')?.focus(), 280);
+}
+
+function cerrarHojaServicio() {
+    document.getElementById('vista-servicios')?.classList.remove('hoja-abierta');
+    document.body.classList.remove('sin-desplazamiento');
+}
+
+// Escape cierra la hoja; al pasar a escritorio también se cierra
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('vista-servicios')?.classList.contains('hoja-abierta')) cerrarHojaServicio();
+});
+window.matchMedia('(max-width: 767px)').addEventListener?.('change', ev => { if (!ev.matches) cerrarHojaServicio(); });
 
 // Lee un número entero opcional de un input (vacío -> null)
 function enteroOpcional(id) {
@@ -4302,6 +4324,7 @@ async function guardarServicio() {
         }
         ['nuevo-servicio-nombre', 'nuevo-servicio-precio', 'nuevo-servicio-garantia-dias', 'nuevo-servicio-garantia-km']
             .forEach(id => document.getElementById(id).value = '');
+        cerrarHojaServicio();   // en el celular se cierra la hoja al agregar
         cargarServicios();
     } catch (error) {
         mostrarNotificacion("Error de conexión al guardar el servicio.", "error");

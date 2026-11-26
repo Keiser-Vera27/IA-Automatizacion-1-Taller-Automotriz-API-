@@ -2671,3 +2671,116 @@ html[data-theme="dark"] .srv-tarjeta .campo-servicio { background: rgba(255, 255
     .srv-nombre b { overflow-wrap: anywhere; }
     .srv-acciones { text-align: right; }
 }
+
+/* ==========================================================================
+   SERVICIOS Y PRECIOS — CELULAR (< 768 px)
+   Tarjetas por servicio, formulario como hoja inferior y espacio para la barra
+   de navegación. En escritorio estas piezas extra quedan ocultas.
+   ========================================================================== */
+.srv-hoja-asa, .srv-hoja-cerrar, .srv-hoja-fondo, .srv-garantia-icono, .srv-mas { display: none; }
+.srv-hoja-cabecera h2 { margin: 0 0 14px; }
+body.sin-desplazamiento { overflow: hidden; }
+
+@media (max-width: 767px) {
+    /* 1. Ancho completo con 16 px simétricos (el contenedor ya pone 12 px) y sin desborde */
+    #vista-servicios { padding: 4px 4px 100px; overflow-x: hidden; }
+    #vista-servicios .srv-layout { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
+    #vista-servicios .srv-catalogo, #vista-servicios .srv-lateral { width: 100%; min-width: 0; box-sizing: border-box; }
+
+    /* Cabecera: título y botón en una fila */
+    #vista-servicios .veh-cabecera { align-items: center; margin-bottom: 16px; }
+    #vista-servicios .veh-cabecera h1 { font-size: 1.6rem; line-height: 1.15; }
+    #vista-servicios .veh-cabecera .btn { height: 42px; padding: 0 16px; border-radius: 999px; font-size: var(--t-s); flex: none; }
+    #vista-servicios .veh-cifras { margin-bottom: 16px; }
+    #vista-servicios .veh-cifra-etiqueta { line-height: 1.25; }
+
+    /* El catálogo deja de ser una caja: cada servicio es su propia tarjeta */
+    #vista-servicios .srv-catalogo { padding: 0; background: none !important; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+    #vista-servicios .srv-catalogo-barra { margin-bottom: 12px; }
+    #vista-servicios .srv-catalogo-barra .buscador-grande { max-width: none; }
+    #vista-servicios .srv-catalogo .tabla-scroll { overflow: visible; }
+    #vista-servicios .tabla-servicios-catalogo tbody { display: flex; flex-direction: column; gap: 12px; }
+
+    /* 2. Tarjeta de vidrio */
+    #vista-servicios .tabla-servicios-catalogo tbody tr {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0; row-gap: 10px;
+        padding: 16px; border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    }
+    html[data-theme="light"] #vista-servicios .tabla-servicios-catalogo tbody tr { background: #fff; border-color: var(--linea); }
+    #vista-servicios .tabla-servicios-catalogo tbody tr:last-child { border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+    html[data-theme="light"] #vista-servicios .tabla-servicios-catalogo tbody tr:last-child { border-bottom-color: var(--linea); }
+    #vista-servicios .tabla-servicios-catalogo tbody tr:hover td { background: none; }
+    #vista-servicios .tabla-servicios-catalogo td.vacio { grid-column: 1 / -1; padding: 12px 0; }
+
+    /* 3a. Arriba: nombre a la izquierda, precio tabular a la derecha */
+    #vista-servicios .srv-nombre { min-width: 0; padding-right: 12px; }
+    #vista-servicios .srv-inicial { display: none; }
+    #vista-servicios .srv-nombre b { font-size: var(--t-m); font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+    #vista-servicios .srv-precio { font-size: 1.15rem; font-weight: 800; letter-spacing: -0.01em; text-align: right; align-self: start; }
+
+    /* 3b. Medio: garantía con ícono y badge */
+    #vista-servicios td.srv-garantia-celda { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; color: var(--tinta-2); font-size: var(--t-s); }
+    #vista-servicios .srv-garantia-icono { display: block; width: 16px; height: 16px; flex: none; fill: none; stroke: var(--tinta-3); stroke-width: 1.9; stroke-linejoin: round; }
+    #vista-servicios .srv-garantia-texto { display: inline; white-space: nowrap; min-width: 0; }
+    #vista-servicios .srv-origen {
+        margin: 0 0 0 auto; padding: 3px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 650;
+        color: var(--tinta-2); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #vista-servicios .srv-origen.propia { color: #9BF3C9; background: rgba(155, 243, 201, 0.10); border-color: rgba(155, 243, 201, 0.28); }
+    html[data-theme="light"] #vista-servicios .srv-origen { background: var(--superficie-2); border-color: var(--linea); }
+    html[data-theme="light"] #vista-servicios .srv-origen.propia { color: #1F7A52; background: rgba(46, 158, 107, 0.10); border-color: rgba(46, 158, 107, 0.3); }
+
+    /* 3c. Abajo: separador y barra de acciones */
+    /* Filas fijas: 1 nombre y precio, 2 garantía, 3 separador continuo, 4 acciones */
+    #vista-servicios .tabla-servicios-catalogo tbody tr::after {
+        content: ""; grid-column: 1 / -1; grid-row: 3; height: 1px; margin-top: 2px; background: rgba(255, 255, 255, 0.07);
+    }
+    html[data-theme="light"] #vista-servicios .tabla-servicios-catalogo tbody tr::after { background: var(--linea); }
+    #vista-servicios .tabla-servicios-catalogo tbody tr:has(td.vacio)::after { display: none; }
+    #vista-servicios .tabla-servicios-catalogo td:first-child:not(.vacio), #vista-servicios td.srv-precio { grid-row: 1; }
+    #vista-servicios td.srv-garantia-celda { grid-row: 2; }
+    #vista-servicios td[data-modulo], #vista-servicios td.srv-acciones { grid-row: 4; width: auto; }
+    #vista-servicios td[data-modulo] { grid-column: 1; display: flex; align-items: center; }
+    #vista-servicios td.srv-acciones { grid-column: 2; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+    /* Si el plan no tiene materiales, las acciones ocupan toda la fila */
+    #vista-servicios td.modulo-oculto + td.srv-acciones { grid-column: 1 / -1; }
+    #vista-servicios td[data-modulo] .btn-chico { height: 36px; padding: 0 14px; font-size: var(--t-xs); }
+    #vista-servicios td[data-modulo] .btn-chico:not(.con-datos) .icono { display: none; }
+    #vista-servicios .srv-mas { display: inline; }
+    #vista-servicios .srv-acciones .btn-icono {
+        width: 40px; height: 40px; border-radius: 12px;
+        background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); color: var(--tinta-2);
+    }
+    html[data-theme="light"] #vista-servicios .srv-acciones .btn-icono { background: var(--superficie-2); border-color: var(--linea); }
+    #vista-servicios .srv-acciones .btn-icono .icono { width: 17px; height: 17px; }
+
+    /* 4. Formulario como hoja inferior (se abre con "Nuevo servicio") */
+    #vista-servicios .srv-lateral { position: static; display: block; }
+    #vista-servicios .srv-garantia { margin-top: 0; }
+    #vista-servicios .srv-hoja {
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 1001; margin: 0;
+        max-height: 88dvh; overflow-y: auto; padding: 10px 16px calc(20px + env(safe-area-inset-bottom));
+        border-radius: 24px 24px 0 0; border: 1px solid rgba(255, 255, 255, 0.1); border-bottom: 0;
+        background: #141634; box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.45);
+        transform: translateY(105%); visibility: hidden;
+        transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 280ms;
+    }
+    html[data-theme="light"] #vista-servicios .srv-hoja { background: #fff; border-color: var(--linea); }
+    #vista-servicios.hoja-abierta .srv-hoja { transform: translateY(0); visibility: visible; transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1); }
+    #vista-servicios .srv-hoja-asa { display: block; width: 40px; height: 4px; border-radius: 4px; margin: 0 auto 12px; background: rgba(255, 255, 255, 0.22); }
+    html[data-theme="light"] #vista-servicios .srv-hoja-asa { background: var(--linea-fuerte); }
+    #vista-servicios .srv-hoja-cabecera { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    #vista-servicios .srv-hoja-cabecera h2 { margin: 0; font-size: 1.15rem; }
+    #vista-servicios .srv-hoja-cerrar { display: inline-grid; width: 40px; height: 40px; }
+    #vista-servicios .srv-hoja .campo-servicio { height: 48px; font-size: 16px; }   /* 16 px evita el zoom de iOS */
+    #vista-servicios .srv-hoja-fondo {
+        display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(5, 6, 20, 0.6);
+        backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity 220ms;
+    }
+    #vista-servicios.hoja-abierta .srv-hoja-fondo { opacity: 1; pointer-events: auto; }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+    #vista-servicios .srv-hoja, #vista-servicios.hoja-abierta .srv-hoja { transition: none; }
+}

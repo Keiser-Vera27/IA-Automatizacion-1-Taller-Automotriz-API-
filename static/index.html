@@ -20,7 +20,7 @@
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=16">
+    <link rel="stylesheet" href="style.css?v=17">
     <!-- Librería para renderizar Markdown (negritas, listas y tablas de Geor IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
@@ -399,6 +399,7 @@
 
                 <div id="srv-cifras" class="veh-cifras" aria-live="polite"></div>
 
+                <div class="srv-hoja-fondo" onclick="cerrarHojaServicio()" aria-hidden="true"></div>
                 <div class="srv-layout">
                     <section class="srv-catalogo" aria-label="Catálogo de servicios">
                         <div class="srv-catalogo-barra">
@@ -428,8 +429,14 @@
                     </section>
 
                     <aside class="srv-lateral">
-                        <section class="srv-tarjeta" aria-labelledby="titulo-nuevo-servicio">
-                            <h2 id="titulo-nuevo-servicio">Agregar servicio</h2>
+                        <!-- En escritorio es una tarjeta; en el celular (< 768 px) se abre como hoja inferior -->
+                        <section id="hoja-nuevo-servicio" class="srv-tarjeta srv-hoja" aria-labelledby="titulo-nuevo-servicio">
+                            <span class="srv-hoja-asa" aria-hidden="true"></span>
+                            <div class="srv-hoja-cabecera">
+                                <h2 id="titulo-nuevo-servicio">Agregar servicio</h2>
+                                <button type="button" class="btn-icono srv-hoja-cerrar" onclick="cerrarHojaServicio()" aria-label="Cerrar">
+                                    <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+                            </div>
                             <form class="form-servicio" onsubmit="event.preventDefault(); guardarServicio();">
                                 <label class="srv-campo">
                                     <span>Nombre del servicio</span>
@@ -590,7 +597,7 @@
     </div> <!-- Cierra #plantilla-orden -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js?v=1011"></script>
+    <script src="script.js?v=1012"></script>
     <!-- MODAL DE AVISO (centro de pantalla, con botón OK). Reutilizable: mostrarModal({...}) -->
     <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
         <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">
