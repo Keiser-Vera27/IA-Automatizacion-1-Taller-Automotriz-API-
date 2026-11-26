@@ -20,7 +20,7 @@
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=12">
+    <link rel="stylesheet" href="style.css?v=13">
     <!-- Librería para renderizar Markdown (negritas, listas y tablas de Geor IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
@@ -321,10 +321,10 @@
             <!-- ========================================== -->
             <!-- PANTALLA 2: DASHBOARD ANALÍTICO -->
             <!-- ========================================== -->
-            <div id="vista-dashboard" class="vista-app dash" style="display: none; padding: 20px;">
+            <div id="vista-dashboard" class="vista-app dash" style="display: none;">
                 <div class="dash-cabecera">
                     <div>
-                        <h2>Dashboard de Rendimiento</h2>
+                        <h1>Dashboard</h1>
                         <p class="dash-sub" id="dash-periodo-texto">Cargando…</p>
                     </div>
                     <!-- Filtro de período: todo el dashboard obedece a esta selección -->
@@ -361,14 +361,14 @@
 
                     <!-- 2. ¿Qué me deja plata? -->
                     <section class="panel-caja dash-panel">
-                        <h3>Servicios que más facturan</h3>
+                        <div class="dash-panel-cabecera"><h3>Servicios que más facturan</h3></div>
                         <div id="dash-servicios"></div>
                         <p class="dash-nota">Según el precio de cada trabajo en la orden. Los repuestos cobrados aparte no se incluyen.</p>
                     </section>
 
                     <!-- 3. ¿Qué se me puede escapar? -->
                     <section class="panel-caja dash-panel">
-                        <h3>Lo que se te puede escapar</h3>
+                        <div class="dash-panel-cabecera"><h3>Lo que se te puede escapar</h3></div>
                         <div id="dash-fugas"></div>
                     </section>
 
@@ -520,7 +520,7 @@
     </div> <!-- Cierra #plantilla-orden -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js?v=1007"></script>
+    <script src="script.js?v=1008"></script>
     <!-- MODAL DE AVISO (centro de pantalla, con botón OK). Reutilizable: mostrarModal({...}) -->
     <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
         <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">

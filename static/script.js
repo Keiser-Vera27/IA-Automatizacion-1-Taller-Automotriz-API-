@@ -2886,7 +2886,7 @@ async function cargarDatosDashboard() {
 
 function renderDashboard(d) {
     document.getElementById('dash-periodo-texto').innerHTML =
-        `${escaparHTML(d.periodo.texto)} <span class="dash-sub-tenue">· comparado con ${escaparHTML(d.anterior.texto)}</span>`;
+        `${escaparHTML(d.periodo.texto)} <span class="dash-sub-tenue">comparado con ${escaparHTML(d.anterior.texto)}</span>`;
     renderKpis(d);
     renderTendencia(d);
     renderServiciosDashboard(d.servicios);
@@ -2983,7 +2983,7 @@ function renderTendencia(d) {
     renderTablaTendencia(d);
 
     const series = [
-        { etiqueta: 'Ingresos', color: colorVar('--serie-ingresos'), datos: s.ingresos, ancho: 2 },
+        { etiqueta: 'Ingresos', color: colorVar('--serie-ingresos'), datos: s.ingresos, ancho: 2.5, relleno: true },
         { etiqueta: 'Egresos', color: colorVar('--serie-egresos'), datos: s.egresos, ancho: 2 },
         { etiqueta: etiquetaPeriodoAnterior(d), color: colorVar('--serie-anterior'), datos: s.ingresos_anterior, ancho: 1.5, punteada: true,
           titulo: `Ingresos del ${d.anterior.texto}, día por día, para comparar` }
@@ -3001,7 +3001,17 @@ function renderTendencia(d) {
         data: {
             labels: s.etiquetas,
             datasets: series.map(x => ({
-                label: x.etiqueta, data: x.datos, borderColor: x.color, backgroundColor: x.color,
+                label: x.etiqueta, data: x.datos, borderColor: x.color,
+                // Ingresos: área con degradado del color de la línea hacia transparente
+                backgroundColor: x.relleno ? (ctx => {
+                    const area = ctx.chart.chartArea;
+                    if (!area) return 'transparent';
+                    const g = ctx.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+                    g.addColorStop(0, colorConAlfa(x.color, 0.32));
+                    g.addColorStop(1, colorConAlfa(x.color, 0));
+                    return g;
+                }) : x.color,
+                fill: x.relleno ? 'origin' : false,
                 borderWidth: x.ancho, borderDash: x.punteada ? [5, 4] : [], cubicInterpolationMode: 'monotone',   // curva suave sin pasarse de los valores reales
                 pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12,
                 pointHoverBorderColor: colorVar('--dash-superficie'), pointHoverBorderWidth: 2, spanGaps: false
@@ -3029,6 +3039,19 @@ function renderTendencia(d) {
             }
         }
     });
+}
+
+// "#9BF3C9" o "rgb(…)" -> rgba con la transparencia pedida (para degradados del gráfico)
+function colorConAlfa(color, alfa) {
+    const c = String(color).trim();
+    if (c.startsWith('#') && (c.length === 7 || c.length === 4)) {
+        const h = c.length === 4 ? c.slice(1).split('').map(x => x + x).join('') : c.slice(1);
+        const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
+        return `rgba(${r}, ${g}, ${b}, ${alfa})`;
+    }
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (m) { const [r, g, b] = m[1].split(',').map(v => v.trim()); return `rgba(${r}, ${g}, ${b}, ${alfa})`; }
+    return c;
 }
 
 // Nombre claro de la línea punteada según el filtro elegido:
@@ -3113,8 +3136,8 @@ function renderFugas(f) {
     const g = f.garantias;
     if (g) {
         filas.push(g.reclamos
-            ? filaFuga('aviso', `${g.reclamos} reclamo${g.reclamos > 1 ? 's' : ''} de garantía${g.tasa !== null ? ` · ${g.tasa}% de retorno` : ''}`,
-                `Costo para el taller: <b>${dinero(g.costo)}</b> · ${g.entregadas} trabajos con garantía en el período`)
+            ? filaFuga('aviso', `${g.reclamos} reclamo${g.reclamos > 1 ? 's' : ''} de garantía${g.tasa !== null ? `, ${g.tasa}% de retorno` : ''}`,
+                `Costo para el taller: <b>${dinero(g.costo)}</b>. ${g.entregadas} trabajos con garantía en el período`)
             : filaFuga('bien', 'Ningún reclamo de garantía', `${g.entregadas} trabajos con garantía en el período`));
     }
     document.getElementById('dash-fugas').innerHTML = `<ul class="dash-fugas">${filas.join('')}</ul>`;
@@ -3134,11 +3157,11 @@ function renderInventarioDashboard(inv) {
             lista(inv.agotados, x => `usaste ${x.uso_30} en 30 días`)),
         bloque(inv.por_agotarse_total ? 'aviso' : 'bien',
             inv.por_agotarse_total ? `${inv.por_agotarse_total} por agotarse` : 'Nada por agotarse',
-            lista(inv.por_agotarse, x => `quedan ${x.stock} · usaste ${x.uso_30} en 30 días`)),
+            lista(inv.por_agotarse, x => `quedan ${x.stock}, usaste ${x.uso_30} en 30 días`)),
         bloque(inv.sin_movimiento_total ? 'info' : 'bien',
             inv.sin_movimiento_total ? `${dinero(inv.sin_movimiento_valor)} parados en ${inv.sin_movimiento_total} repuesto${inv.sin_movimiento_total > 1 ? 's' : ''} sin uso en ${inv.dias_sin_movimiento} días`
                                      : `Todo el stock se movió en ${inv.dias_sin_movimiento} días`,
-            lista(inv.sin_movimiento, x => `${x.stock} u. · ${dinero(x.valor)}`))
+            lista(inv.sin_movimiento, x => `${x.stock} u., ${dinero(x.valor)}`))
     ].join('');
 }
 

@@ -2150,3 +2150,103 @@ html[data-theme="dark"] .demo-ficha .demo-monto { background: var(--holo); -webk
 .placa, .placa-badge { letter-spacing: 0.02em; padding-left: 0.4em; padding-right: 0.4em; font-weight: 800; }
 .placa::before, .placa-badge::before { margin-left: -0.4em; margin-right: -0.4em; }
 .tv-fila-lista .mini .placa.chica { font-size: 0.72rem; }
+
+/* ==================================================================
+   DASHBOARD con el tema holográfico
+   ================================================================== */
+html[data-theme="dark"] {
+    --serie-ingresos: #9BF3C9;      /* menta */
+    --serie-egresos: #F3A6E3;       /* rosa */
+    --serie-anterior: #A58BFF;      /* violeta, punteada */
+    --dash-rejilla: rgba(255, 255, 255, 0.07);
+    --dash-superficie: #121842;
+    --dash-tooltip: rgba(18, 24, 66, 0.95);
+    --estado-bien: #7CF2B8;
+    --estado-aviso: #F6D365;
+    --estado-serio: #FFB38A;
+    --estado-critico: #FF8FB1;
+    --estado-info: #C7B8FF;
+}
+.dash { padding: 0; }
+.dash-cabecera { align-items: flex-end; margin-bottom: 4px; }
+.dash-cabecera h1 { margin: 0; font-size: 1.875rem; }
+.dash-sub { color: var(--tinta); font-weight: 600; }
+.dash-sub-tenue { color: var(--tinta-3); font-weight: 500; margin-left: 6px; }
+
+/* Filtro de período: control segmentado en píldora */
+.dash-filtros { gap: 4px; padding: 4px; border-radius: 9999px; background: var(--superficie-1); border: 1px solid var(--linea-fuerte); }
+.dash-chip { height: 34px; padding: 0 14px; border-radius: 9999px; border: 0; background: transparent; color: var(--tinta-2); font: 600 var(--t-xs) var(--fuente-ui); cursor: pointer; white-space: nowrap; }
+.dash-chip:hover { color: var(--tinta); background: var(--superficie-2); border: 0; }
+.dash-chip.activo { background: var(--marca); color: #fff; border: 0; }
+html[data-theme="dark"] .dash-chip.activo { background: var(--holo); color: var(--sobre-holo); }
+.dash-rango-propio { padding: 0 6px; }
+.dash-rango-propio input { min-height: 32px; border-radius: 9999px; }
+/* Botones .dash-chip usados fuera del filtro (fichas, cotizaciones) */
+:not(.dash-filtros) > .dash-chip { border: 1px solid var(--linea-fuerte); background: transparent; }
+
+/* Indicadores: el primero (Facturado) es la tarjeta holográfica */
+.dash-kpis { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 22px; }
+.dash-kpi { position: relative; overflow: hidden; border-radius: 22px; padding: 18px 20px; background: var(--superficie-1); border: 1px solid var(--linea-fuerte); }
+html[data-theme="dark"] .dash-kpi { backdrop-filter: var(--vidrio-blur); -webkit-backdrop-filter: var(--vidrio-blur); box-shadow: var(--sombra-vidrio); }
+.dash-kpi-etiqueta { font-size: var(--t-xs); color: var(--tinta-3); font-weight: 550; }
+.dash-kpi-valor { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.02em; color: var(--tinta); margin: 6px 0 8px; }
+html[data-theme="dark"] #dash-kpis > .dash-kpi:first-child {
+    background: var(--holo); border-color: rgba(255, 255, 255, 0.5);
+    box-shadow: 0 20px 50px rgba(165, 139, 255, 0.22), inset 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+html[data-theme="dark"] #dash-kpis > .dash-kpi:first-child::after {
+    content: ""; position: absolute; width: 180px; height: 180px; right: -60px; top: -80px; border-radius: 50%; background: rgba(255, 255, 255, 0.22);
+}
+html[data-theme="dark"] #dash-kpis > .dash-kpi:first-child :is(.dash-kpi-etiqueta, .dash-kpi-extra, .dash-delta, .dash-delta-texto, .dash-ayuda) { color: rgba(16, 18, 46, 0.72); }
+html[data-theme="dark"] #dash-kpis > .dash-kpi:first-child :is(.dash-kpi-valor, .dash-delta-texto b) { color: var(--sobre-holo); }
+html[data-theme="dark"] #dash-kpis > .dash-kpi:first-child .dash-delta-flecha { background: rgba(16, 18, 46, 0.12); color: var(--sobre-holo); }
+
+/* Paneles */
+.dash-grid { gap: 18px; margin-top: 18px; }
+.dash-grid .dash-panel { margin: 0 !important; padding: 22px 24px; border-radius: 28px; }
+.dash-panel h3 { margin: 0; font-size: 1.0625rem; }
+.dash-panel-cabecera { margin-bottom: 14px; align-items: center; }
+.dash-leyenda { gap: 18px; margin-bottom: 12px; font-size: var(--t-xs); color: var(--tinta-2); }
+.dash-muestra { width: 22px; border-top-width: 3px; border-radius: 2px; }
+.dash-lienzo { height: 300px; }
+html[data-theme="dark"] .dash-lienzo canvas { filter: drop-shadow(0 0 10px rgba(155, 243, 201, 0.18)); }
+
+/* Servicios: barras en píldora con el degradado */
+.dash-barras { gap: 14px; }
+.dash-barra-texto { font-size: var(--t-s); }
+.dash-barra-pista { height: 10px; border-radius: 9999px; background: var(--linea); overflow: hidden; }
+.dash-barra { height: 10px; border-radius: 9999px; background: linear-gradient(90deg, var(--marca), var(--marca-fuerte)); }
+html[data-theme="dark"] .dash-barra { background: linear-gradient(90deg, #A58BFF, #F3A6E3); }
+html[data-theme="dark"] .dash-barras li:first-child .dash-barra { background: var(--holo); box-shadow: 0 0 14px rgba(214, 245, 106, 0.25); }
+.dash-barra.otros, html[data-theme="dark"] .dash-barra.otros { background: var(--linea-intensa); box-shadow: none; }
+
+/* Lo que se puede escapar: filas de vidrio con su ícono */
+.dash-fugas { gap: 8px; }
+.dash-fuga { padding: 12px 14px; border-radius: 18px; background: var(--superficie-1); border: 1px solid var(--linea); gap: 12px; }
+.dash-icono { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; margin: 0; background: color-mix(in srgb, currentColor 14%, transparent); }
+.dash-fuga-detalle { color: var(--tinta-3); }
+.dash-mini-tabla td { color: var(--tinta-2); }
+
+/* Inventario */
+.dash-inventario { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.dash-inv-bloque { padding: 12px 14px; border-radius: 18px; background: var(--superficie-1); border: 1px solid var(--linea); }
+.dash-inv-bloque .dash-fuga { padding: 0; background: none; border: 0; border-radius: 0; }
+.dash-lista { list-style: none; margin: 10px 0 0 42px; padding: 0; display: grid; gap: 6px; font-size: var(--t-xs); }
+.dash-lista li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; color: var(--tinta-2); }
+.dash-lista li .sub { color: var(--tinta-3); white-space: nowrap; }
+
+@media (max-width: 900px) {
+    .dash-filtros { border-radius: 22px; overflow-x: auto; flex-wrap: nowrap; max-width: 100%; }
+    .dash-grid { grid-template-columns: minmax(0, 1fr); }
+    .dash-grid .dash-panel { padding: 18px 16px; }
+}
+.dash-inventario { margin-top: 14px; }
+.dash-panel > h3 + .dash-nota { margin-top: 4px; }
+@media (max-width: 700px) {
+    .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    #dash-kpis > .dash-kpi:first-child { grid-column: 1 / -1; }
+    .dash-kpi { padding: 14px; border-radius: 20px; }
+    .dash-kpi-valor { font-size: 1.3rem; }
+    .dash-delta-texto { font-size: 11.5px; }
+    .dash-cabecera h1 { font-size: 1.5625rem; }
+}
