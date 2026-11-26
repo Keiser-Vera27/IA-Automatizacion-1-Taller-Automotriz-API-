@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Oficial de Registros</title>
     <!-- Identidad: favicon, ícono de app y color del navegador -->
     <link rel="icon" href="brand/favicon.svg" type="image/svg+xml">
@@ -10,14 +10,18 @@
     <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
     <link rel="manifest" href="brand/site.webmanifest">
     <meta name="theme-color" content="#7030EF">
-    <!-- Aplica el tema guardado ANTES de pintar, para evitar el parpadeo de color -->
+    <!-- Tipografías propias (se precargan las dos más usadas) -->
+    <link rel="preload" href="fonts/barlow-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="fonts/barlow-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <!-- Aplica el tema guardado ANTES de pintar, para evitar el parpadeo de color.
+         Por defecto claro: se lee mejor en el mostrador y en el celular a pleno día. -->
     <script>
         (function () {
-            var tema = localStorage.getItem("as_tema") || "dark";
+            var tema = localStorage.getItem("as_tema") || "light";
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=7">
     <!-- Librería para renderizar Markdown (negritas y listas de la IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
@@ -25,129 +29,165 @@
 </head>
 <body>
 
-    <!-- TOGGLE DE TEMA (visible en toda la app) -->
-    <button class="theme-toggle" onclick="alternarTema()" id="boton-tema" title="Cambiar tema">
-        <span class="punto-icono" id="icono-tema"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
-        <span class="etiqueta" id="texto-tema">Oscuro</span>
-    </button>
-
-    <!-- PANTALLA DE LOGIN -->
+    <!-- ========================================================== -->
+    <!-- PANTALLA DE LOGIN                                           -->
+    <!-- ========================================================== -->
     <div id="login-container">
+        <div class="login-split">
 
-        <!-- Panel visual: ilustración original de auto deportivo con estela de luz -->
-        <div class="login-visual">
-            <svg viewBox="0 0 500 700" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <linearGradient id="estela" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stop-color="#DB1FFF" stop-opacity="0.9"/>
-                        <stop offset="100%" stop-color="#7030EF" stop-opacity="0"/>
-                    </linearGradient>
-                    <linearGradient id="carroceria" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stop-color="#B98BFF"/>
-                        <stop offset="100%" stop-color="#DB1FFF"/>
-                    </linearGradient>
-                </defs>
-
-                <!-- estelas de velocidad -->
-                <path d="M -50 180 L 550 60" stroke="url(#estela)" stroke-width="2" opacity="0.5"/>
-                <path d="M -50 260 L 550 150" stroke="url(#estela)" stroke-width="1.5" opacity="0.35"/>
-                <path d="M -50 340 L 550 240" stroke="url(#estela)" stroke-width="1" opacity="0.25"/>
-
-                <!-- silueta lineal de auto deportivo -->
-                <g transform="translate(30, 380)" fill="none" stroke="url(#carroceria)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">
-                    <path d="M10,120 C10,95 35,90 60,88 L95,55 C115,35 150,22 195,20 L290,20 C330,22 360,38 385,62 L410,88 C430,90 448,98 448,120 L448,145 C448,155 440,160 428,160 L20,160 C10,160 10,152 10,145 Z"/>
-                    <path d="M95,55 L130,58 C150,40 175,32 205,30 L270,30 C295,32 315,42 335,58 L385,62" opacity="0.7"/>
-                    <circle cx="105" cy="160" r="34"/>
-                    <circle cx="105" cy="160" r="14"/>
-                    <circle cx="375" cy="160" r="34"/>
-                    <circle cx="375" cy="160" r="14"/>
-                    <path d="M40,110 L120,105 L150,80 L260,80 L300,105 L420,112" opacity="0.5"/>
-                </g>
-
-                <!-- destellos de faros -->
-                <circle cx="440" cy="470" r="4" fill="#DB1FFF"/>
-                <circle cx="440" cy="470" r="10" fill="#DB1FFF" opacity="0.25"/>
-            </svg>
-
-            <div class="marca-visual">
-                <!-- Logo sobre el panel oscuro del login (celdas blancas, gorra lima) -->
+            <!-- Panel de marca: enseña lo que hace el producto (mensaje -> registro) -->
+            <section class="login-marca" aria-label="Oficial de Registros">
                 <img class="logo-login" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
-                <h2>Gestión inteligente para talleres que van adelante.</h2>
-                <p>Control de reparaciones, gastos e inventario asistido por IA, en un solo lugar.</p>
-            </div>
-        </div>
 
-        <!-- Panel del formulario -->
-        <div class="login-form-panel">
-            <div class="login-card">
-                <!-- Símbolo de marca: baldosa morada con el oficial con gorra -->
-                <div class="badge-marca"><img src="brand/simbolo-baldosa.svg" alt="Oficial de Registros"></div>
-                <h2>Acceso al sistema</h2>
-                <p>Ingresa tus credenciales de taller para continuar.</p>
+                <div class="login-mensaje">
+                    <div>
+                        <h2>Escribe lo que pasó en el taller.</h2>
+                        <p class="bajada">El registro se hace solo: reparaciones, gastos e inventario a partir de un mensaje, con la caja del día cuadrada.</p>
+                    </div>
 
-                <div class="campo-login">
-                    <label for="email_login">Correo electrónico</label>
-                    <input type="email" id="email_login" placeholder="nombre@taller.com">
+                <div class="demo-registro" aria-hidden="true">
+                    <div class="demo-mensaje">Entró Juan Pérez con un Spark placa GBA-1234. Cambio de aceite y filtro, cobramos 35.</div>
+                    <svg class="icono demo-flecha" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+                    <div class="demo-ficha">
+                        <span class="placa">GBA-1234</span>
+                        <span class="demo-vehiculo">Chevrolet Spark de Juan Pérez</span>
+                        <span class="demo-monto">$35,00</span>
+                        <span class="demo-detalle">Cambio de aceite y filtro</span>
+                    </div>
+                    <p class="demo-pie">Ejemplo ilustrativo.</p>
                 </div>
-
-                <div class="campo-login">
-                    <label for="password_login">Contraseña</label>
-                    <input type="password" id="password_login" placeholder="••••••••">
                 </div>
+            </section>
 
-                <button class="btn-login" onclick="iniciarSesion()">
-                    Ingresar al taller
-                </button>
-                <p id="login_error"></p>
-            </div>
+            <!-- Panel del formulario -->
+            <main class="login-formulario">
+                <div class="login-card">
+                    <img class="logo-movil claro" src="brand/horizontal.svg" alt="Oficial de Registros">
+                    <img class="logo-movil oscuro" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
+                    <h1>Ingresa a tu taller</h1>
+                    <p>Usa el correo y la contraseña que te dio el administrador.</p>
+
+                    <div class="campo-login">
+                        <label for="email_login">Correo electrónico</label>
+                        <input type="email" id="email_login" placeholder="nombre@taller.com" autocomplete="username">
+                    </div>
+
+                    <div class="campo-login">
+                        <label for="password_login">Contraseña</label>
+                        <input type="password" id="password_login" autocomplete="current-password">
+                    </div>
+
+                    <button class="btn-login" onclick="iniciarSesion()">Ingresar</button>
+                    <p id="login_error" role="alert"></p>
+                </div>
+            </main>
         </div>
     </div>
 
-    <!-- APLICACIÓN PRINCIPAL (Oculta hasta iniciar sesión) -->
+    <!-- ========================================================== -->
+    <!-- APLICACIÓN PRINCIPAL (oculta hasta iniciar sesión)          -->
+    <!-- ========================================================== -->
     <div id="app-container" style="display: none;">
-        <div class="contenedor">
 
-            <!-- BARRA SUPERIOR Y MENÚ HAMBURGUESA -->
-            <div class="barra-superior-app" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: var(--bg-alterno); border-bottom: 1px solid var(--borde);">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <button onclick="toggleMenu()" style="background: none; border: none; font-size: 24px; color: var(--texto); cursor: pointer; display: flex; padding: 4px;" aria-label="Abrir menú"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg></button>
-                    <div id="banner-bienvenida" class="banner-bienvenida" style="margin: 0; font-weight: bold;"></div>
+        <!-- BARRA SUPERIOR: logo, buscador de placa y taller actual -->
+        <header class="barra-app">
+            <img class="logo-barra completo" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
+            <img class="logo-barra compacto" src="brand/simbolo-dark.svg" alt="Oficial de Registros">
+
+            <form class="buscador-placa" role="search" onsubmit="buscarDesdeBarra(event)">
+                <svg class="icono" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input type="search" id="buscar-barra" autocomplete="off" enterkeyhint="search"
+                       placeholder="Buscar placa o cliente" aria-label="Buscar placa, cliente o teléfono">
+            </form>
+
+            <div class="taller-actual">
+                <span class="rotulo">Taller</span>
+                <div id="banner-bienvenida" class="banner-bienvenida"></div>
+            </div>
+        </header>
+
+        <div class="marco-app">
+
+            <!-- NAVEGACIÓN: rail fijo en escritorio, cajón en el celular -->
+            <nav id="menu-lateral" class="nav-app" aria-label="Secciones">
+                <span class="nav-titulo">Menú</span>
+                <button class="nav-enlace" data-vista="vista-chat" onclick="cambiarVista('vista-chat')" aria-current="page">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 13.5h4.5"/></svg>
+                    Registrar
+                </button>
+                <button class="nav-enlace" data-vista="vista-vehiculos" onclick="cambiarVista('vista-vehiculos')">
+                    <svg class="icono" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M3 10.5h18"/><path d="M7 14h4"/></svg>
+                    Vehículos y clientes
+                </button>
+                <button class="nav-enlace" data-vista="vista-dashboard" data-modulo="dashboard" onclick="cambiarVista('vista-dashboard')">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+                    Dashboard
+                </button>
+                <button class="nav-enlace" data-vista="vista-servicios" onclick="cambiarVista('vista-servicios')">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>
+                    Servicios y precios
+                </button>
+                <button class="nav-enlace" data-vista="vista-garantias" data-modulo="control_garantias" onclick="cambiarVista('vista-garantias')">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8.2 8 9 4.6-.8 8-4.5 8-9V6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
+                    Garantías
+                </button>
+
+                <div class="nav-pie">
+                    <button class="nav-enlace theme-toggle" onclick="alternarTema()" id="boton-tema">
+                        <span class="punto-icono" id="icono-tema"></span>
+                        <span class="etiqueta" id="texto-tema">Claro</span>
+                    </button>
+                    <button class="nav-enlace btn-cerrar-sesion" onclick="cerrarSesion()">
+                        <svg class="icono" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>
+                        Cerrar sesión
+                    </button>
                 </div>
-                <button class="btn-cerrar-sesion" onclick="cerrarSesion()">Cerrar Sesión</button>
-            </div>
+            </nav>
+            <div class="nav-fondo" onclick="toggleMenu()"></div>
 
-            <!-- MENÚ LATERAL OCULTO -->
-            <div id="menu-lateral" style="position: fixed; top: 0; left: -250px; width: 250px; height: 100vh; background: var(--bg-panel); box-shadow: 2px 0 5px rgba(0,0,0,0.5); transition: 0.3s; z-index: 1000; padding-top: 60px;">
-                <button onclick="toggleMenu()" style="position: absolute; top: 15px; right: 15px; background: none; border: none; font-size: 20px; color: var(--texto); cursor: pointer; display: flex; padding: 4px;" aria-label="Cerrar menú"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-                
-                <a href="#" onclick="cambiarVista('vista-chat')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Chat / Operaciones</a>
-                <a href="#" onclick="cambiarVista('vista-vehiculos')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Vehículos y clientes</a>
-                <a href="#" data-modulo="dashboard" onclick="cambiarVista('vista-dashboard')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Dashboard Analítico</a>
-                <a href="#" onclick="cambiarVista('vista-servicios')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Catálogo de Servicios</a>
-                <a href="#" data-modulo="control_garantias" onclick="cambiarVista('vista-garantias')" style="display: block; padding: 15px 20px; color: var(--texto); text-decoration: none; border-bottom: 1px solid var(--borde);">Garantías</a>
-            </div>
+            <!-- BARRA INFERIOR (solo celular): las tres secciones de uso diario + menú -->
+            <nav class="nav-inferior" aria-label="Accesos rápidos">
+                <button data-vista="vista-chat" onclick="cambiarVista('vista-chat', false)" aria-current="page">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 13.5h4.5"/></svg>
+                    Registrar
+                </button>
+                <button data-vista="vista-vehiculos" onclick="cambiarVista('vista-vehiculos', false)">
+                    <svg class="icono" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M3 10.5h18"/><path d="M7 14h4"/></svg>
+                    Vehículos
+                </button>
+                <button data-vista="vista-dashboard" data-modulo="dashboard" onclick="cambiarVista('vista-dashboard', false)">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+                    Dashboard
+                </button>
+                <button onclick="toggleMenu()" aria-controls="menu-lateral">
+                    <svg class="icono" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>
+                    Más
+                </button>
+            </nav>
+
+        <main class="contenedor">
 
             <!-- ========================================== -->
-            <!-- PANTALLA 1: CHAT Y OPERACIONES (Vista Principal) -->
+            <!-- PANTALLA 1: REGISTRAR CON GEOR IA (vista principal) -->
             <!-- ========================================== -->
             <div id="vista-chat" class="vista-app">
-                <div class="cabecera">
-                    <!-- Logo de cabecera: se muestra la versión que corresponde al tema activo -->
-                    <h1 class="logo-cabecera">
-                        <img class="logo-tema-claro" src="brand/horizontal.svg" alt="Oficial de Registros">
-                        <img class="logo-tema-oscuro" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
-                    </h1>
-                    <p>Geor IA le ayudará con la organización de gastos, ingresos, inventario y consultas analíticas.</p>
+                <div class="cabecera-vista">
+                    <h1>Registrar con Geor IA</h1>
+                    <p>Escribe un ingreso, un trabajo, un gasto o una pregunta sobre tus datos. Geor IA lo convierte en el registro correcto y te pide lo que falte.</p>
                 </div>
 
-                <div class="glass-container" style="padding: 22px;">
+                <div class="compositor">
                     <div class="grupo-formulario">
+                        <label for="texto_reporte" class="etiqueta-campo" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Mensaje para Geor IA</label>
                         <textarea id="texto_reporte" placeholder="Escribe aquí un registro (ej: Entró Toyota PXY9876...) o haz una pregunta analítica (ej: ¿Cuál fue el cliente que gastó más?)"></textarea>
                     </div>
-
-                    <button class="btn-enviar" onclick="enviarReporte()">
-                        Enviar a Keila IA
-                    </button>
+                    <div class="compositor-pie">
+                        <p class="ayuda">Enter envía el mensaje. Shift + Enter agrega una línea.</p>
+                        <button class="btn-enviar" onclick="enviarReporte()">
+                            <svg class="icono" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                            Enviar a Geor IA
+                        </button>
+                    </div>
                 </div>
 
                 <hr>
@@ -341,7 +381,8 @@
                 <div id="resultado-garantias" class="panel-caja"></div>
             </div>
 
-        </div> <!-- Cierra .contenedor -->
+        </main> <!-- Cierra .contenedor -->
+        </div> <!-- Cierra .marco-app -->
     </div> <!-- Cierra #app-container -->
 
     <!-- Plantilla oculta para la Ficha de Servicio -->
@@ -419,7 +460,7 @@
     </div> <!-- Cierra #plantilla-orden -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js?v=1001"></script>
+    <script src="script.js?v=1002"></script>
     <!-- MODAL DE AVISO (centro de pantalla, con botón OK). Reutilizable: mostrarModal({...}) -->
     <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
         <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">

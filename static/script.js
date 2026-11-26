@@ -5,7 +5,7 @@
 // Modo claro/oscuro (persistido en localStorage, aplicado también al cargar en index.html)
 function alternarTema() {
     const raiz = document.documentElement;
-    const temaActual = raiz.getAttribute("data-theme") || "dark";
+    const temaActual = raiz.getAttribute("data-theme") || "light";
     const nuevoTema = temaActual === "light" ? "dark" : "light";
     raiz.setAttribute("data-theme", nuevoTema);
     localStorage.setItem("as_tema", nuevoTema);
@@ -89,7 +89,9 @@ async function cargarDatosTaller() {
         // Módulos que incluye el plan del taller
         modulosTaller = Array.isArray(data.modulos) ? data.modulos : null;
         
-        banner.innerHTML = `¡Bienvenido, <span class="nombre-taller-destacado">${data.nombre_taller}</span>! Empecemos a trabajar`;
+        // Nombre del taller en la barra superior (como texto: nunca como HTML)
+        banner.textContent = data.nombre_taller || '';
+        banner.title = data.nombre_taller || '';
     } catch (e) {
         console.error("No se pudo cargar el nombre del taller:", e);
     }
@@ -97,7 +99,7 @@ async function cargarDatosTaller() {
 
 // Validar sesión activa al cargar
 window.onload = function() {
-    actualizarIconoTema(document.documentElement.getAttribute("data-theme") || "dark");
+    actualizarIconoTema(document.documentElement.getAttribute("data-theme") || "light");
 
     const token = localStorage.getItem("taller_token");
     if (token) {
@@ -2256,14 +2258,19 @@ window.addEventListener("pageshow", function(event) {
 // ==========================================================================
 // NAVEGACIÓN Y MENÚ HAMBURGUESA
 // ==========================================================================
-function toggleMenu() {
+function toggleMenu(forzarAbierto) {
+    // En escritorio la navegación siempre está visible; en el celular es un cajón
     const menu = document.getElementById('menu-lateral');
-    if (menu.style.left === '0px') {
-        menu.style.left = '-250px';
-    } else {
-        menu.style.left = '0px';
-    }
+    const fondo = document.querySelector('.nav-fondo');
+    const abrir = typeof forzarAbierto === 'boolean' ? forzarAbierto : !menu.classList.contains('abierto');
+    menu.classList.toggle('abierto', abrir);
+    if (fondo) fondo.classList.toggle('visible', abrir);
 }
+
+function cerrarMenu() { toggleMenu(false); }
+
+// Cerrar el cajón con Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarMenu(); });
 
 function cambiarVista(idVista, desdeMenu = true) {
     // Ocultar todas las vistas
@@ -2272,9 +2279,16 @@ function cambiarVista(idVista, desdeMenu = true) {
     
     // Mostrar la vista seleccionada
     document.getElementById(idVista).style.display = 'block';
+
+    // Marcar la sección actual en el menú lateral y en la barra inferior
+    document.querySelectorAll('[data-vista]').forEach(b => {
+        if (b.dataset.vista === idVista) b.setAttribute('aria-current', 'page');
+        else b.removeAttribute('aria-current');
+    });
+    window.scrollTo(0, 0);
     
-    // Cerrar el menú lateral (solo si se llegó desde el menú)
-    if (desdeMenu) toggleMenu();
+    // Cerrar el cajón del menú (en el celular)
+    cerrarMenu();
     
     // Si entramos al dashboard, cargamos los gráficos (lo programaremos luego)
     if (idVista === 'vista-dashboard') {
@@ -2629,6 +2643,19 @@ let ordenesFichaActual = {};          // id -> orden completa (para volver a des
 function fechaCorta(iso) {
     if (!iso) return '—';
     return new Date(iso + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// Buscador de placa de la barra superior: lleva a "Vehículos y clientes" con la búsqueda hecha
+function buscarDesdeBarra(evento) {
+    if (evento) evento.preventDefault();
+    const barra = document.getElementById('buscar-barra');
+    const texto = barra.value.trim();
+    cambiarVista('vista-vehiculos', false);
+    const input = document.getElementById('buscar-vehiculo');
+    input.value = texto;
+    if (texto) buscarVehiculos();
+    barra.value = '';
+    barra.blur();
 }
 
 function iniciarVistaVehiculos() {
