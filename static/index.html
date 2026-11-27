@@ -20,7 +20,7 @@
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=27">
+    <link rel="stylesheet" href="style.css?v=28">
     <!-- Librería para renderizar Markdown (negritas, listas y tablas de Geor IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
@@ -101,7 +101,11 @@
                             <span class="demo-badge">Registro automático</span>
                         </div>
                         <div class="demo-mensaje">Entró Juan Pérez con un Spark placa GBA-1234. Cambio de aceite y filtro, cobramos 35.</div>
-                        <div class="demo-paso"><span></span>Geor lo registra<span></span></div>
+                        <!-- Conector: el mensaje se transforma en el registro -->
+                        <div class="demo-conector">
+                            <span class="demo-linea"><i></i></span>
+                            <span class="demo-conector-texto">Geor lo registra</span>
+                        </div>
                         <div class="demo-ficha">
                             <span class="placa">GBA-1234</span>
                             <div class="demo-datos">
@@ -635,7 +639,7 @@
     </div> <!-- Cierra #plantilla-orden -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js?v=1022"></script>
+    <script src="script.js?v=1023"></script>
     <!-- MODAL DE AVISO (centro de pantalla, con botón OK). Reutilizable: mostrarModal({...}) -->
     <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
         <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">

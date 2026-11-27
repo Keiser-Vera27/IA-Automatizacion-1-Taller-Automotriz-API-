@@ -226,6 +226,18 @@ async function iniciarSesion() {
         return;
     }
 
+    // Mientras se envía: botón desactivado con "Ingresando..." (evita envíos dobles)
+    const boton = document.querySelector('#login-container .btn-login');
+    if (boton?.classList.contains('enviando')) return;
+    const ponerEnviando = activo => {
+        if (!boton) return;
+        boton.classList.toggle('enviando', activo);
+        boton.disabled = activo;
+        boton.setAttribute('aria-busy', String(activo));
+        boton.textContent = activo ? 'Ingresando...' : 'Ingresar';
+    };
+    ponerEnviando(true);
+
     try {
         const response = await fetch("/login", {
             method: "POST",
@@ -251,6 +263,8 @@ async function iniciarSesion() {
     } catch (error) {
         msgError.innerText = "Error de conexión con el servidor.";
         msgError.style.display = "block";
+    } finally {
+        ponerEnviando(false);
     }
 }
 
