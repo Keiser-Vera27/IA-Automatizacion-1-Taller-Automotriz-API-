@@ -1044,15 +1044,35 @@ function ajustarProveedorGarantia() {
 }
 
 // ---------------------------- Vista "Garantías" ----------------------------
-function iniciarVistaGarantias() {
+// Período del reporte: 30 días, 90 días (por defecto), este año o fechas propias
+let periodoGarantias = '90';
+
+function isoLocal(d) {
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function elegirPeriodoGarantias(periodo) {
+    periodoGarantias = periodo;
+    document.querySelectorAll('.gar-chips .veh-chip').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.periodo === periodo)));
+    const fechas = document.getElementById('gar-fechas');
+    fechas.hidden = periodo !== 'propio';
+    if (periodo === 'propio') { document.getElementById('garantias-desde').focus(); return; }
     const hoy = new Date();
-    const desde = new Date(hoy.getTime() - 90 * 86400000);
-    const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-    const inDesde = document.getElementById('garantias-desde');
-    const inHasta = document.getElementById('garantias-hasta');
-    if (!inDesde.value) inDesde.value = iso(desde);
-    if (!inHasta.value) inHasta.value = iso(hoy);
+    const desde = periodo === 'anio' ? new Date(hoy.getFullYear(), 0, 1) : new Date(hoy.getTime() - Number(periodo) * 86400000);
+    document.getElementById('garantias-desde').value = isoLocal(desde);
+    document.getElementById('garantias-hasta').value = isoLocal(hoy);
     cargarReporteGarantias();
+}
+
+function iniciarVistaGarantias() {
+    const inDesde = document.getElementById('garantias-desde');
+    if (!inDesde.value) { elegirPeriodoGarantias(periodoGarantias); return; }
+    cargarReporteGarantias();
+}
+
+// Baja hasta la sección de reclamos a proveedores (desde el aviso de pendientes)
+function irAReclamosProveedor() {
+    document.getElementById('gar-proveedores')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function cargarReporteGarantias() {
@@ -1072,64 +1092,125 @@ async function cargarReporteGarantias() {
     }
     const r = d.resumen;
     const pct = v => v === null || v === undefined ? '—' : `${v}%`;
-    const tabla = (cabeceras, filas, vacio) => `
-        <div class="tabla-scroll"><table class="tabla-caja">
-            <thead><tr>${cabeceras.map(([t, al]) => `<th style="text-align:${al || 'left'}">${t}</th>`).join('')}</tr></thead>
-            <tbody>${filas.length ? filas.join('') : `<tr><td colspan="${cabeceras.length}" class="vacio">${vacio}</td></tr>`}</tbody>
-        </table></div>`;
+    const icono = cuerpo => `<svg class="icono" viewBox="0 0 24 24" aria-hidden="true">${cuerpo}</svg>`;
+    const LIMITE_TASA = 10;   // desde este % de retorno se marca en rojo
 
-    const filasTec = d.por_tecnico.map(t => `<tr>
-        <td>${e(t.tecnico)}</td><td class="centro">${t.entregadas}</td><td class="centro">${t.reclamos}</td>
-        <td class="num ${t.tasa >= 10 ? 'monto-negativo' : ''}">${pct(t.tasa)}</td><td class="num">${dinero(t.costo)}</td></tr>`);
-    const filasSrv = d.por_servicio.map(s => `<tr>
-        <td>${e(s.servicio)}</td><td class="centro">${s.entregadas}</td><td class="centro">${s.reclamos}</td>
-        <td class="num">${pct(s.tasa)}</td><td class="num">${dinero(s.costo)}</td></tr>`);
-    const filasCausa = d.por_causa.map(c => `<tr><td>${e(c.causa)}</td><td class="centro">${c.reclamos}</td><td class="num">${dinero(c.costo)}</td></tr>`);
-    const filasRep = d.por_repuesto.map(p => `<tr><td>${e(p.codigo || '-')}</td><td>${e(p.nombre)}</td><td>${e(p.proveedor || '-')}</td><td class="centro">${p.reclamos}</td></tr>`);
-    const filasProv = d.reclamos_proveedor.map(p => `<tr>
-        <td>${e(p.fecha)}</td><td><b>${e(p.vehiculo)}</b><div class="sub">orden N° ${e(String(p.orden_origen))}</div></td>
-        <td>${e(p.repuestos)}</td><td>${e(p.proveedor)}</td><td class="num">${dinero(p.costo)}</td>
-        <td><span class="estado-reclamo ${e(p.estado.toLowerCase())}">${e(p.estado)}</span>${p.estado === 'Aprobado' ? `<div class="sub">recuperado ${dinero(p.recuperado)}</div>` : ''}</td>
-        <td class="centro">${p.estado === 'Pendiente'
-            ? `<button class="btn-link" onclick='resolverReclamoProveedor(${JSON.stringify(String(p.id))}, "Aprobado", ${p.costo})'>Aprobado</button>
-               <button class="btn-link" onclick='resolverReclamoProveedor(${JSON.stringify(String(p.id))}, "Rechazado", 0)'>Rechazado</button>`
-            : `<button class="btn-link" onclick='resolverReclamoProveedor(${JSON.stringify(String(p.id))}, "Pendiente", 0)'>Reabrir</button>`}</td></tr>`);
+    // --- Cifras ---
+    const cifra = (clase, etiqueta, valor, ic, extra = '') => `
+        <div class="veh-cifra ${clase}">
+            <span class="veh-cifra-icono" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24">${ic}</svg></span>
+            <div><div class="veh-cifra-etiqueta">${etiqueta}</div><div class="veh-cifra-valor">${valor}</div>${extra ? `<div class="gar-cifra-extra">${extra}</div>` : ''}</div>
+        </div>`;
+    const cifras = [
+        cifra('menta', 'Garantías entregadas', r.entregadas, '<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="m9 12 2 2 4-4"/>'),
+        cifra('lila', 'Reclamos atendidos', r.reclamos, '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/>'),
+        cifra(r.tasa_retorno >= LIMITE_TASA ? 'rojo' : '', 'Tasa de retorno', pct(r.tasa_retorno), '<path d="M4 19h16"/><path d="M7 15l4-4 3 3 5-6"/>'),
+        cifra('ambar', 'Costo neto para el taller', dinero(r.costo_neto), '<path d="M12 3v18M16.5 7.5C16 6 14.4 5 12 5c-2.8 0-4.5 1.3-4.5 3.2 0 4.6 9 2.5 9 7 0 2-1.8 3.3-4.5 3.3-2.5 0-4.2-1-4.8-2.6"/>',
+              `Costo ${dinero(r.costo_total)}, recuperado ${dinero(r.recuperado_proveedores)}`)
+    ].join('');
+
+    const avisoPendientes = r.reclamos_proveedor_pendientes ? `
+        <div class="gar-aviso">
+            ${icono('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>')}
+            <span><b>${r.reclamos_proveedor_pendientes} ${r.reclamos_proveedor_pendientes === 1 ? 'reclamo a proveedor espera' : 'reclamos a proveedores esperan'} respuesta.</b> Márcalos cuando el proveedor conteste.</span>
+            <button type="button" class="btn-chico" onclick="irAReclamosProveedor()">Ver reclamos</button>
+        </div>` : '';
+
+    // --- Por técnico: lista con barra de tasa de retorno ---
+    const maxTasa = Math.max(LIMITE_TASA * 2, ...d.por_tecnico.map(t => t.tasa || 0));
+    const filasTec = d.por_tecnico.map(t => {
+        const alta = (t.tasa || 0) >= LIMITE_TASA;
+        return `
+        <li class="gar-tec ${alta ? 'alta' : ''}">
+            <span class="avatar-tecnico" style="--tono:${alta ? '#E5486A' : '#8B5CF6'}">${e(String(t.tecnico || '?').trim().charAt(0).toUpperCase())}</span>
+            <div class="gar-tec-datos">
+                <div class="gar-tec-fila"><b>${e(t.tecnico)}</b><span class="gar-tasa">${pct(t.tasa)}</span></div>
+                <div class="gar-barra" aria-hidden="true"><span style="width:${Math.min(100, ((t.tasa || 0) / maxTasa) * 100)}%"></span></div>
+                <div class="gar-tec-meta separados"><span>${t.entregadas} ${t.entregadas === 1 ? 'entregada' : 'entregadas'}</span><span>${t.reclamos} ${t.reclamos === 1 ? 'reclamo' : 'reclamos'}</span><span>${dinero(t.costo)}</span></div>
+            </div>
+        </li>`;
+    }).join('');
+
+    // --- Por causa: barras horizontales ---
+    const maxCausa = Math.max(1, ...d.por_causa.map(c => c.reclamos));
+    const filasCausa = d.por_causa.slice().sort((a, b) => b.reclamos - a.reclamos).map(c => `
+        <li class="gar-causa">
+            <div class="gar-tec-fila"><span>${e(c.causa)}</span><b>${c.reclamos}</b></div>
+            <div class="gar-barra lila" aria-hidden="true"><span style="width:${(c.reclamos / maxCausa) * 100}%"></span></div>
+            <div class="gar-tec-meta">${dinero(c.costo)}</div>
+        </li>`).join('');
+
+    // --- Servicios con más reclamos ---
+    const filasSrv = d.por_servicio.map(s => `
+        <li class="gar-servicio">
+            <div class="gar-servicio-nombre"><b>${e(s.servicio)}</b>
+                <span class="separados"><span>${s.reclamos} de ${s.entregadas} ${s.entregadas === 1 ? 'entregada' : 'entregadas'}</span><span>${dinero(s.costo)}</span></span></div>
+            <span class="gar-tasa ${(s.tasa || 0) >= LIMITE_TASA ? 'alta' : ''}">${pct(s.tasa)}</span>
+        </li>`).join('');
+
+    // --- Reclamos a proveedores: tarjetas con su respuesta ---
+    const claseReclamo = est => ({ Pendiente: 'estado-pendiente', Aprobado: 'estado-terminado', Rechazado: 'estado-sin-cobro' })[est] || '';
+    const filasProv = d.reclamos_proveedor.map(p => {
+        const id = JSON.stringify(String(p.id));
+        return `
+        <article class="gar-prov ${p.estado === 'Pendiente' ? 'pendiente' : ''}">
+            <div class="gar-prov-cabecera">
+                <span class="placa chica">${e(p.vehiculo)}</span>
+                <span class="badge-estado ${claseReclamo(p.estado)}">${e(p.estado)}</span>
+                <span class="gar-prov-monto">${dinero(p.costo)}</span>
+            </div>
+            <div class="gar-prov-proveedor"><b>${e(p.proveedor)}</b></div>
+            <div class="gar-prov-meta">${e(p.repuestos)}</div>
+            <div class="gar-prov-meta separados"><span>Orden N° ${e(String(p.orden_origen))}</span><span>${fechaCorta(p.fecha)}</span></div>
+            ${p.estado === 'Aprobado' ? `<div class="gar-prov-recuperado">Recuperado ${dinero(p.recuperado)}</div>` : ''}
+            <div class="gar-prov-acciones">${p.estado === 'Pendiente'
+                ? `<button type="button" class="btn-chico principal" onclick='resolverReclamoProveedor(${id}, "Aprobado", ${Number(p.costo) || 0})'>${icono('<path d="m5 12 5 5L20 7"/>')}Aprobado</button>
+                   <button type="button" class="btn-chico" onclick='resolverReclamoProveedor(${id}, "Rechazado", 0)'>${icono('<path d="M6 6l12 12M18 6 6 18"/>')}Rechazado</button>`
+                : `<button type="button" class="btn-chico" onclick='resolverReclamoProveedor(${id}, "Pendiente", 0)'>${icono('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/>')}Reabrir</button>`}</div>
+        </article>`;
+    }).join('');
+
+    // --- Repuestos que fallaron y detalle (tablas que en el celular se vuelven tarjetas) ---
+    // Cada celda lleva su título (data-titulo) para mostrarse como "etiqueta: valor" en el celular
+    const celda = (titulo, contenido, clase = '') => `<td data-titulo="${titulo}" class="${clase}"><div class="gar-celda">${contenido}</div></td>`;
+    const filasRep = d.por_repuesto.map(p => `<tr>
+        ${celda('Código', e(p.codigo || '-'))}${celda('Repuesto', `<b>${e(p.nombre)}</b>`)}
+        ${celda('Proveedor', e(p.proveedor || '-'))}${celda('Reclamos', String(p.reclamos), 'num')}</tr>`).join('');
     const filasDet = d.detalle.map(x => `<tr>
-        <td>${e(x.fecha)}</td><td><b>${e(x.vehiculo)}</b><div class="sub">${e(x.cliente)}</div></td>
-        <td>${e(x.trabajo_original)}<div class="sub">orden N° ${e(String(x.orden_origen))}</div></td>
-        <td>${e(x.tecnico)}</td><td>${e(x.causa)}</td><td class="celda-trabajo" title="${e(x.detalle)}">${e(x.detalle || '-')}</td>
-        <td class="num">${dinero(x.costo)}</td></tr>`);
+        ${celda('Fecha', fechaCorta(x.fecha))}
+        ${celda('Placa', `<span class="placa chica">${e(x.vehiculo)}</span><div class="sub">${e(x.cliente)}</div>`)}
+        ${celda('Trabajo original', `${e(x.trabajo_original)}<div class="sub">Orden N° ${e(String(x.orden_origen))}</div>`)}
+        ${celda('Técnico', e(x.tecnico))}${celda('Causa', e(x.causa))}
+        ${celda('Qué se hizo', e(x.detalle || '-'), 'celda-trabajo')}
+        ${celda('Costo', `<b>${dinero(x.costo)}</b>`, 'num')}</tr>`).join('');
+    const tabla = (cabeceras, filas, vacio) => filas
+        ? `<div class="tabla-scroll"><table class="gar-tabla">
+            <thead><tr>${cabeceras.map(([t, cl]) => `<th class="${cl || ''}">${t}</th>`).join('')}</tr></thead>
+            <tbody>${filas}</tbody></table></div>`
+        : `<p class="gar-vacio">${vacio}</p>`;
+
+    const tarjeta = (titulo, cuerpo, extra = '', id = '') => `
+        <section class="gar-tarjeta" ${id ? `id="${id}"` : ''}>
+            <div class="gar-tarjeta-titulo"><h2>${titulo}</h2>${extra}</div>
+            ${cuerpo}
+        </section>`;
 
     cont.innerHTML = `
-        <div class="tarjetas-resumen-caja">
-            <div class="tarjeta-resumen-caja"><div class="etiqueta">Garantías entregadas</div><div class="monto monto-neutro">${r.entregadas}</div></div>
-            <div class="tarjeta-resumen-caja"><div class="etiqueta">Reclamos atendidos</div><div class="monto ${r.reclamos ? 'monto-negativo' : 'monto-neutro'}">${r.reclamos}</div></div>
-            <div class="tarjeta-resumen-caja"><div class="etiqueta">Tasa de retorno</div><div class="monto monto-neutro">${pct(r.tasa_retorno)}</div></div>
-            <div class="tarjeta-resumen-caja"><div class="etiqueta">Costo neto para el taller</div><div class="monto monto-negativo">${dinero(r.costo_neto)}</div></div>
+        <div class="veh-cifras gar-cifras">${cifras}</div>
+        ${avisoPendientes}
+        <div class="gar-grid">
+            ${tarjeta('Por técnico', filasTec ? `<ol class="gar-lista">${filasTec}</ol>` : '<p class="gar-vacio">Sin trabajos con garantía en el período.</p>',
+                `<span class="gar-nota">Reclamos sobre garantías entregadas</span>`)}
+            <div class="gar-columna">
+                ${tarjeta('Por causa', filasCausa ? `<ul class="gar-lista">${filasCausa}</ul>` : '<p class="gar-vacio">Sin reclamos en el período.</p>')}
+                ${tarjeta('Servicios con más reclamos', filasSrv ? `<ul class="gar-lista">${filasSrv}</ul>` : '<p class="gar-vacio">Sin reclamos en el período.</p>')}
+            </div>
         </div>
-        <div class="linea-detalle">Costo de reclamos <b>${dinero(r.costo_total)}</b> · Recuperado de proveedores <b>${dinero(r.recuperado_proveedores)}</b>
-            ${r.reclamos_proveedor_pendientes ? ` · <b>${r.reclamos_proveedor_pendientes}</b> reclamo(s) a proveedores pendientes` : ''}</div>
-
-        <h4>Por técnico</h4>
-        <p class="nota-cierre">La tasa de retorno compara los reclamos con las garantías que ese técnico entregó en el mismo período.</p>
-        ${tabla([['Técnico'], ['Entregadas', 'center'], ['Reclamos', 'center'], ['Tasa', 'right'], ['Costo', 'right']], filasTec, 'Sin trabajos con garantía en el período.')}
-
-        <div class="grid-caja">
-            <div><h4>Servicios con más reclamos</h4>
-                ${tabla([['Servicio'], ['Entregadas', 'center'], ['Reclamos', 'center'], ['Tasa', 'right'], ['Costo', 'right']], filasSrv, 'Sin reclamos en el período.')}</div>
-            <div><h4>Por causa</h4>
-                ${tabla([['Causa'], ['Reclamos', 'center'], ['Costo', 'right']], filasCausa, '')}</div>
-        </div>
-
-        <h4>Repuestos que fallaron</h4>
-        ${tabla([['Código'], ['Repuesto'], ['Proveedor'], ['Reclamos', 'center']], filasRep, 'Ningún reclamo por falla de repuesto en el período.')}
-
-        <h4>Reclamos a proveedores</h4>
-        <p class="nota-cierre">Se muestran los del período y todos los pendientes. Cuando el proveedor responda, márcalo aquí.</p>
-        ${tabla([['Fecha'], ['Placa'], ['Repuestos'], ['Proveedor'], ['Costo', 'right'], ['Estado'], ['Acción', 'center']], filasProv, 'No hay reclamos a proveedores.')}
-
-        <h4>Detalle de reclamos (${d.detalle.length})</h4>
-        ${tabla([['Fecha'], ['Placa'], ['Trabajo original'], ['Técnico'], ['Causa'], ['Qué se hizo'], ['Costo', 'right']], filasDet, 'Sin reclamos de garantía en el período.')}`;
+        ${tarjeta('Reclamos a proveedores', filasProv ? `<div class="gar-provs">${filasProv}</div>` : '<p class="gar-vacio">No hay reclamos a proveedores.</p>',
+            '<span class="gar-nota">Los del período y todos los pendientes</span>', 'gar-proveedores')}
+        ${tarjeta('Repuestos que fallaron', tabla([['Código'], ['Repuesto'], ['Proveedor'], ['Reclamos', 'num']], filasRep, 'Ningún reclamo por falla de repuesto en el período.'))}
+        ${tarjeta(`Detalle de reclamos <span class="gar-conteo">${d.detalle.length}</span>`,
+            tabla([['Fecha'], ['Placa'], ['Trabajo original'], ['Técnico'], ['Causa'], ['Qué se hizo'], ['Costo', 'num']], filasDet, 'Sin reclamos de garantía en el período.'))}`;
 }
 
 // Registra la respuesta del proveedor a un reclamo

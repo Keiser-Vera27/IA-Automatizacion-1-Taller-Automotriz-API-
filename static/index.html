@@ -20,7 +20,7 @@
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=17">
+    <link rel="stylesheet" href="style.css?v=18">
     <!-- Librería para renderizar Markdown (negritas, listas y tablas de Geor IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
@@ -507,15 +507,30 @@
             </div>
 
             <!-- VISTA: CONTROL DE GARANTÍAS (reclamos, tasa de retorno, proveedores) -->
-            <div id="vista-garantias" class="vista-app" style="display: none; padding: 20px;">
-                <h2>Control de Garantías</h2>
-                <p style="color: var(--texto-tenue); margin-bottom: 16px;">Reclamos atendidos, qué técnicos y servicios regresan más, cuánto cuestan y qué se recuperó de los proveedores.</p>
-                <div class="filtros-garantias">
-                    <label>Desde <input type="date" id="garantias-desde"></label>
-                    <label>Hasta <input type="date" id="garantias-hasta"></label>
-                    <button class="btn-agregar-servicio" onclick="cargarReporteGarantias()">Ver reporte</button>
-                </div>
-                <div id="resultado-garantias" class="panel-caja"></div>
+            <!-- VISTA: GARANTÍAS
+                 Período arriba, 4 cifras, técnicos y causas lado a lado, reclamos a
+                 proveedores (con su respuesta) y el detalle de cada reclamo -->
+            <div id="vista-garantias" class="vista-app" style="display: none;">
+                <header class="veh-cabecera gar-cabecera">
+                    <div>
+                        <h1>Garantías</h1>
+                        <p>Reclamos atendidos, qué técnicos y servicios regresan más, cuánto cuestan y qué se recuperó de los proveedores.</p>
+                    </div>
+                    <div class="gar-periodo">
+                        <div class="veh-filtros gar-chips" role="group" aria-label="Período del reporte">
+                            <button type="button" class="veh-chip" data-periodo="30" aria-pressed="false" onclick="elegirPeriodoGarantias('30')">30 días</button>
+                            <button type="button" class="veh-chip" data-periodo="90" aria-pressed="true" onclick="elegirPeriodoGarantias('90')">90 días</button>
+                            <button type="button" class="veh-chip" data-periodo="anio" aria-pressed="false" onclick="elegirPeriodoGarantias('anio')">Este año</button>
+                            <button type="button" class="veh-chip" data-periodo="propio" aria-pressed="false" onclick="elegirPeriodoGarantias('propio')">Elegir fechas</button>
+                        </div>
+                        <div id="gar-fechas" class="filtros-garantias gar-fechas" hidden>
+                            <label>Desde <input type="date" id="garantias-desde"></label>
+                            <label>Hasta <input type="date" id="garantias-hasta"></label>
+                            <button type="button" class="btn-chico principal" onclick="cargarReporteGarantias()">Ver reporte</button>
+                        </div>
+                    </div>
+                </header>
+                <div id="resultado-garantias" class="gar-resultado" aria-live="polite"></div>
             </div>
 
         </main> <!-- Cierra .contenedor -->
@@ -597,7 +612,7 @@
     </div> <!-- Cierra #plantilla-orden -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js?v=1012"></script>
+    <script src="script.js?v=1013"></script>
     <!-- MODAL DE AVISO (centro de pantalla, con botón OK). Reutilizable: mostrarModal({...}) -->
     <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
         <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">

@@ -2784,3 +2784,141 @@ body.sin-desplazamiento { overflow: hidden; }
 @media (max-width: 767px) and (prefers-reduced-motion: reduce) {
     #vista-servicios .srv-hoja, #vista-servicios.hoja-abierta .srv-hoja { transition: none; }
 }
+
+/* ==========================================================================
+   GARANTÍAS — período, cifras, técnicos y causas, proveedores y detalle
+   Reutiliza .veh-cabecera, .veh-cifra y .veh-chip de Vehículos y Servicios
+   ========================================================================== */
+#vista-garantias { padding: var(--e-5) var(--e-6) var(--e-6); }
+.gar-cabecera { align-items: flex-start; flex-wrap: wrap; }
+.gar-cabecera > div:first-child { flex: 1 1 420px; }
+.gar-cabecera p { max-width: 62ch; }
+.gar-periodo { display: grid; justify-items: end; gap: 10px; }
+.gar-chips { margin: 0; }
+.gar-fechas { display: flex; align-items: flex-end; gap: 8px; margin: 0; flex-wrap: wrap; }
+.gar-fechas[hidden] { display: none; }
+.gar-fechas label { display: grid; gap: 4px; font-size: var(--t-xs); color: var(--tinta-3); font-weight: 600; }
+.gar-fechas input { height: 36px; padding: 0 10px; border-radius: 10px; font-size: var(--t-s); }
+.gar-fechas .btn-chico { height: 36px; border-radius: 999px; }
+
+.veh-cifra.rojo { --acento: #FF8A9A; }
+.gar-cifra-extra { font-size: 0.72rem; color: var(--tinta-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* Aviso de reclamos pendientes con proveedores */
+.gar-aviso {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 14px 12px 16px; border-radius: 18px;
+    background: rgba(247, 197, 106, 0.10); border: 1px solid rgba(247, 197, 106, 0.32); color: var(--tinta); font-size: var(--t-s);
+}
+.gar-aviso > .icono { flex: none; width: 20px; height: 20px; fill: none; stroke: #F7C56A; stroke-width: 2; stroke-linecap: round; }
+html[data-theme="light"] .gar-aviso > .icono { stroke: #B7791F; }
+.gar-aviso span { flex: 1; }
+.gar-aviso .btn-chico { border-radius: 999px; flex: none; }
+
+/* Tarjetas de sección */
+.gar-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; align-items: start; }
+.gar-columna { display: grid; gap: 16px; }
+.gar-tarjeta { border-radius: 24px; padding: 18px 20px; background: var(--superficie-1); border: 1px solid var(--linea); min-width: 0; }
+.gar-tarjeta + .gar-tarjeta { margin-top: 16px; }
+.gar-grid .gar-tarjeta + .gar-tarjeta, .gar-columna .gar-tarjeta + .gar-tarjeta { margin-top: 0; }
+html[data-theme="dark"] .gar-tarjeta {
+    background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+}
+.gar-tarjeta-titulo { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.gar-tarjeta-titulo h2 { margin: 0; font-size: var(--t-m); font-weight: 750; color: var(--tinta); display: flex; align-items: center; gap: 8px; }
+.gar-nota { font-size: var(--t-xs); color: var(--tinta-3); }
+.gar-conteo { font-size: var(--t-xs); font-weight: 650; padding: 2px 9px; border-radius: 999px; background: rgba(165, 139, 255, 0.16); color: var(--tinta-2); font-variant-numeric: tabular-nums; }
+.gar-vacio { margin: 4px 0; color: var(--tinta-3); font-size: var(--t-s); }
+
+/* Listas con barras (técnicos y causas) */
+.gar-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.gar-tec { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; align-items: center; }
+.gar-tec-datos { min-width: 0; display: grid; gap: 6px; }
+.gar-tec-fila { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: var(--t-s); color: var(--tinta); }
+.gar-tec-fila b { font-weight: 650; }
+.gar-tasa { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--tinta); }
+.gar-tec.alta .gar-tasa, .gar-tasa.alta { color: #FF8A9A; }
+html[data-theme="light"] :is(.gar-tec.alta .gar-tasa, .gar-tasa.alta) { color: #C81E3A; }
+.gar-barra { height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+html[data-theme="light"] .gar-barra { background: var(--superficie-3); }
+.gar-barra span { display: block; height: 100%; border-radius: inherit; background: #9BF3C9; min-width: 4px; }
+.gar-tec.alta .gar-barra span { background: linear-gradient(90deg, #F7C56A, #FF8A9A); }
+.gar-barra.lila span { background: linear-gradient(90deg, #A58BFF, #F3A6E3); }
+.gar-tec-meta { font-size: var(--t-xs); color: var(--tinta-3); font-variant-numeric: tabular-nums; }
+.gar-causa { display: grid; gap: 6px; }
+
+.gar-servicio { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--linea); }
+.gar-servicio:last-child { border-bottom: 0; padding-bottom: 0; }
+.gar-servicio-nombre { min-width: 0; display: grid; gap: 3px; font-size: var(--t-s); color: var(--tinta); }
+.gar-servicio-nombre .separados { font-size: var(--t-xs); color: var(--tinta-3); }
+
+/* Reclamos a proveedores: tarjetas en cuadrícula */
+.gar-provs { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.gar-prov { padding: 14px 16px; border-radius: 18px; background: var(--superficie-2); border: 1px solid var(--linea); display: grid; gap: 8px; }
+html[data-theme="dark"] .gar-prov { background: rgba(255, 255, 255, 0.035); }
+.gar-prov.pendiente { border-color: rgba(247, 197, 106, 0.4); }
+.gar-prov-cabecera { display: flex; align-items: center; gap: 8px; }
+.gar-prov-monto { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--tinta); }
+.gar-prov-proveedor { font-size: var(--t-s); color: var(--tinta); }
+.gar-prov-meta + .gar-prov-meta { margin-top: -4px; }
+.gar-prov-meta { font-size: var(--t-xs); color: var(--tinta-3); }
+.gar-prov-recuperado { font-size: var(--t-xs); font-weight: 650; color: #2E9E6B; }
+html[data-theme="dark"] .gar-prov-recuperado { color: #9BF3C9; }
+.gar-prov-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.gar-prov-acciones .btn-chico { border-radius: 999px; height: 34px; }
+.gar-prov-acciones .icono, .gar-aviso .btn-chico .icono { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Tablas de repuestos y detalle */
+.gar-tarjeta .tabla-scroll { border: 0; border-radius: 0; }
+.gar-tabla { width: 100%; border-collapse: collapse; font-size: var(--t-s); }
+.gar-tabla th {
+    text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--linea);
+    font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta-3); font-weight: 650; white-space: nowrap;
+}
+.gar-tabla td { padding: 10px; border-bottom: 1px solid var(--linea); color: var(--tinta); vertical-align: top; }
+.gar-tabla tbody tr:last-child td { border-bottom: 0; }
+.gar-tabla tbody tr:hover td { background: rgba(165, 139, 255, 0.06); }
+.gar-tabla .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gar-tabla .sub { font-size: var(--t-xs); color: var(--tinta-3); margin-top: 3px; }
+.gar-tabla .celda-trabajo { max-width: 260px; }
+
+@media (max-width: 1100px) {
+    .gar-grid { grid-template-columns: minmax(0, 1fr); }
+    .gar-periodo { justify-items: start; }
+}
+
+/* Celular: 16 px a cada lado, 100 px abajo para la barra, tablas como tarjetas */
+@media (max-width: 767px) {
+    #vista-garantias { padding: 4px 4px 100px; overflow-x: hidden; }
+    .gar-cabecera { gap: 12px; margin-bottom: 16px; }
+    .gar-cabecera h1 { font-size: 1.6rem; }
+    .gar-cabecera p { display: none; }
+    .gar-periodo { width: 100%; }
+    .gar-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; width: 100%; padding-bottom: 2px; }
+    .gar-chips::-webkit-scrollbar { display: none; }
+    .gar-chips .veh-chip { flex: none; height: 36px; }
+    .gar-fechas { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+    .gar-fechas .btn-chico { grid-column: 1 / -1; justify-content: center; height: 42px; }
+    .gar-fechas input { height: 44px; font-size: 16px; width: 100%; box-sizing: border-box; }
+    .gar-cifras .veh-cifra { align-items: flex-start; }
+    .gar-aviso { flex-wrap: wrap; align-items: flex-start; }
+    .gar-aviso > .icono { margin-top: 2px; }
+    .gar-aviso span { flex: 1 1 calc(100% - 40px); }
+    .gar-aviso .btn-chico { width: 100%; height: 40px; justify-content: center; }
+    .gar-tarjeta { padding: 16px; border-radius: 20px; }
+    .gar-provs { grid-template-columns: minmax(0, 1fr); }
+    .gar-prov-acciones .btn-chico { height: 40px; flex: 1; justify-content: center; }
+
+    .gar-tabla, .gar-tabla tbody { display: block; }
+    .gar-tabla thead { display: none; }
+    .gar-tabla tbody { display: grid; gap: 10px; }
+    .gar-tabla tbody tr {
+        display: grid; gap: 8px; padding: 12px 14px; border-radius: 16px;
+        background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    html[data-theme="light"] .gar-tabla tbody tr { background: var(--superficie-2); border-color: var(--linea); }
+    .gar-tabla td { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 0; border: 0; max-width: none; }
+    .gar-tabla td::before { content: attr(data-titulo); flex: none; font-size: 0.72rem; color: var(--tinta-3); font-weight: 600; }
+    .gar-tabla .gar-celda { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+    .gar-tabla tbody tr:hover td { background: none; }
+}
