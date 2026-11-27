@@ -117,13 +117,6 @@ html[data-theme] .adm .modal-overlay { background: rgba(8, 12, 10, 0.6); }
 html[data-theme] .adm .modal-icono.success { background: var(--exito-fondo); color: var(--lima-texto); }
 html[data-theme] .adm .modal-icono.info { background: var(--superficie-3); color: var(--tinta-2); }
 
-/* --- Superficie de tarjeta compartida por todo el panel ------------------ */
-.adm :is(.panel-box, .metric-card, .taller-card, .ficha-360-container, .plan-card, .cola-card) {
-    border-radius: 24px; background: var(--superficie-1); border: 1px solid var(--linea);
-}
-html[data-theme="light"] .adm :is(.panel-box, .metric-card, .taller-card, .ficha-360-container, .plan-card) { box-shadow: var(--sombra-panel); }
-/* Tarjetas dentro de un panel: un tono distinto y sin sombra (evita capas encimadas) */
-.adm .panel-box :is(.plan-card, .cola-card) { background: var(--superficie-2); box-shadow: none; }
 
 /* ==========================================================================
    ESTRUCTURA: barra superior, insignia, navegación
@@ -148,13 +141,8 @@ html[data-theme="light"] .adm :is(.panel-box, .metric-card, .taller-card, .ficha
 /* Secciones */
 .adm-seccion[hidden], .adm [hidden] { display: none !important; }
 .adm .veh-cabecera .btn-chico .icono { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.adm-subtitulo {
-    margin: 0 0 12px; font-size: var(--t-xs); font-weight: 700; letter-spacing: 0.06em;
-    text-transform: uppercase; color: var(--tinta-3);
-}
 .adm-volver { margin-bottom: 18px; }
 .adm-volver .icono { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.texto-ayuda { color: var(--tinta-3); font-size: var(--t-s); line-height: 1.5; margin: 0 0 16px; }
 
 /* ==========================================================================
    INICIO DE SESIÓN: una sola columna centrada (sin la demo de Geor IA)
@@ -205,111 +193,10 @@ html[data-theme] .adm #login-container .btn-login:focus-visible { outline: 3px s
 .modal-btn-ok.adm-peligro:hover { box-shadow: 0 6px 18px rgba(220, 38, 38, 0.35); }
 .modal-btn-ok:disabled { opacity: 0.6; cursor: progress; transform: none; }
 
-/* ==========================================================================
-   CONTENIDO DE TRANSICIÓN (se rediseña sección por sección)
-   ========================================================================== */
-
-/* Etiquetas de estado */
-.pill-badge {
-    display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 9999px;
-    font-size: 12px; font-weight: 600; white-space: nowrap; border: 1px solid transparent;
-}
-.pill-plan { background: var(--superficie-2); color: var(--tinta-2); border-color: var(--linea); }
-.pill-activo { background: var(--exito-fondo); color: var(--exito); }
-.pill-suspendido { background: var(--peligro-fondo); color: var(--peligro); }
-.pill-aviso { background: var(--aviso-fondo); color: var(--aviso); }
-
-/* Resumen */
-.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 28px; }
-.metric-card { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
-.metric-card h4 { margin: 0; font-size: var(--t-s); font-weight: 600; color: var(--tinta-3); }
-.metric-main-value { font-size: 2.25rem; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--tinta); }
-.metric-sub-stats { display: flex; flex-wrap: wrap; gap: 6px; }
-.metric-card .btn-chico { align-self: flex-start; margin-top: auto; }
-.adm-lista-alertas { display: flex; flex-direction: column; gap: 8px; }
-.alerta-card { padding: 12px 16px; border-radius: 14px; border: 1px solid var(--linea); background: var(--superficie-1); color: var(--tinta-2); font-size: var(--t-s); border-left-width: 3px; }
-.alerta-card b { color: var(--tinta); }
-.alerta-critico { border-left-color: var(--peligro); }
-.alerta-advertencia { border-left-color: var(--aviso); }
-.alerta-riesgo { border-left-color: var(--info); }
-.alerta-ok { border-left-color: var(--exito); }
-
-/* Talleres */
-.panel-box { padding: 22px; margin-bottom: 24px; }
-.form-alta-taller { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
-.talleres-grid { display: flex; flex-direction: column; gap: 10px; }
-.taller-card { padding: 16px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; justify-content: space-between; }
-.taller-header-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.taller-nombre { margin: 0; font-size: var(--t-m); font-weight: 700; color: var(--tinta); }
-.taller-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 6px; font-size: var(--t-xs); color: var(--tinta-3); }
-.taller-meta b { color: var(--tinta-2); font-weight: 600; }
-.card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.btn-action {
-    min-height: 34px; padding: 0 12px; border-radius: 9999px; cursor: pointer;
-    font: 600 var(--t-xs) var(--fuente-ui); color: var(--tinta-2);
-    background: var(--superficie-2); border: 1px solid var(--linea);
-}
-.btn-action:hover { color: var(--tinta); border-color: var(--linea-intensa); }
-.btn-action.btn-suspend { color: var(--peligro); }
-
-/* Ficha 360° */
-.ficha-360-container { overflow: hidden; }
-.ficha-360-header { padding: 22px 24px; border-bottom: 1px solid var(--linea); }
-.ficha-360-header h2 { margin: 0 0 10px; font-size: var(--t-xl); }
-.ficha-360-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--tinta-3); font-size: var(--t-xs); }
-.ficha-360-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 22px; padding: 22px 24px; }
-.ficha-seccion h4 { margin: 0 0 10px; font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--tinta-3); }
-.ficha-lista-datos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: var(--t-s); }
-.ficha-lista-datos li { display: flex; justify-content: space-between; gap: 10px; color: var(--tinta-2); }
-.ficha-lista-datos li span:last-child { color: var(--tinta); font-weight: 600; text-align: right; }
-.ficha-360-footer { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 24px; border-top: 1px solid var(--linea); }
-.ficha-360-footer :is(.btn-primary, .btn-ghost) {
-    min-height: 38px; padding: 0 16px; border-radius: 9999px; cursor: pointer;
-    font: 600 var(--t-s) var(--fuente-ui); color: var(--tinta-2); background: var(--superficie-2); border: 1px solid var(--linea);
-}
-.ficha-360-footer .btn-primary { background: var(--lima); color: var(--sobre-lima); border: 0; }
-
-/* Planes */
-.planes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
-.plan-card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-.campo-plan { display: flex; flex-direction: column; gap: 6px; font-size: var(--t-xs); font-weight: 600; color: var(--tinta-3); }
-.precios-plan { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.checks-modulos { display: flex; flex-direction: column; gap: 10px; }
-.check-modulo { display: flex; gap: 10px; align-items: flex-start; font-size: var(--t-s); cursor: pointer; }
-.check-modulo input { margin-top: 3px; width: 16px; height: 16px; }
-.check-modulo .texto-ayuda { margin: 0; font-size: var(--t-xs); }
-.plan-card .btn-primary {
-    min-height: 42px; border: 0; border-radius: 9999px; cursor: pointer;
-    font: 700 var(--t-s) var(--fuente-ui); background: var(--lima); color: var(--sobre-lima);
-}
-
-/* Monitor de IA */
-.adm-lista-cola { display: flex; flex-direction: column; gap: 10px; }
-.cola-card { padding: 14px 16px; display: flex; gap: 14px; align-items: center; justify-content: space-between; }
-.cola-info { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.cola-meta { font-size: var(--t-xs); color: var(--tinta-3); }
-.cola-texto { font-size: var(--t-s); color: var(--tinta); overflow-wrap: anywhere; }
-
-/* Modal de módulos por taller */
-.modulos-cabecera label { display: flex; flex-direction: column; gap: 6px; }
-.lista-modulos { display: flex; flex-direction: column; gap: 8px; }
-.modulo-fila { padding: 12px 14px; border: 1px solid var(--linea); border-radius: 14px; display: flex; flex-direction: column; gap: 10px; }
-.modulo-fila.con-excepcion { border-color: color-mix(in srgb, var(--lima) 55%, transparent); }
-.modulo-titulo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.modulo-info .texto-ayuda { margin: 4px 0 0; font-size: var(--t-xs); }
-.modulo-controles { display: grid; grid-template-columns: 1.3fr 0.9fr 1.3fr; gap: 8px; }
-.modulo-controles input:disabled { opacity: 0.45; }
-.subtitulo-modal { margin: 18px 0 8px; font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--tinta-3); }
+/* Historial de cambios de módulos (modal "Módulos de un taller") */
 .historial-modulos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: var(--t-xs); color: var(--tinta-2); }
 .historial-modulos li { display: flex; gap: 10px; }
 .hist-fecha { color: var(--tinta-3); white-space: nowrap; }
-.hist-quien { color: var(--tinta-3); }
-
-@media (max-width: 700px) {
-    .modulo-controles { grid-template-columns: minmax(0, 1fr); }
-    .precios-plan { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
-    .cola-card { flex-direction: column; align-items: stretch; }
-}
 
 /* ==========================================================================
    RESUMEN (módulo 2)
@@ -509,23 +396,6 @@ html[data-theme="light"] .res-card { box-shadow: var(--sombra-panel); }
     .res-mini-cifras { gap: 18px; }
     .res-barras { height: 220px; gap: 8px; }
     .res-val { font-size: 10px; }
-    .res-tabla { padding: 6px 0 10px; }
-    .res-tabla-cab { padding: 12px 18px 8px; }
-    .res-tabla thead { display: none; }
-    .res-tabla table, .res-tabla tbody { display: block; }
-    .res-tabla tbody tr {
-        display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; position: relative;
-        margin: 0 14px 10px; padding: 14px; border-radius: 18px; background: var(--superficie-2);
-    }
-    .res-tabla tbody tr + tr td { border-top: 0; }
-    .res-tabla td { padding: 0 !important; }
-    .res-tabla td[data-etiqueta]::before {
-        content: attr(data-etiqueta); display: block; margin-bottom: 3px;
-        font-size: 11px; font-weight: 650; color: var(--tinta-3); text-transform: uppercase; letter-spacing: 0.04em;
-    }
-    .res-tabla td[data-etiqueta="Taller"] { grid-column: 1 / -1; padding-right: 40px !important; }
-    .res-tabla td[data-etiqueta="Taller"]::before { display: none; }
-    .res-acc { position: absolute; top: 12px; right: 10px; }
     .adm-rejilla-2 { grid-template-columns: minmax(0, 1fr); }
     .res-anillos { justify-content: center; }
 }
@@ -779,3 +649,57 @@ html[data-theme] .adm .modal-btn-ok.adm-peligro:hover { background: #B91C1C; }
     .mon-cuerpo { flex-basis: calc(100% - 50px); }
     .mon-btn { margin-left: 46px; align-self: flex-start; }
 }
+
+/* ==========================================================================
+   AJUSTES FINALES DE RESPONSIVE (módulo 6)
+   ========================================================================== */
+/* Tableta: "Requieren tu atención" e "Ingreso por plan" lado a lado en su propia fila */
+@media (max-width: 1100px) and (min-width: 768px) {
+    .res-atencion { grid-column: 1; grid-row: 4; }
+    .res-planes { grid-column: 2; grid-row: 4; }
+}
+/* Fechas de la tabla en una sola línea */
+.res-tabla td[data-etiqueta="Vence"] { white-space: nowrap; }
+
+/* La lista y la ficha se adaptan al ancho de su columna (no al de la pantalla):
+   en tableta horizontal la columna de la lista es angosta */
+.tal-lista, .tal-detalle { container-type: inline-size; }
+@container (max-width: 400px) {
+    .tal-item { flex-wrap: wrap; row-gap: 8px; }
+    .tal-item-txt { flex-basis: calc(100% - 44px); }
+    .tal-item-txt b { white-space: normal; }
+    .tal-item-der { width: 100%; flex-direction: row; justify-content: space-between; align-items: center; padding-left: 44px; }
+}
+@container (max-width: 560px) {
+    .f360-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .f360-rejilla { grid-template-columns: minmax(0, 1fr); }
+    .f360-impersonar { margin-left: 0; }
+}
+
+/* La tabla de talleres del Resumen pasa a tarjetas cuando no cabe (tableta vertical y celular) */
+.res-tabla-caja { position: relative; }   /* contiene los textos solo para lector de pantalla */
+@media (max-width: 900px) {
+    .res-tabla { padding: 6px 0 10px; }
+    .res-tabla-cab { padding: 12px 18px 8px; }
+    .res-tabla thead { display: none; }
+    .res-tabla table, .res-tabla tbody { display: block; }
+    .res-tabla tbody tr {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; position: relative;
+        margin: 0 14px 10px; padding: 14px; border-radius: 18px; background: var(--superficie-2);
+    }
+    .res-tabla tbody tr + tr td { border-top: 0; }
+    .res-tabla td { padding: 0 !important; }
+    .res-tabla td[data-etiqueta]::before {
+        content: attr(data-etiqueta); display: block; margin-bottom: 3px;
+        font-size: 11px; font-weight: 650; color: var(--tinta-3); text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .res-tabla td[data-etiqueta="Taller"] { grid-column: 1 / -1; padding-right: 40px !important; }
+    .res-tabla td[data-etiqueta="Taller"]::before { display: none; }
+    .res-acc { position: absolute; top: 12px; right: 10px; }
+}
+@media (min-width: 560px) and (max-width: 900px) {
+    /* En tableta, dos tarjetas por fila */
+    .res-tabla tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 0 14px; }
+    .res-tabla tbody tr { margin: 0; }
+}
+.tal-item-der .res-tenue { white-space: nowrap; }

@@ -45,7 +45,10 @@ function prepararModal({ modo, titulo, ancho = false }) {
     return { overlay, ok };
 }
 
+let focoAntesDelModal = null;   // para devolver el foco al cerrar
+
 function mostrarModalPreparado(overlay, enfocar) {
+    if (!overlay.classList.contains('visible')) focoAntesDelModal = document.activeElement;
     overlay.classList.add('visible');
     overlay.setAttribute('aria-hidden', 'false');
     setTimeout(() => enfocar && enfocar.focus(), 60);
@@ -112,6 +115,21 @@ function cerrarModal() {
     overlay.classList.remove('visible');
     overlay.setAttribute('aria-hidden', 'true');
     accionModalCallback = null;
+    // El foco vuelve al botón que abrió el modal (si sigue en la página)
+    if (focoAntesDelModal && document.contains(focoAntesDelModal)) focoAntesDelModal.focus({ preventScroll: true });
+    focoAntesDelModal = null;
+}
+
+// Con el modal abierto, Tab recorre solo sus controles
+function retenerFocoEnModal(e) {
+    const caja = document.querySelector('#modal-aviso .modal-caja');
+    const enfocables = [...caja.querySelectorAll('button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')]
+        .filter(el => !el.disabled && !el.hidden && el.offsetParent !== null);
+    if (!enfocables.length) return;
+    const primero = enfocables[0], ultimo = enfocables[enfocables.length - 1];
+    if (!caja.contains(document.activeElement)) { e.preventDefault(); primero.focus(); }
+    else if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
 }
 
 // Teclado: Escape siempre cancela. Enter solo acepta en un aviso (en un
@@ -123,6 +141,7 @@ document.addEventListener('keydown', e => {
         return;
     }
     if (e.key === 'Escape') { e.preventDefault(); cerrarModal(); }
+    else if (e.key === 'Tab') retenerFocoEnModal(e);
     else if (e.key === 'Enter' && overlay.dataset.modo === 'aviso') { e.preventDefault(); cerrarModal(); }
 });
 // Clic fuera de la caja: cierra solo los avisos
@@ -494,7 +513,9 @@ function pintarAlertas() {
     const NIVEL = { critico: 'rojo', advertencia: 'amarillo', riesgo: 'azul' };
     // Las de "sin actividad" del sistema se reemplazan por las de salud (más precisas)
     const items = alertasSistema.filter(a => a.tipo !== 'riesgo')
-        .map(a => ({ nivel: NIVEL[a.tipo] || 'azul', html: a.mensaje }));
+        // Las fechas del servidor vienen como "(2026-11-29)": se muestran como "el 29 nov 2026"
+        .map(a => ({ nivel: NIVEL[a.tipo] || 'azul',
+                     html: String(a.mensaje || '').replace(/\s*\((\d{4}-\d{2}-\d{2})\)/g, (_, f) => `, el ${fechaCorta(f)}`) }));
     (ultimoResumen?.talleres || []).forEach(t => {
         const u = t.uso_semanal || [];
         if (t.salud === 'bajando') {
