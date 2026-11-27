@@ -3100,19 +3100,21 @@ html[data-theme="light"] .cot-chip.ok { color: #047857; }
 html[data-theme="light"] .cot-chip.no { color: #BE123C; }
 
 /* Resumen */
+/* Monto principal: tarjeta luminosa (lima/menta hacia lila) con texto oscuro de alto contraste */
 .cot-resumen {
-    display: grid; gap: 4px; padding: 16px 18px; border-radius: 18px;
-    background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.09);
+    position: relative; overflow: hidden; display: grid; gap: 4px; padding: 16px 18px; border-radius: 18px;
+    background: linear-gradient(125deg, #B6F2D3 0%, #D9F29A 30%, #F2E6AE 52%, #EDB9E4 76%, #B7A0FF 100%);
+    border: 1px solid rgba(255, 255, 255, 0.35); box-shadow: 0 16px 36px rgba(183, 160, 255, 0.18);
 }
-html[data-theme="light"] .cot-resumen { background: var(--superficie-2); border-color: var(--linea); }
-.cot-resumen-etq { font-size: var(--t-xs); font-weight: 600; color: var(--tinta-3); }
-.cot-resumen b { font-size: 2rem; font-weight: 800; letter-spacing: -0.025em; line-height: 1.1; color: var(--tinta); }
-.cot-resumen b.ok { color: #34D399; }
-html[data-theme="light"] .cot-resumen b.ok { color: #047857; }
-.cot-resumen-sub { font-size: var(--t-s); color: var(--tinta-2); }
-.cot-barra { height: 4px; border-radius: 999px; margin-top: 10px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
-html[data-theme="light"] .cot-barra { background: var(--superficie-3); }
-.cot-barra span { display: block; height: 100%; border-radius: inherit; background: #34D399; }
+.cot-resumen::after {
+    content: ""; position: absolute; width: 150px; height: 150px; right: -50px; top: -70px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.22); pointer-events: none;
+}
+.cot-resumen-etq { font-size: var(--t-xs); font-weight: 650; color: rgba(20, 17, 36, 0.68); }
+.cot-resumen b { font-size: 2rem; font-weight: 800; letter-spacing: -0.025em; line-height: 1.1; color: #141124; font-variant-numeric: tabular-nums; }
+.cot-resumen-sub { font-size: var(--t-s); color: rgba(20, 17, 36, 0.72); font-variant-numeric: tabular-nums; }
+.cot-barra { position: relative; z-index: 1; height: 4px; border-radius: 999px; margin-top: 10px; background: rgba(20, 17, 36, 0.14); overflow: hidden; }
+.cot-barra span { display: block; height: 100%; border-radius: inherit; background: #141124; }
 
 /* Grupos: sin cajas, título con punto de color y filas con aire */
 .cot-grupo h4 {
@@ -3163,8 +3165,8 @@ html[data-theme="light"] .cot-comentario span { color: #7E22CE; }
 html[data-theme="light"] .modal-cot .modal-botones { background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 30%); }
 .modal-cot .modal-btn-ok {
     width: 100%; height: 48px; border-radius: 14px; border: 0;
-    background: linear-gradient(135deg, #8A2BE2 0%, #A855F7 100%) !important; color: #fff !important;
-    font-weight: 700; font-size: var(--t-m); box-shadow: 0 10px 26px rgba(138, 43, 226, 0.35);
+    background: linear-gradient(125deg, #B6F2D3 0%, #D9F29A 30%, #F2E6AE 52%, #EDB9E4 76%, #B7A0FF 100%) !important;
+    color: #141124 !important; font-weight: 750; font-size: var(--t-m); box-shadow: 0 10px 26px rgba(183, 160, 255, 0.25);
 }
 .modal-cot .modal-btn-ok:hover { filter: brightness(1.08); }
 @media (max-width: 560px) {

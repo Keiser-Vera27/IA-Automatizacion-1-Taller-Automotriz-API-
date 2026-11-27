@@ -29,6 +29,9 @@
             --tinta: #F5F3FF; --tinta-2: #C8C3E3; --tinta-3: #8F89B3;
             --morado: #8A2BE2; --lila: #A855F7; --lila-suave: rgba(168, 85, 247, 0.14);
             --acento: linear-gradient(135deg, #8A2BE2 0%, #A855F7 100%);
+            /* Degradado luminoso de marca (lima/menta hacia lila), suavizado: solo en lo de mayor jerarquía */
+            --holo: linear-gradient(125deg, #B6F2D3 0%, #D9F29A 30%, #F2E6AE 52%, #EDB9E4 76%, #B7A0FF 100%);
+            --sobre-holo: #141124;
             --ok: #34D399; --ok-fondo: rgba(52, 211, 153, 0.12); --ok-borde: rgba(52, 211, 153, 0.45);
             --no: #FDA4AF; --no-fondo: rgba(244, 63, 94, 0.10); --no-borde: rgba(253, 164, 175, 0.35);
             --urgente: #FDA4AF; --urgente-fondo: rgba(244, 63, 94, 0.12);
@@ -82,7 +85,7 @@
         .taller { display: flex; align-items: center; gap: 10px; min-width: 0; }
         .taller-inicial {
             flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
-            font-weight: 800; font-size: 15px; color: #fff; background: var(--acento);
+            font-weight: 800; font-size: 15px; color: var(--sobre-holo); background: var(--holo);
         }
         .taller-nombre { font-weight: 700; font-size: 15px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .taller-sub { font-size: 12.5px; color: var(--tinta-3); }
@@ -109,12 +112,23 @@
 
         /* Dos tarjetas equilibradas: total y vigencia */
         .resumen { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
-        .dato { padding: 16px; display: grid; gap: 4px; align-content: start; }
+        .dato { padding: 16px; display: grid; gap: 4px; align-content: start; border-radius: 20px; }
         .dato-etiqueta { font-size: 13px; color: var(--tinta-3); font-weight: 600; }
         .dato-valor { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; font-variant-numeric: tabular-nums; }
         .dato-valor.fecha { font-size: 1.15rem; padding-top: 4px; }
         .dato-sub { font-size: 13px; color: var(--tinta-3); }
         .dato-sub.aviso { color: var(--recomendado); font-weight: 600; }
+        /* Total cotizado: tarjeta luminosa con texto oscuro de alto contraste */
+        .dato.holo {
+            position: relative; overflow: hidden; background: var(--holo); border: 1px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 16px 36px rgba(183, 160, 255, 0.20); -webkit-backdrop-filter: none; backdrop-filter: none;
+        }
+        .dato.holo::after {
+            content: ""; position: absolute; width: 130px; height: 130px; right: -45px; top: -55px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.22); pointer-events: none;
+        }
+        .dato.holo .dato-etiqueta, .dato.holo .dato-sub { color: rgba(20, 17, 36, 0.68); }
+        .dato.holo .dato-valor { color: var(--sobre-holo); }
 
         /* Nota del taller */
         .nota { margin-top: 12px; padding: 16px 18px; position: relative; overflow: hidden; }
@@ -182,8 +196,8 @@
         .barra-estado.error { color: var(--no); }
         .principal {
             flex: none; height: 48px; padding: 0 22px; border-radius: 999px; border: none; cursor: pointer;
-            background: var(--acento); color: #fff; font-family: inherit; font-weight: 700; font-size: 16px; line-height: 1;
-            box-shadow: 0 10px 24px rgba(138, 43, 226, 0.35);
+            background: var(--holo); color: var(--sobre-holo); font-family: inherit; font-weight: 750; font-size: 16px; line-height: 1;
+            box-shadow: 0 10px 26px rgba(183, 160, 255, 0.28);
         }
         .principal:disabled { background: var(--vidrio-2); color: var(--tinta-3); box-shadow: none; cursor: not-allowed; border: 1px solid var(--linea); }
 
@@ -204,7 +218,7 @@
         .marca-dec.aprobado { background: var(--ok-fondo); color: var(--ok); }
         .marca-dec.rechazado { background: var(--no-fondo); color: var(--no); }
         .resumen-linea.total { font-weight: 750; }
-        .resumen-linea.total b { font-size: 1.15rem; color: var(--ok); }
+        .total-aprobado { margin-top: 12px; }
 
         .pie { text-align: center; color: var(--tinta-3); font-size: 13px; margin-top: 32px; }
         .cargando { display: grid; place-items: center; min-height: 60dvh; color: var(--tinta-3); }
@@ -290,8 +304,12 @@
                     <span class="marca-dec ${esc(i.decision)}">${i.decision === 'aprobado' ? 'Aprobado' : 'No aprobado'}</span></span>
                 <b>${dinero(i.subtotal)}</b>
             </div>`).join('');
-        return `<div class="vidrio resumen-lista">${filas}
-            <div class="resumen-linea total"><span>Total aprobado</span><b>${dinero(cot.total_aprobado)}</b></div></div>`;
+        return `<div class="dato holo total-aprobado">
+                <span class="dato-etiqueta">Total aprobado</span>
+                <span class="dato-valor">${dinero(cot.total_aprobado)}</span>
+                <span class="dato-sub">de ${dinero(cot.total)}</span>
+            </div>
+            <div class="vidrio resumen-lista">${filas}</div>`;
     }
 
     function pintar() {
@@ -334,7 +352,7 @@
             <p class="intro">Elige qué trabajos autorizas. Solo se hará lo que apruebes.</p>
 
             <div class="resumen">
-                <div class="vidrio dato">
+                <div class="dato holo">
                     <span class="dato-etiqueta">Total cotizado</span>
                     <span class="dato-valor">${dinero(cot.total)}</span>
                     <span class="dato-sub">${n === 1 ? '1 trabajo' : `${n} trabajos`}</span>
