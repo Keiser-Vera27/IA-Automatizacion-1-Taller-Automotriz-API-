@@ -3174,3 +3174,112 @@ html[data-theme="light"] .modal-cot .modal-botones { background: linear-gradient
     .modal-cot .modal-botones { margin: 16px -18px 0; padding: 12px 18px 16px; }
     .cot-resumen b { font-size: 1.75rem; }
 }
+
+/* ==========================================================================
+   MOVIMIENTO
+   Personalidad: corporativa con toque premium (SaaS financiero). Sin rebotes.
+   - Curva firma: --curva (0.2, 0, 0, 1) para casi todo; entradas con
+     --curva-entra (desacelera) y salidas con --curva-sale (acelera).
+   - Tres duraciones: rápida 140 ms (hover, presionar), estándar 240 ms
+     (tarjetas, filas), lenta 360 ms (vistas, modales).
+   - Entrada única en toda la app: aparece subiendo 8 px con fundido.
+   - Escalonado: 30 ms entre elementos, máximo 8 (menos de 250 ms en total).
+   Con "reducir movimiento" del sistema, todo queda sin animación (ver arriba).
+   ========================================================================== */
+:root {
+    --curva: cubic-bezier(0.2, 0, 0, 1);
+    --curva-entra: cubic-bezier(0.05, 0.7, 0.1, 1);
+    --curva-sale: cubic-bezier(0.3, 0, 1, 1);
+    --mov-rapido: 140ms;
+    --mov-estandar: 240ms;
+    --mov-lento: 360ms;
+    --paso: 30ms;
+}
+
+@keyframes aparece { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes aparece-suave { from { opacity: 0; } to { opacity: 1; } }
+
+/* --- Cambio de vista: el contenido entra en cascada (cabecera, cifras, cuerpo) --- */
+.vista-app.vista-entra > * { animation: aparece var(--mov-lento) var(--curva-entra) backwards; }
+.vista-app.vista-entra > *:nth-child(2) { animation-delay: calc(var(--paso) * 2); }
+.vista-app.vista-entra > *:nth-child(3) { animation-delay: calc(var(--paso) * 4); }
+.vista-app.vista-entra > *:nth-child(n+4) { animation-delay: calc(var(--paso) * 6); }
+
+/* --- Listas: las filas aparecen escalonadas cada vez que se pintan --- */
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > * {
+    animation: aparece var(--mov-estandar) var(--curva-entra) backwards;
+}
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(2) { animation-delay: calc(var(--paso) * 1); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(3) { animation-delay: calc(var(--paso) * 2); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(4) { animation-delay: calc(var(--paso) * 3); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(5) { animation-delay: calc(var(--paso) * 4); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(6) { animation-delay: calc(var(--paso) * 5); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(7) { animation-delay: calc(var(--paso) * 6); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(n+8) { animation-delay: calc(var(--paso) * 7); }
+/* Filas de tablas (catálogo de servicios) */
+#tabla-servicios > tr { animation: aparece-suave var(--mov-estandar) var(--curva) backwards; }
+
+/* --- Cifras y tarjetas de resumen: entran juntas con un escalón corto --- */
+:is(.veh-cifras, .dash-kpis, .ficha-kpis) > * { animation: aparece var(--mov-estandar) var(--curva-entra) backwards; }
+:is(.veh-cifras, .dash-kpis, .ficha-kpis) > :nth-child(2) { animation-delay: calc(var(--paso) * 1); }
+:is(.veh-cifras, .dash-kpis, .ficha-kpis) > :nth-child(3) { animation-delay: calc(var(--paso) * 2); }
+:is(.veh-cifras, .dash-kpis, .ficha-kpis) > :nth-child(n+4) { animation-delay: calc(var(--paso) * 3); }
+
+/* --- Panel de detalle del vehículo y tarjeta destacada del taller --- */
+#ficha-vehiculo > * { animation: aparece var(--mov-estandar) var(--curva-entra) backwards; }
+#ficha-vehiculo > :nth-child(n+3) { animation-delay: calc(var(--paso) * 2); }
+#ficha-vehiculo > :nth-child(n+5) { animation-delay: calc(var(--paso) * 4); }
+.carril-taller > .tv { animation: aparece var(--mov-lento) var(--curva-entra) backwards; }
+/* La imagen del vehículo llega un instante después que su tarjeta (sigue al movimiento) */
+.tv-escena img, .ficha-escena img { animation: aparece-auto 520ms var(--curva-entra) 80ms backwards; }
+@keyframes aparece-auto { from { opacity: 0; transform: translateX(-50%) translateY(6px) scale(0.98); } to { opacity: 1; transform: translateX(-50%); } }
+.ficha-escena img, .det-cabecera .ficha-escena img { animation-name: aparece-auto; }
+
+/* --- Modales: el fondo funde y la caja sube y se asienta; al cerrar, sale más rápido --- */
+.modal-overlay { transition: opacity var(--mov-estandar) var(--curva), visibility var(--mov-estandar) var(--curva); }
+.modal-overlay .modal-caja {
+    transform: translateY(14px) scale(0.98); opacity: 0;
+    transition: transform 200ms var(--curva-sale), opacity 160ms var(--curva-sale);
+}
+.modal-overlay.visible .modal-caja {
+    transform: none; opacity: 1;
+    transition: transform var(--mov-lento) var(--curva-entra), opacity var(--mov-estandar) var(--curva);
+}
+/* El contenido del modal llega 60 ms después de la caja */
+.modal-overlay.visible .modal-caja > :not(.modal-botones) { animation: aparece-suave var(--mov-estandar) var(--curva) 60ms backwards; }
+
+/* --- Respuesta al usuario: presionar, pasar el mouse, foco --- */
+:is(.btn, .btn-primario, .btn-enviar, .btn-chico, .btn-icono, .veh-chip, .dash-chip, .sugerencia, .nav-enlace, .principal, .modal-btn-ok, .modal-btn-secundario, .btn-agregar-servicio) {
+    transition: transform var(--mov-rapido) var(--curva), background-color var(--mov-rapido) var(--curva),
+                color var(--mov-rapido) var(--curva), border-color var(--mov-rapido) var(--curva),
+                box-shadow var(--mov-estandar) var(--curva), filter var(--mov-rapido) var(--curva);
+}
+:is(.btn, .btn-primario, .btn-enviar, .btn-chico, .btn-icono, .veh-chip, .dash-chip, .sugerencia, .principal, .modal-btn-ok, .modal-btn-secundario, .btn-agregar-servicio):active:not(:disabled) {
+    transform: scale(0.97); transition-duration: 80ms;
+}
+/* Tarjetas interactivas: se elevan un poco al pasar el mouse */
+:is(.dash-kpi, .veh-cifra, .gar-prov, .orden-mini, .tv) { transition: transform var(--mov-estandar) var(--curva), border-color var(--mov-estandar) var(--curva), box-shadow var(--mov-estandar) var(--curva); }
+@media (hover: hover) {
+    :is(.veh-cifra, .gar-prov):hover { transform: translateY(-2px); }
+}
+/* Filtros y pestañas: el cambio de selección se siente, no salta */
+:is(.veh-chip, .dash-chip, .segmento button)[aria-pressed="true"] { animation: chip-activo var(--mov-estandar) var(--curva-entra); }
+@keyframes chip-activo { from { transform: scale(0.94); } to { transform: none; } }
+
+/* --- Barras de progreso y de datos: crecen desde cero --- */
+:is(.gar-barra span, .cot-barra span, .dash-barra, .barra-tecnico span) {
+    animation: crece 700ms var(--curva-entra) 120ms backwards; transform-origin: left center;
+}
+@keyframes crece { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* --- Cargando: texto que respira suave (capa ambiental) --- */
+:is(.caja-cargando, .cargando) { animation: respira 1400ms ease-in-out infinite; }
+@keyframes respira { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+
+/* --- Cambio de tema: fundido corto del documento completo (View Transitions) --- */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 280ms; animation-timing-function: var(--curva); }
+
+/* Reducir movimiento: sin entradas ni conteos (las transiciones de color se mantienen instantáneas) */
+@media (prefers-reduced-motion: reduce) {
+    .vista-app.vista-entra > *, .modal-overlay .modal-caja, .modal-overlay.visible .modal-caja > * { animation: none !important; transform: none !important; }
+}
