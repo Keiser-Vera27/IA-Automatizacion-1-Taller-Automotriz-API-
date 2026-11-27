@@ -530,3 +530,111 @@ html[data-theme="light"] .res-card { box-shadow: var(--sombra-panel); }
     .res-anillos { justify-content: center; }
 }
 @media (prefers-reduced-motion: reduce) { .res-pila i, .res-menu { animation: none; } }
+
+/* ==========================================================================
+   TALLERES (módulo 3): lista + ficha 360°
+   ========================================================================== */
+.adm .veh-cabecera .btn .icono { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.tal-layout { display: grid; grid-template-columns: minmax(0, 40fr) minmax(0, 60fr); gap: 18px; align-items: start; }
+.tal-lista, .tal-detalle {
+    position: sticky; top: calc(var(--alto-barra) + 16px);
+    max-height: calc(100dvh - var(--alto-barra) - 40px); overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-width: thin; scrollbar-color: var(--linea-intensa) transparent;
+}
+.tal-lista { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.tal-detalle { padding: 22px 24px 26px; }
+.tal-volver { display: none; }
+
+/* Buscador y filtros */
+.tal-buscador { position: relative; display: flex; align-items: center; }
+.tal-buscador .icono { position: absolute; left: 14px; width: 18px; height: 18px; fill: none; stroke: var(--tinta-3); stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+.tal-buscador input { width: 100%; padding-left: 42px; border-radius: 9999px; min-height: 44px; }
+.tal-filtros { display: flex; gap: 6px; flex-wrap: wrap; }
+.tal-filtros button {
+    font: 600 var(--t-xs) var(--fuente-ui); color: var(--tinta-2); background: var(--superficie-2);
+    border: 1px solid transparent; border-radius: 9999px; padding: 7px 12px; cursor: pointer; display: inline-flex; gap: 6px;
+}
+.tal-filtros button span { color: var(--tinta-3); font-variant-numeric: tabular-nums; }
+.tal-filtros button[aria-pressed="true"] { color: var(--lima-texto); border-color: var(--lima); background: transparent; }
+.tal-filtros button[aria-pressed="true"] span { color: inherit; }
+
+/* Filas de la lista */
+.tal-items { display: flex; flex-direction: column; gap: 4px; }
+.tal-item {
+    display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; border-radius: 18px;
+    border: 1px solid transparent; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+    transition: background-color var(--mov-rapido) var(--curva), border-color var(--mov-rapido) var(--curva);
+}
+.tal-item:hover { background: var(--superficie-2); }
+.tal-item.activo { background: var(--superficie-2); border-color: color-mix(in srgb, var(--lima) 55%, transparent); }
+.tal-item-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.tal-item-txt b { font-size: var(--t-s); font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tal-item-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: var(--t-xs); color: var(--tinta-3); }
+.tal-item-der { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; flex-shrink: 0; }
+.tal-vacio {
+    min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center;
+    border: 1px dashed var(--linea-intensa); border-radius: 20px; color: var(--tinta-3); font-size: var(--t-s); padding: 24px;
+}
+.tal-vacio b { color: var(--tinta); font-size: var(--t-m); }
+
+/* Ficha 360° */
+.f360 { display: flex; flex-direction: column; gap: 20px; }
+.f360-cab { display: flex; gap: 16px; align-items: flex-start; }
+.res-av.f360-av { width: 56px; height: 56px; border-radius: 18px; font-size: 18px; background: var(--lima); color: var(--sobre-lima); }
+.f360-titulo { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.f360-titulo h2 { margin: 0; font-size: 1.5rem; letter-spacing: -0.02em; }
+.f360-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; }
+.f360-acciones { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.f360-acciones .btn { min-height: 38px; padding: 0 18px; }
+.f360-impersonar { margin-left: auto; }
+.adm .adm-btn-peligro { color: var(--peligro); }
+.adm .adm-btn-peligro:hover { border-color: var(--peligro); color: var(--peligro); }
+.f360-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.f360-kpis div { background: var(--superficie-2); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.f360-kpis span { font-size: var(--t-xs); color: var(--tinta-3); }
+.f360-kpis b { font-size: 1.375rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+.f360-rejilla { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.f360-bloque { border: 1px solid var(--linea); border-radius: 18px; padding: 16px 18px; min-width: 0; }
+.f360-ancho { grid-column: 1 / -1; }
+.f360-bloque h3 { margin: 0 0 10px; font-size: var(--t-s); font-weight: 700; display: flex; gap: 8px; align-items: baseline; }
+.f360-datos { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.f360-datos div { display: flex; justify-content: space-between; gap: 12px; font-size: var(--t-s); }
+.f360-datos dt { color: var(--tinta-3); }
+.f360-datos dd { margin: 0; text-align: right; color: var(--tinta); font-weight: 600; display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.f360-uso { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.f360-uso .res-spark { width: 100%; height: 56px; }
+.tal-pagos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.tal-pagos li { display: flex; align-items: center; gap: 14px; padding: 10px 0; font-size: var(--t-s); }
+.tal-pagos li + li { border-top: 1px solid var(--linea); }
+.tal-pago-fecha { width: 92px; flex-shrink: 0; color: var(--tinta-3); font-size: var(--t-xs); }
+.tal-pago-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.tal-pago-txt span { font-size: var(--t-xs); color: var(--tinta-3); }
+.f360-modulos { display: flex; flex-wrap: wrap; gap: 6px; }
+.f360-id { margin: 0; font-size: 11.5px; }
+
+/* Tableta y celular: una columna; la ficha reemplaza a la lista */
+@media (max-width: 959px) {
+    .tal-layout { grid-template-columns: minmax(0, 1fr); }
+    .tal-lista, .tal-detalle { position: static; max-height: none; overflow: visible; }
+    .tal-detalle { display: none; }
+    .tal-layout.con-detalle .tal-detalle { display: block; }
+    .tal-layout.con-detalle .tal-lista { display: none; }
+    .tal-volver { display: inline-flex; }
+}
+@media (max-width: 767px) {
+    .adm .veh-cabecera { flex-wrap: wrap; }
+    .tal-detalle { padding: 18px; }
+    .f360-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .f360-rejilla { grid-template-columns: minmax(0, 1fr); }
+    .f360-impersonar { margin-left: 0; }
+    .f360-acciones .btn { flex: 1 1 100%; }
+    .tal-item-der .res-tenue { display: none; }
+}
+
+/* Botón de confirmación peligrosa (suspender): rojo, gana a la regla lima del tema */
+html[data-theme] .adm .modal-btn-ok.adm-peligro { background: #DC2626; color: #fff; box-shadow: 0 8px 20px -8px rgba(220, 38, 38, 0.6); }
+html[data-theme] .adm .modal-btn-ok.adm-peligro:hover { background: #B91C1C; }
+@media (max-width: 767px) {
+    .tal-pagos li { flex-wrap: wrap; gap: 2px 12px; }
+    .tal-pago-fecha { width: 100%; order: -1; }
+}

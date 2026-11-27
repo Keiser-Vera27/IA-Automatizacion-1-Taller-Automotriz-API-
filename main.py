@@ -686,7 +686,8 @@ def obtener_ficha_360(taller_id: str, request: Request):
                 "modulos": [MODULOS[m]["nombre"] for m in MODULOS if m in modulos_activos(taller_id)],
                 "estado_pago": taller.get("estado_pago", "N/A"),
                 "fecha_vencimiento": taller.get("fecha_vencimiento") or "No definida",
-                "created_at": taller.get("created_at", "").split("T")[0] if taller.get("created_at") else "Desconocida"
+                # La columna real es fecha_registro (created_at no existe en talleres)
+                "created_at": str(taller.get("fecha_registro") or taller.get("created_at") or "")[:10] or "Desconocida"
             },
             "uso": {
                 "reparaciones": total_reparaciones,

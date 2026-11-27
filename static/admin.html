@@ -18,7 +18,7 @@
     </script>
     <!-- Sistema de diseño compartido (tokens, temas, navegación, modal) + estilos propios del panel -->
     <link rel="stylesheet" href="style.css?v=29">
-    <link rel="stylesheet" href="admin_style.css?v=5">
+    <link rel="stylesheet" href="admin_style.css?v=7">
 </head>
 <body class="adm">
 
@@ -244,46 +244,50 @@
                 </section>
 
                 <!-- ================================================== -->
-                <!-- SECCIÓN: TALLERES (se rediseña en el módulo 3)      -->
+                <!-- SECCIÓN: TALLERES                                   -->
+                <!--   Lista con búsqueda y filtros a la izquierda y la  -->
+                <!--   ficha 360° del taller elegido a la derecha.       -->
                 <!-- ================================================== -->
                 <section id="sec-talleres" class="vista-app adm-seccion" hidden>
-                    <div id="vista-principal">
-                        <header class="veh-cabecera">
-                            <div>
-                                <h1>Talleres</h1>
-                                <p>Clientes de la plataforma, su plan y su suscripción.</p>
-                            </div>
-                        </header>
-
-                        <div class="panel-box">
-                            <h2 class="adm-subtitulo">Registrar nuevo taller</h2>
-                            <div class="form-alta-taller">
-                                <input type="text" id="nuevo_nombre" placeholder="Nombre del taller" aria-label="Nombre del taller">
-                                <input type="email" id="nuevo_email" placeholder="Correo del dueño" aria-label="Correo del dueño">
-                                <input type="password" id="nuevo_pass" placeholder="Contraseña del dueño" aria-label="Contraseña del dueño">
-                                <!-- Plan = qué funciones tiene; periodo = cada cuánto paga -->
-                                <select id="nuevo_plan_codigo" title="Plan (qué funciones tiene)" aria-label="Plan">
-                                    <option value="">Cargando planes...</option>
-                                </select>
-                                <select id="nuevo_plan" title="Periodo de pago" aria-label="Periodo de pago">
-                                    <option value="mensual">Pago mensual</option>
-                                    <option value="trimestral">Pago trimestral</option>
-                                    <option value="anual">Pago anual</option>
-                                </select>
-                                <button class="btn btn-primario" type="button" onclick="crearTaller()">Crear taller</button>
-                            </div>
+                    <header class="veh-cabecera">
+                        <div>
+                            <h1>Talleres</h1>
+                            <p>Clientes de la plataforma, su plan, sus pagos y su uso.</p>
                         </div>
-
-                        <h2 class="adm-subtitulo">Talleres registrados</h2>
-                        <div id="lista-talleres" class="talleres-grid"></div>
-                    </div>
-
-                    <!-- Ficha 360° de un taller -->
-                    <div id="vista-360-taller" hidden>
-                        <button class="btn-chico adm-volver" type="button" onclick="cerrarVista360()">
-                            <svg class="icono" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Volver a talleres
+                        <button type="button" class="btn btn-primario" onclick="modalNuevoTaller()">
+                            <svg class="icono" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Registrar taller
                         </button>
-                        <div id="contenido-360"></div>
+                    </header>
+
+                    <div class="tal-layout" id="tal-layout">
+                        <!-- Lista -->
+                        <section class="tal-lista res-card" id="vista-principal" aria-label="Lista de talleres">
+                            <div class="tal-buscador">
+                                <svg class="icono" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                                <input type="search" id="tal-buscar" placeholder="Buscar por nombre o correo" aria-label="Buscar taller"
+                                       oninput="pintarListaTalleres()" autocomplete="off">
+                            </div>
+                            <div class="tal-filtros" role="group" aria-label="Filtrar talleres">
+                                <button type="button" data-filtro="todos" aria-pressed="true" onclick="filtrarTalleres('todos')">Todos <span id="tal-n-todos">0</span></button>
+                                <button type="button" data-filtro="activos" aria-pressed="false" onclick="filtrarTalleres('activos')">Activos <span id="tal-n-activos">0</span></button>
+                                <button type="button" data-filtro="por_vencer" aria-pressed="false" onclick="filtrarTalleres('por_vencer')">Por vencer <span id="tal-n-por_vencer">0</span></button>
+                                <button type="button" data-filtro="suspendidos" aria-pressed="false" onclick="filtrarTalleres('suspendidos')">Suspendidos <span id="tal-n-suspendidos">0</span></button>
+                            </div>
+                            <div id="lista-talleres" class="tal-items" role="list"></div>
+                        </section>
+
+                        <!-- Ficha 360° -->
+                        <section class="tal-detalle res-card" id="vista-360-taller" aria-label="Ficha del taller">
+                            <button class="btn-chico adm-volver tal-volver" type="button" onclick="cerrarVista360()">
+                                <svg class="icono" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Volver a la lista
+                            </button>
+                            <div id="contenido-360">
+                                <div class="tal-vacio">
+                                    <b>Elige un taller</b>
+                                    <span>Aquí verás su suscripción, sus pagos, su uso y sus módulos.</span>
+                                </div>
+                            </div>
+                        </section>
                     </div>
                 </section>
 
@@ -330,6 +334,6 @@
     <!-- Menú de acciones de una fila de la tabla de talleres -->
     <div id="res-menu" class="res-menu" role="menu" hidden></div>
 
-    <script src="admin_script.js?v=5"></script>
+    <script src="admin_script.js?v=6"></script>
 </body>
 </html>

@@ -188,7 +188,12 @@ function cambiarSeccion(id) {
     window.scrollTo(0, 0);
     // Cada sección carga sus datos al abrirse
     if (id === 'sec-resumen') cargarResumen();
-    else if (id === 'sec-talleres') { cerrarVista360(); cargarTalleres(); }
+    else if (id === 'sec-talleres') {
+        cerrarVista360();
+        cargarTalleres();
+        if (fichaPendiente) { const f = fichaPendiente; fichaPendiente = null; abrirFicha360(f); }
+        else if (tallerAbierto) abrirFicha360(tallerAbierto, { desdeLista: true, mostrar: false });
+    }
     else if (id === 'sec-planes') cargarVistaPlanes();
     else if (id === 'sec-monitor') cargarColaIA();
 }
@@ -533,10 +538,7 @@ window.addEventListener('scroll', () => {
     if (!menu.hidden && Date.now() - Number(menu.dataset.abierto || 0) > 250) cerrarMenuTaller();
 }, { passive: true });
 
-function irARegistrarTaller() {
-    cambiarSeccion('sec-talleres');
-    setTimeout(() => elModal('nuevo_nombre')?.focus(), 80);
-}
+function irARegistrarTaller() { modalNuevoTaller(); }
 
 // ==========================================================================
 // REGISTRAR PAGO
@@ -663,246 +665,353 @@ async function guardarPago() {
 // Compatibilidad: los botones "Renovar pago" existentes abren el nuevo formulario
 function modalActualizarPago(id) { modalRegistrarPago(id); }
 
-async function cargarTalleres() {
-    const token = localStorage.getItem("admin_token");
-    const res = await fetch("/admin/talleres", { headers: { 'Authorization': `Bearer ${token}` } });
-    const data = await res.json();
-    
-    let html = "";
-    data.talleres.forEach(t => {
-        const esActivo = t.estado_pago === 'activo';
-        const badgeEstado = esActivo 
-            ? `<span class="pill-badge pill-activo">Activo</span>` 
-            : `<span class="pill-badge pill-suspendido">Suspendido</span>`;
-            
-        const fechaMostrar = t.fecha_vencimiento ? t.fecha_vencimiento : 'Sin fecha asignada';
-        
-        // Plan (funciones) y periodo (pago). Sin la migración de planes solo hay periodo.
-        const planTxt = t.plan_nombre ? `${esc(t.plan_nombre)} · ${esc(t.periodo || '')}` : esc(t.plan);
-        const totalModulos = catalogoModulos.length || 6;
-        const lineaModulos = Array.isArray(t.modulos)
-            ? `<span>•</span><span><b>Módulos:</b> ${t.modulos.length} de ${totalModulos}${t.n_excepciones ? ` (${t.n_excepciones} excepción${t.n_excepciones > 1 ? 'es' : ''})` : ''}</span>`
-            : '';
-        html += `
-        <div class="taller-card">
-            <div class="taller-info">
-                <div class="taller-header-row">
-                    <h4 class="taller-nombre">${esc(t.nombre)}</h4>
-                    <span class="pill-badge pill-plan">${planTxt}</span>
-                    ${badgeEstado}
-                </div>
-                <div class="taller-meta">
-                    <span><b>ID:</b> ${esc(t.id)}</span>
-                    <span>•</span>
-                    <span><b>Vence:</b> ${esc(fechaMostrar)}</span>
-                    ${lineaModulos}
-                </div>
-            </div>
+// ==========================================================================
+// TALLERES
+//   Lista (con búsqueda y filtros) + ficha 360° del taller elegido.
+//   Datos: /admin/talleres (plan, módulos, estado) unidos con /admin/resumen
+//   (lo pagado, el uso y la salud) cuando está disponible.
+// ==========================================================================
+let talleresCache = [];         // filas de la lista ya unidas
+let filtroTalleres = 'todos';
+let tallerAbierto = null;       // id del taller con la ficha abierta
+let fichaPendiente = null;      // ficha pedida desde otra sección (se abre al entrar)
+const DIAS_POR_VENCER = 7;
 
-            <div class="card-actions">
-                <!-- NUEVO BOTÓN 360 -->
-                <button class="btn-action btn-view" onclick="abrirFicha360('${t.id}')">Ficha 360°</button>
-                <button class="btn-action btn-user" onclick="modalModulos('${t.id}')">Módulos</button>
-                
-                <button class="btn-action btn-pay" onclick="modalActualizarPago('${t.id}')">Renovar Pago</button>
-                <button class="btn-action btn-suspend" onclick="suspender('${t.id}')">Suspender</button>
-                <button class="btn-action btn-user" onclick="modalAgregarUsuario('${t.id}')">+ Usuario</button>
-            </div>
-        </div>`;
-    });
-    document.getElementById("lista-talleres").innerHTML = html;
+const diasHasta = iso => {
+    if (!iso) return null;
+    const [a, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    return Math.round((new Date(a, m - 1, d) - hoy) / 86400000);
+};
+
+async function cargarTalleres() {
+    const cont = elModal('lista-talleres');
+    if (!talleresCache.length) cont.innerHTML = '<p class="res-vacio-chico">Cargando talleres...</p>';
+    try {
+        const [resT, resR] = await Promise.all([
+            fetch('/admin/talleres', { headers: cabeceraAdmin() }),
+            fetch('/admin/resumen?meses=6', { headers: cabeceraAdmin() }).catch(() => null)
+        ]);
+        const data = await resT.json();
+        if (!resT.ok) throw new Error(data.detail || `Error ${resT.status}`);
+        const resumen = resR && resR.ok ? await resR.json() : null;
+        if (resumen) ultimoResumen = resumen;
+        const extra = Object.fromEntries((resumen?.talleres || []).map(t => [String(t.id), t]));
+        talleresCache = (data.talleres || []).map(t => ({
+            ...t,
+            periodo: t.periodo || t.periodo_facturacion || t.plan,
+            pagado_total: extra[t.id]?.pagado_total ?? null,
+            n_pagos: extra[t.id]?.n_pagos ?? 0,
+            salud: extra[t.id]?.salud || null,
+            uso_semanal: extra[t.id]?.uso_semanal || null,
+            ultima_actividad: extra[t.id]?.ultima_actividad || null,
+        })).sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+        pintarListaTalleres();
+        // En escritorio se abre el primero para no dejar el panel vacío
+        const anchoEscritorio = window.matchMedia('(min-width: 960px)').matches;
+        if (!tallerAbierto && !fichaPendiente && anchoEscritorio && talleresCache.length) abrirFicha360(talleresCache[0].id, { desdeLista: true, mostrar: false });
+        else if (tallerAbierto) marcarTallerActivo();
+    } catch (e) {
+        cont.innerHTML = `<p class="res-vacio-chico">No se pudo cargar la lista: ${esc(e.message)}</p>`;
+    }
 }
 
-// --- CREAR TALLER ---
-async function crearTaller() {
-    const token = localStorage.getItem("admin_token");
-    const req = {
-        nombre_taller: document.getElementById("nuevo_nombre").value, 
-        email_jefe: document.getElementById("nuevo_email").value,
-        password_jefe: document.getElementById("nuevo_pass").value,
-        plan: document.getElementById("nuevo_plan").value,               // columna antigua (periodo)
-        periodo_facturacion: document.getElementById("nuevo_plan").value
-    };
-    const planCodigo = document.getElementById("nuevo_plan_codigo").value;
-    if (planCodigo) req.plan_codigo = planCodigo;   // vacío = migración de planes aún no ejecutada
-    
-    if(!req.nombre_taller || !req.email_jefe || !req.password_jefe) {
-        showToast("Por favor complete todos los campos", "error");
+function filtrarTalleres(filtro) {
+    filtroTalleres = filtro;
+    document.querySelectorAll('.tal-filtros button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.filtro === filtro)));
+    pintarListaTalleres();
+}
+
+function cumpleFiltro(t, filtro) {
+    const dias = diasHasta(t.fecha_vencimiento);
+    if (filtro === 'activos') return t.estado_pago === 'activo';
+    if (filtro === 'suspendidos') return t.estado_pago !== 'activo';
+    if (filtro === 'por_vencer') return t.estado_pago === 'activo' && dias !== null && dias <= DIAS_POR_VENCER;
+    return true;
+}
+
+function pintarListaTalleres() {
+    ['todos', 'activos', 'por_vencer', 'suspendidos'].forEach(f =>
+        elModal(`tal-n-${f}`).textContent = talleresCache.filter(t => cumpleFiltro(t, f)).length);
+    const q = (elModal('tal-buscar').value || '').trim().toLowerCase();
+    const lista = talleresCache.filter(t => cumpleFiltro(t, filtroTalleres) &&
+        (!q || `${t.nombre} ${t.email}`.toLowerCase().includes(q)));
+    const cont = elModal('lista-talleres');
+    if (!lista.length) {
+        cont.innerHTML = `<p class="res-vacio-chico">${talleresCache.length ? 'Ningún taller coincide con la búsqueda o el filtro.' : 'Todavía no hay talleres registrados.'}</p>`;
         return;
     }
-    
+    cont.innerHTML = lista.map(t => {
+        const dias = diasHasta(t.fecha_vencimiento);
+        let estado;
+        if (t.estado_pago !== 'activo') estado = '<span class="res-salud suspendido"><i></i>Suspendido</span>';
+        else if (dias !== null && dias < 0) estado = '<span class="res-salud baja"><i></i>Vencido</span>';
+        else if (dias !== null && dias <= DIAS_POR_VENCER) estado = `<span class="res-salud inactivo"><i></i>Vence en ${dias} día${dias === 1 ? '' : 's'}</span>`;
+        else if (t.salud === 'bajando') estado = '<span class="res-salud baja"><i></i>Uso bajando</span>';
+        else estado = '<span class="res-salud ok"><i></i>Activo</span>';
+        return `<button type="button" class="tal-item" role="listitem" data-id="${esc(t.id)}" onclick="abrirFicha360('${esc(t.id)}')">
+            <span class="res-av">${esc(iniciales(t.nombre))}</span>
+            <span class="tal-item-txt"><b>${esc(t.nombre)}</b>
+                <span class="tal-item-meta"><span class="res-plan">${esc(t.plan_nombre || t.plan_codigo || 'Sin plan')}</span><span>${esc(t.periodo || '')}</span><span>Vence ${fechaCorta(t.fecha_vencimiento)}</span></span></span>
+            <span class="tal-item-der">${estado}${t.pagado_total !== null ? `<span class="res-tenue">${dinero(t.pagado_total)} pagado</span>` : ''}</span>
+        </button>`;
+    }).join('');
+    marcarTallerActivo();
+}
+
+function marcarTallerActivo() {
+    document.querySelectorAll('.tal-item').forEach(b => b.classList.toggle('activo', b.dataset.id === String(tallerAbierto)));
+}
+
+// --- Registrar un taller nuevo (formulario en modal) ---
+function modalNuevoTaller() {
+    const opcionesPlan = planesCache.length
+        ? planesCache.map(p => `<option value="${esc(p.codigo)}">${esc(p.nombre)}</option>`).join('')
+        : '<option value="">Sin planes (ejecuta el SQL de planes)</option>';
+    const html = `
+        <div class="adm-rejilla-2">
+            <label class="adm-campo-ancho">Nombre del taller<input type="text" id="nuevo_nombre" maxlength="80" placeholder="Ej. Lubricadora El Pana"></label>
+            <label>Correo del dueño<input type="email" id="nuevo_email" placeholder="dueno@correo.com" autocomplete="off"></label>
+            <label>Contraseña inicial<input type="text" id="nuevo_pass" minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="off">
+                <span class="adm-ayuda">Compártela con el dueño; podrá usarla para entrar.</span></label>
+            <label>Plan<select id="nuevo_plan_codigo">${opcionesPlan}</select></label>
+            <label>Periodo de pago<select id="nuevo_plan">
+                <option value="mensual">Mensual</option><option value="trimestral">Trimestral</option><option value="anual">Anual</option></select></label>
+        </div>`;
+    abrirModal('Registrar taller', html, crearTaller, false, 'Crear taller');
+    if (planesCache.length) elModal('nuevo_plan_codigo').value = planesCache[planesCache.length - 1].codigo;
+}
+
+async function crearTaller() {
+    const req = {
+        nombre_taller: elModal("nuevo_nombre").value.trim(),
+        email_jefe: elModal("nuevo_email").value.trim(),
+        password_jefe: elModal("nuevo_pass").value,
+        plan: elModal("nuevo_plan").value,               // columna antigua (periodo)
+        periodo_facturacion: elModal("nuevo_plan").value
+    };
+    const planCodigo = elModal("nuevo_plan_codigo").value;
+    if (planCodigo) req.plan_codigo = planCodigo;   // vacío = migración de planes aún no ejecutada
+    if (!req.nombre_taller || !req.email_jefe || !req.password_jefe) { showToast("Completa el nombre, el correo y la contraseña.", "error"); return; }
+    if (req.password_jefe.length < 6) { showToast("La contraseña debe tener al menos 6 caracteres.", "error"); return; }
+
+    const btn = elModal('modal-btn-confirmar');
+    btn.disabled = true;
     try {
-        const res = await fetch("/admin/talleres", {
-            method: "POST", 
-            headers: { "Content-Type": "application/json", 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(req)
-        });
-        const data = await res.json();
-        
-        if (res.ok) {
-            showToast(data.mensaje || "Taller registrado con éxito", "success");
-            document.getElementById("nuevo_nombre").value = "";
-            document.getElementById("nuevo_email").value = "";
-            document.getElementById("nuevo_pass").value = "";
-            cargarTalleres();
-            cargarDashboard(); // Actualizar contador de errores y alertas
-        } else {
-            const detalle = data.detail ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : data.mensaje;
-            showToast("Error: " + detalle, "error");
+        const res = await fetch("/admin/talleres", { method: "POST", headers: cabeceraAdmin(true), body: JSON.stringify(req) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            const detalle = data.detail ? (typeof data.detail === 'string' ? data.detail : 'Revisa los datos del formulario.') : data.mensaje;
+            showToast(detalle || `Error ${res.status}`, "error");
+            return;
         }
+        // "parcial": el taller se creó pero el usuario del dueño falló
+        mostrarAviso(data.mensaje || "Taller registrado.", data.status === 'parcial' ? 'warning' : 'success',
+                     data.status === 'parcial' ? 'Taller creado a medias' : 'Taller registrado');
+        tallerAbierto = data.taller_id || tallerAbierto;
+        await cargarTalleres();
+        if (data.taller_id) abrirFicha360(data.taller_id);
+        cargarDashboard();
     } catch {
         showToast("Error de conexión al servidor.", "error");
+    } finally {
+        btn.disabled = false;
     }
 }
 
-// --- ACCIONES CON MODAL PROPIO ---
+// --- Agregar un usuario supervisor al taller ---
 function modalAgregarUsuario(id) {
-    const inputs = `<input type="email" id="modal_user_email" placeholder="Correo del Usuario">
-                    <input type="password" id="modal_user_pass" placeholder="Contraseña (mín 6 caracteres)">`;
-                    
-    abrirModal("Agregar Usuario Supervisor", inputs, async () => {
-        const email = document.getElementById("modal_user_email").value;
-        const pass = document.getElementById("modal_user_pass").value;
-        
-        if(!email || !pass) {
-            showToast("Complete ambos campos", "error");
+    const t = talleresCache.find(x => String(x.id) === String(id));
+    const html = `
+        <p class="adm-modal-sub">${t ? `Podrá entrar a ${esc(t.nombre)} con este correo.` : 'Podrá entrar al taller con este correo.'}</p>
+        <label>Correo del usuario<input type="email" id="modal_user_email" placeholder="usuario@correo.com" autocomplete="off"></label>
+        <label>Contraseña<input type="text" id="modal_user_pass" placeholder="Mínimo 6 caracteres" autocomplete="off"></label>`;
+    abrirModal("Agregar usuario", html, async () => {
+        const email = elModal("modal_user_email").value.trim();
+        const pass = elModal("modal_user_pass").value;
+        if (!email || !pass) { showToast("Completa el correo y la contraseña.", "error"); return; }
+        if (pass.length < 6) { showToast("La contraseña debe tener al menos 6 caracteres.", "error"); return; }
+        const btn = elModal('modal-btn-confirmar');
+        btn.disabled = true;
+        try {
+            const res = await fetch(`/admin/talleres/${encodeURIComponent(id)}/usuarios`, {
+                method: "POST", headers: cabeceraAdmin(true),
+                body: JSON.stringify({ email, password: pass, rol: "supervisor" })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { showToast(typeof data.detail === 'string' ? data.detail : "No se pudo crear el usuario.", "error"); return; }
+            mostrarAviso(`${email} ya puede entrar al taller.`, "success", "Usuario agregado");
+        } catch {
+            showToast("Error de conexión al servidor.", "error");
+        } finally {
+            btn.disabled = false;
+        }
+    }, false, 'Agregar usuario');
+}
+
+// --- Suspender / reactivar (siempre con confirmación) ---
+function suspender(id) {
+    const t = talleresCache.find(x => String(x.id) === String(id));
+    confirmarAccion({
+        titulo: `¿Suspender ${t ? t.nombre : 'este taller'}?`,
+        mensaje: 'El taller no podrá usar el sistema hasta que lo reactives o registres un pago. Sus datos no se borran.',
+        textoBoton: 'Suspender', peligro: true,
+        alConfirmar: () => cambiarEstadoTaller(id, 'suspendido', 'Taller suspendido', `${t ? t.nombre : 'El taller'} quedó suspendido.`)
+    });
+}
+
+function reactivar(id) {
+    const t = talleresCache.find(x => String(x.id) === String(id));
+    confirmarAccion({
+        titulo: `¿Reactivar ${t ? t.nombre : 'este taller'}?`,
+        mensaje: 'Vuelve a tener acceso con su fecha de vencimiento actual. Si te pagó, mejor usa "Registrar pago": reactiva y deja constancia del cobro.',
+        textoBoton: 'Reactivar',
+        alConfirmar: () => cambiarEstadoTaller(id, 'activo', 'Taller reactivado', `${t ? t.nombre : 'El taller'} vuelve a estar activo.`)
+    });
+}
+
+async function cambiarEstadoTaller(id, estado, titulo, mensaje) {
+    try {
+        const res = await fetch(`/admin/talleres/${encodeURIComponent(id)}`, {
+            method: "PATCH", headers: cabeceraAdmin(true), body: JSON.stringify({ estado_pago: estado })
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            mostrarAviso(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`, 'error');
             return;
         }
-        
-        const token = localStorage.getItem("admin_token");
-        const res = await fetch(`/admin/talleres/${id}/usuarios`, {
-            method: "POST", 
-            headers: { "Content-Type": "application/json", 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ email: email, password: pass, rol: "supervisor" }) 
-        });
-        
-        if(res.ok) {
-            cerrarModal();
-            showToast("Usuario agregado al taller", "success");
-        } else {
-            const data = await res.json();
-            showToast(data.detail || "Error al crear usuario", "error");
-        }
-    });
+        mostrarAviso(mensaje, estado === 'activo' ? 'success' : 'info', titulo);
+        await cargarTalleres();
+        if (String(tallerAbierto) === String(id)) abrirFicha360(id, { desdeLista: true, mostrar: elModal('tal-layout').classList.contains('con-detalle') });
+        cargarDashboard();
+    } catch {
+        mostrarAviso("Error de conexión al servidor.", 'error');
+    }
 }
 
-async function suspender(id) {
-    const token = localStorage.getItem("admin_token");
-    await fetch(`/admin/talleres/${id}`, {
-        method: "PATCH", 
-        headers: { "Content-Type": "application/json", 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ estado_pago: 'suspendido' })
-    });
-    showToast("Taller suspendido", "info");
-    cargarTalleres();
-    cargarDashboard(); // Actualizar dashboard
-}
-
-// --- LÓGICA FICHA 360° ---
-async function abrirFicha360(id) {
-    const token = localStorage.getItem("admin_token");
+// --- Ficha 360° ---
+// mostrar = false: carga la ficha sin tapar la lista en el celular (al volver a la sección)
+async function abrirFicha360(id, { desdeLista = false, mostrar = true } = {}) {
+    if (elModal('sec-talleres').hidden) {
+        fichaPendiente = id;
+        cambiarSeccion('sec-talleres');   // carga la lista y abre esta ficha
+        return;
+    }
+    tallerAbierto = id;
+    marcarTallerActivo();
+    if (mostrar) elModal('tal-layout').classList.add('con-detalle');   // en el celular la ficha reemplaza a la lista
+    if (!desdeLista && !window.matchMedia('(min-width: 960px)').matches) window.scrollTo(0, 0);
+    const cont = elModal('contenido-360');
+    cont.innerHTML = '<p class="res-vacio-chico">Cargando la ficha del taller...</p>';
     try {
-        // Transición de vistas
-        if (elModal('sec-talleres').hidden) cambiarSeccion('sec-talleres');
-        document.getElementById("vista-principal").hidden = true;
-        document.getElementById("vista-360-taller").hidden = false;
-        window.scrollTo(0, 0);
-        document.getElementById("contenido-360").innerHTML = "<p style='padding:30px; color:#aaa;'>Cargando radiografía del taller...</p>";
-        
-        const res = await fetch(`/admin/talleres/${id}/ficha-360`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (!res.ok) throw new Error("Error al obtener datos");
-        const data = await res.json();
-        
-        renderizarFicha360(data);
-    } catch (error) {
-        showToast("Error al cargar la ficha 360°", "error");
-        cerrarVista360();
+        const [resF, resP] = await Promise.all([
+            fetch(`/admin/talleres/${encodeURIComponent(id)}/ficha-360`, { headers: cabeceraAdmin() }),
+            fetch(`/admin/talleres/${encodeURIComponent(id)}/pagos`, { headers: cabeceraAdmin() }).catch(() => null)
+        ]);
+        if (!resF.ok) throw new Error();
+        const data = await resF.json();
+        const pagos = resP && resP.ok ? await resP.json() : { pagos: [], total: 0 };
+        if (String(tallerAbierto) !== String(id)) return;   // el usuario ya eligió otro
+        renderizarFicha360(data, pagos);
+        reanimar(cont);
+    } catch {
+        cont.innerHTML = '<p class="res-vacio-chico">No se pudo cargar la ficha de este taller.</p>';
     }
 }
 
 function cerrarVista360() {
-    document.getElementById("vista-360-taller").hidden = true;
-    document.getElementById("vista-principal").hidden = false;
+    // En el celular vuelve a la lista; en escritorio la ficha sigue a la derecha
+    elModal('tal-layout')?.classList.remove('con-detalle');
 }
 
-function renderizarFicha360(data) {
-    const t = data.taller;
-    const u = data.uso;
-    const a = data.actividad;
-    
-    const esActivo = t.estado_pago === 'activo';
-    const badgeEstado = esActivo 
-        ? `<span class="pill-badge pill-activo">Activo</span>` 
-        : `<span class="pill-badge pill-suspendido">Suspendido</span>`;
+const NOMBRE_METODO = { efectivo: 'Efectivo', transferencia: 'Transferencia', deposito: 'Depósito', tarjeta: 'Tarjeta', otro: 'Otro' };
 
-    const html = `
-    <div class="ficha-360-container">
-        <div class="ficha-360-header">
-            <h2>${t.nombre}</h2>
-            <div class="ficha-360-badges">
-                ${badgeEstado}
-                <span class="pill-badge pill-plan">${t.plan_codigo ? `Plan ${esc(nombrePlan(t.plan_codigo))} · ${esc(t.periodo || '')}` : `Plan ${esc(t.plan)}`}</span>
-                <span style="color:var(--text-muted); font-size:13px; margin-left:10px;">Cliente desde: ${t.created_at}</span>
-                <span style="color:var(--text-muted); font-size:13px; margin-left:10px;">| ID: ${t.id}</span>
-            </div>
-        </div>
-        
-        <div class="ficha-360-body">
-            <!-- Bloque Uso -->
-            <div class="ficha-seccion">
-                <h4>Volúmen de Uso</h4>
-                <ul class="ficha-lista-datos">
-                    <li><span>Clientes Registrados</span> <span>${u.clientes}</span></li>
-                    <li><span>Vehículos Atendidos</span> <span>${u.vehiculos}</span></li>
-                    <li><span>Total Reparaciones</span> <span>${u.reparaciones}</span></li>
-                    <li><span>Usuarios Admin</span> <span>${u.usuarios_admin}</span></li>
-                </ul>
-            </div>
-            
-            <!-- Bloque Suscripción -->
-            <div class="ficha-seccion">
-                <h4>Suscripción</h4>
-                <ul class="ficha-lista-datos">
-                    <li><span>Próximo Pago</span> <span>${t.fecha_vencimiento}</span></li>
-                    <li><span>Estado Actual</span> <span>${t.estado_pago.toUpperCase()}</span></li>
-                    <li><span>Email Contacto</span> <span style="font-size:12px;">${esc(t.email)}</span></li>
-                </ul>
-            </div>
+function renderizarFicha360(data, pagos) {
+    const t = data.taller, u = data.uso, a = data.actividad;
+    const fila = talleresCache.find(x => String(x.id) === String(t.id)) || {};
+    const activo = t.estado_pago === 'activo';
+    const dias = diasHasta(t.fecha_vencimiento);
+    let estadoVence = '';
+    if (activo && dias !== null) estadoVence = dias < 0 ? `<span class="res-chip rojo">Vencido hace ${-dias} día${dias === -1 ? '' : 's'}</span>`
+        : dias <= DIAS_POR_VENCER ? `<span class="res-chip amarillo">${dias === 0 ? 'Vence hoy' : `Faltan ${dias} día${dias === 1 ? '' : 's'}`}</span>` : '';
+    const precio = fila.plan_codigo ? precioDe({ plan_codigo: fila.plan_codigo, periodo: t.periodo }, t.periodo || 'mensual') : 0;
+    const SALUD = { activo: ['Uso estable', 'ok'], bajando: ['Uso bajando', 'baja'], inactivo: ['Sin uso reciente', 'inactivo'] };
+    const [txtSalud, clsSalud] = SALUD[fila.salud] || ['', ''];
+    const ultima = a.ultima_actividad && a.ultima_actividad !== 'Sin actividad' ? haceCuanto(a.ultima_actividad) : 'Sin actividad registrada';
 
-            <!-- Bloque Módulos -->
-            <div class="ficha-seccion">
-                <h4>Módulos activos</h4>
-                <ul class="ficha-lista-datos">
-                    ${(t.modulos || []).map(m => `<li><span>${esc(m)}</span></li>`).join('') || '<li><span>Solo funciones básicas</span></li>'}
-                </ul>
+    const listaPagos = (pagos.pagos || []).slice(0, 6).map(p => `
+        <li><span class="tal-pago-fecha">${fechaCorta(p.fecha_pago)}</span>
+            <span class="tal-pago-txt"><b>${esc(NOMBRE_METODO[p.metodo] || p.metodo)}</b><span>${esc(p.periodo)}${p.cubre_hasta ? `, cubre hasta ${fechaCorta(p.cubre_hasta)}` : ''}${p.nota ? `. ${esc(p.nota)}` : ''}</span></span>
+            <span class="res-monto">${dinero(p.monto)}</span></li>`).join('');
+    const avisoPagos = pagos.falta_migracion
+        ? `<p class="res-vacio-chico">El historial aparecerá cuando se ejecute la migración ${esc(pagos.falta_migracion)}.</p>`
+        : '<p class="res-vacio-chico">Aún no hay pagos registrados para este taller.</p>';
+
+    elModal("contenido-360").innerHTML = `
+    <div class="f360">
+        <header class="f360-cab">
+            <span class="res-av f360-av">${esc(iniciales(t.nombre))}</span>
+            <div class="f360-titulo">
+                <h2>${esc(t.nombre)}</h2>
+                <span class="res-tenue">${esc(t.email || '')}</span>
+                <div class="f360-chips">
+                    <span class="res-salud ${activo ? 'ok' : 'suspendido'}"><i></i>${activo ? 'Activo' : 'Suspendido'}</span>
+                    <span class="res-plan">Plan ${esc(t.plan_codigo ? nombrePlan(t.plan_codigo) : t.plan)}</span>
+                    <span class="res-plan">Pago ${esc(t.periodo || '')}</span>
+                    ${txtSalud ? `<span class="res-salud ${clsSalud}"><i></i>${txtSalud}</span>` : ''}
+                </div>
             </div>
-            
-            <!-- Bloque Actividad -->
-            <div class="ficha-seccion">
-                <h4>Actividad Reciente</h4>
-                <ul class="ficha-lista-datos">
-                    <li><span>Último acceso/registro</span> <span>${a.ultima_actividad}</span></li>
-                    <li><span>Peticiones IA (Hoy)</span> <span>${a.ia_hoy}</span></li>
-                </ul>
-            </div>
+        </header>
+
+        <div class="f360-acciones">
+            <button type="button" class="btn btn-primario" onclick="modalRegistrarPago('${esc(t.id)}')">Registrar pago</button>
+            <button type="button" class="btn-chico" onclick="modalModulos('${esc(t.id)}')">Módulos</button>
+            <button type="button" class="btn-chico" onclick="modalAgregarUsuario('${esc(t.id)}')">Agregar usuario</button>
+            ${activo
+                ? `<button type="button" class="btn-chico adm-btn-peligro" onclick="suspender('${esc(t.id)}')">Suspender</button>`
+                : `<button type="button" class="btn-chico" onclick="reactivar('${esc(t.id)}')">Reactivar</button>`}
+            <!-- Preparado para la futura función "Entrar como este taller" -->
+            <button type="button" class="btn-chico f360-impersonar" onclick="mostrarAviso('La función Entrar como este taller está en desarrollo.', 'info')">Entrar como este taller</button>
         </div>
-        
-        <div class="ficha-360-footer">
-            <button class="btn-primary" onclick="modalActualizarPago('${t.id}')">Renovar Suscripción</button>
-            <button class="btn-ghost" onclick="modalAgregarUsuario('${t.id}')">Agregar Usuario</button>
-            <button class="btn-ghost" onclick="modalModulos('${t.id}')">Módulos</button>
-            <button class="btn-action btn-suspend" onclick="suspender('${t.id}')">Suspender Servicio</button>
-            
-            <!-- Preparado para la futura función 'Impersonar' -->
-            <button class="btn-action btn-user" style="margin-left:auto;" onclick="showToast('Función Entrar como Taller en desarrollo', 'info')">Entrar como este Taller</button>
+
+        <div class="f360-kpis">
+            <div><span>Órdenes</span><b>${u.reparaciones}</b></div>
+            <div><span>Vehículos</span><b>${u.vehiculos}</b></div>
+            <div><span>Clientes</span><b>${u.clientes}</b></div>
+            <div><span>Usos de IA hoy</span><b>${a.ia_hoy}</b></div>
         </div>
+
+        <div class="f360-rejilla">
+            <section class="f360-bloque">
+                <h3>Suscripción</h3>
+                <dl class="f360-datos">
+                    <div><dt>Vence</dt><dd>${fechaCorta(t.fecha_vencimiento)} ${estadoVence}</dd></div>
+                    <div><dt>Cobro por periodo</dt><dd>${precio ? dinero(precio) : 'Sin precio'}</dd></div>
+                    <div><dt>Te ha pagado</dt><dd>${dinero(pagos.total || 0)} <span class="res-tenue">en ${(pagos.pagos || []).length} pago${(pagos.pagos || []).length === 1 ? '' : 's'}</span></dd></div>
+                    <div><dt>Cliente desde</dt><dd>${t.created_at && t.created_at !== 'Desconocida' ? fechaCorta(t.created_at) : 'Sin fecha'}</dd></div>
+                </dl>
+            </section>
+            <section class="f360-bloque">
+                <h3>Uso</h3>
+                <dl class="f360-datos">
+                    <div><dt>Última actividad</dt><dd>${esc(ultima)}</dd></div>
+                </dl>
+                ${fila.uso_semanal ? `<div class="f360-uso">${minigrafico(fila.uso_semanal, clsSalud || 'ok').replace('width="104" height="28"', 'width="100%" height="56" preserveAspectRatio="none"').replace('viewBox="0 0 104 28"', 'viewBox="0 0 104 28"')}
+                    <span class="res-tenue">Órdenes por semana, últimas 8 semanas</span></div>` : ''}
+            </section>
+            <section class="f360-bloque f360-ancho">
+                <h3>Historial de pagos</h3>
+                ${listaPagos ? `<ul class="tal-pagos">${listaPagos}</ul>` : avisoPagos}
+            </section>
+            <section class="f360-bloque f360-ancho">
+                <h3>Módulos activos <span class="res-tenue">${(t.modulos || []).length}</span></h3>
+                <div class="f360-modulos">${(t.modulos || []).map(m => `<span class="res-plan">${esc(m)}</span>`).join('') || '<span class="res-tenue">Solo funciones básicas</span>'}</div>
+            </section>
+        </div>
+        <p class="f360-id res-tenue">ID del taller: ${esc(t.id)}</p>
     </div>`;
-    
-    document.getElementById("contenido-360").innerHTML = html;
 }
+
 // ==========================================================================
 //   LÓGICA DEL MONITOR DE IA
 // ==========================================================================
