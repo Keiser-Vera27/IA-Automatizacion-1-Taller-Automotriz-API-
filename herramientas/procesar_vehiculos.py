@@ -50,6 +50,15 @@ CATALOGO = {
     "hyundai-accent":       {"tipo": "sedan",     "alias": ["accent"]},
     "hyundai-grand-i10":    {"tipo": "hatchback", "alias": ["grand-i10", "i10"]},
     "suzuki-grand-vitara":  {"tipo": "suv",       "alias": ["vitara", "grand-vitara"]},
+    "toyota-yaris":         {"tipo": "sedan",     "alias": ["yaris"]},
+    "toyota-corolla":       {"tipo": "sedan",     "alias": ["corolla"]},
+    "toyota-fortuner":      {"tipo": "suv",       "alias": ["fortuner"]},
+    "toyota-rav4":          {"tipo": "suv",       "alias": ["rav4", "rav-4"]},
+    "nissan-versa":         {"tipo": "sedan",     "alias": ["versa"]},
+    "nissan-frontier":      {"tipo": "pickup",    "alias": ["frontier", "np300"]},
+    "nissan-kicks":         {"tipo": "suv",       "alias": ["kicks"]},
+    "nissan-x-trail":       {"tipo": "suv",       "alias": ["x-trail", "xtrail"]},
+    "mazda-bt-50":          {"tipo": "pickup",    "alias": ["bt-50", "bt50"]},
 }
 
 
