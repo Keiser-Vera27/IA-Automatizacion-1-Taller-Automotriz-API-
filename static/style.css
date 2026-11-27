@@ -3065,71 +3065,110 @@ html[data-theme="dark"] .modal-cierre .modal-botones { background: #161a44; }
 
 /* ==========================================================================
    RESPUESTA DEL CLIENTE A UNA COTIZACIÓN (aviso y "Cotizaciones" de la orden)
+   Vidrio oscuro con acento violeta; el verde esmeralda solo para lo aprobado.
    ========================================================================== */
-.modal-caja.modal-cot { max-width: 560px; max-height: min(90dvh, 860px); overflow-x: hidden; }
-.cot-resp { display: grid; gap: 12px; text-align: left; margin-top: 6px; }
-.cot-resp + .cot-resp { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--linea); }
-
-/* Cabecera: placa, cliente y número de cotización */
-.cot-resp-cab { display: flex; align-items: center; gap: 12px; }
-.cot-resp-cab > div { display: grid; line-height: 1.3; }
-.cot-resp-cab b { color: var(--tinta); font-size: var(--t-m); }
-.cot-resp-cab span:not(.placa) { font-size: var(--t-xs); color: var(--tinta-3); }
-
-/* Cifra principal: lo aprobado sobre el total */
-.cot-resp-cifra {
-    display: grid; gap: 2px; padding: 14px 16px; border-radius: 18px;
-    background: rgba(155, 243, 201, 0.10); border: 1px solid rgba(155, 243, 201, 0.30);
+.modal-caja.modal-cot {
+    max-width: 520px; max-height: min(90dvh, 820px); overflow-x: hidden; text-align: left;
+    padding: 22px 24px 0;
 }
-.cot-resp-cifra.nada { background: rgba(255, 99, 120, 0.08); border-color: rgba(255, 138, 154, 0.3); }
-.cot-resp-etq { font-size: var(--t-xs); color: var(--tinta-3); font-weight: 600; }
-.cot-resp-cifra b { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; color: var(--tinta); line-height: 1.15; }
-.cot-resp-barra { height: 6px; border-radius: 999px; margin-top: 8px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
-html[data-theme="light"] .cot-resp-barra { background: var(--superficie-3); }
-.cot-resp-barra span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #9BF3C9, #D6F56A); }
-html[data-theme="light"] .cot-resp-cifra { background: rgba(46, 158, 107, 0.07); border-color: rgba(46, 158, 107, 0.25); }
+html[data-theme="dark"] .modal-caja.modal-cot {
+    background: rgba(17, 15, 38, 0.92) !important; border: 1px solid rgba(255, 255, 255, 0.09);
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(168, 85, 247, 0.06), 0 0 120px rgba(138, 43, 226, 0.18);
+}
+.modal-cot .modal-icono { display: none; }
+.modal-cot .modal-titulo { text-align: left; font-size: 1.15rem; font-weight: 750; margin: 0 0 16px; }
+.modal-cot .modal-mensaje { text-align: left; }
 
-/* Grupos: lo aprobado y lo que no */
-.cot-grupo { padding: 12px 14px; border-radius: 16px; background: var(--superficie-2); border: 1px solid var(--linea); }
-html[data-theme="dark"] .cot-grupo { background: rgba(255, 255, 255, 0.035); }
-.cot-grupo h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: var(--t-s); font-weight: 700; color: var(--tinta); }
-.cot-grupo h4 span { margin-left: auto; font-size: var(--t-xs); font-weight: 650; color: var(--tinta-3); font-variant-numeric: tabular-nums; }
-.cot-grupo h4 .icono { width: 18px; height: 18px; padding: 3px; border-radius: 6px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-.cot-grupo.si h4 .icono { color: #9BF3C9; background: rgba(155, 243, 201, 0.14); }
-.cot-grupo.no h4 .icono { color: #FFA3B1; background: rgba(255, 99, 120, 0.14); }
-html[data-theme="light"] .cot-grupo.si h4 .icono { color: #127A4B; }
-html[data-theme="light"] .cot-grupo.no h4 .icono { color: #B4233A; }
-.cot-grupo:not(.si):not(.no) h4 .icono { color: var(--tinta-3); background: var(--superficie-3); }
-.cot-grupo.no { border-color: rgba(255, 138, 154, 0.28); }
+.cot-resp { display: grid; gap: 18px; }
+.cot-resp + .cot-resp { margin-top: 22px; padding-top: 22px; border-top: 1px solid rgba(255, 255, 255, 0.09); }
+html[data-theme="light"] .cot-resp + .cot-resp { border-top-color: var(--linea); }
+
+/* Encabezado: placa, cliente, número y estado */
+.cot-resp-cab { display: flex; align-items: center; gap: 12px; }
+.cot-quien { min-width: 0; display: grid; line-height: 1.3; }
+.cot-quien b { color: var(--tinta); font-size: var(--t-m); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cot-quien span { font-size: var(--t-xs); color: var(--tinta-3); }
+.cot-chip {
+    margin-left: auto; flex: none; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+    color: #D8B4FE; background: rgba(168, 85, 247, 0.14); border: 1px solid rgba(168, 85, 247, 0.3);
+}
+.cot-chip.ok { color: #34D399; background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.35); }
+.cot-chip.no { color: #FDA4AF; background: rgba(244, 63, 94, 0.10); border-color: rgba(253, 164, 175, 0.3); }
+html[data-theme="light"] .cot-chip { color: #7E22CE; }
+html[data-theme="light"] .cot-chip.ok { color: #047857; }
+html[data-theme="light"] .cot-chip.no { color: #BE123C; }
+
+/* Resumen */
+.cot-resumen {
+    display: grid; gap: 4px; padding: 16px 18px; border-radius: 18px;
+    background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.09);
+}
+html[data-theme="light"] .cot-resumen { background: var(--superficie-2); border-color: var(--linea); }
+.cot-resumen-etq { font-size: var(--t-xs); font-weight: 600; color: var(--tinta-3); }
+.cot-resumen b { font-size: 2rem; font-weight: 800; letter-spacing: -0.025em; line-height: 1.1; color: var(--tinta); }
+.cot-resumen b.ok { color: #34D399; }
+html[data-theme="light"] .cot-resumen b.ok { color: #047857; }
+.cot-resumen-sub { font-size: var(--t-s); color: var(--tinta-2); }
+.cot-barra { height: 4px; border-radius: 999px; margin-top: 10px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+html[data-theme="light"] .cot-barra { background: var(--superficie-3); }
+.cot-barra span { display: block; height: 100%; border-radius: inherit; background: #34D399; }
+
+/* Grupos: sin cajas, título con punto de color y filas con aire */
+.cot-grupo h4 {
+    display: flex; align-items: center; gap: 8px; margin: 0 0 4px;
+    font-size: var(--t-xs); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta-3);
+}
+.cot-punto { width: 8px; height: 8px; border-radius: 50%; background: var(--tinta-3); }
+.cot-grupo.si .cot-punto { background: #34D399; }
+.cot-grupo.no .cot-punto { background: #FB7185; }
+.cot-cuenta { margin-left: auto; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .cot-grupo ul { list-style: none; margin: 0; padding: 0; }
-.cot-grupo li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--linea); font-size: var(--t-s); color: var(--tinta); }
-.cot-grupo li:first-child { border-top: 0; }
+.cot-grupo li {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+    padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); font-size: var(--t-s); color: var(--tinta);
+}
+html[data-theme="light"] .cot-grupo li { border-bottom-color: var(--linea); }
+.cot-grupo li:last-child { border-bottom: 0; }
 .cot-grupo li b { font-weight: 700; white-space: nowrap; }
-.cot-grupo.no li span, .cot-grupo.no li b { color: var(--tinta-2); }
-.cot-grupo .sub { color: var(--tinta-3); font-size: var(--t-xs); }
+.cot-grupo.si li b { color: #34D399; }
+html[data-theme="light"] .cot-grupo.si li b { color: #047857; }
+.cot-grupo.no li span, .cot-grupo.no li b { color: var(--tinta-3); }
+.cot-cant { font-size: var(--t-xs); color: var(--tinta-3); }
 .cot-pista { margin: 6px 0 0; font-size: var(--t-xs); color: var(--tinta-3); }
 
 /* Comentario del cliente */
 .cot-comentario {
-    margin: 0; padding: 12px 14px; border-radius: 14px; border-left: 3px solid #A58BFF;
-    background: rgba(165, 139, 255, 0.10); color: var(--tinta); font-size: var(--t-s); line-height: 1.5;
+    margin: 0; padding: 2px 0 2px 14px; border-left: 3px solid #A855F7;
+    color: var(--tinta); font-size: var(--t-s); line-height: 1.6;
 }
-.cot-comentario span { display: block; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; color: var(--tinta-3); margin-bottom: 2px; }
+.cot-comentario span { display: block; font-size: var(--t-xs); font-weight: 700; color: #C084FC; margin-bottom: 2px; }
+html[data-theme="light"] .cot-comentario span { color: #7E22CE; }
 
-/* Nota de estado: ya se agregó a la orden, o la orden estaba cerrada */
-.cot-nota { display: flex; align-items: flex-start; gap: 8px; font-size: var(--t-xs); color: var(--tinta-2); }
-.cot-nota .icono { flex: none; width: 16px; height: 16px; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.cot-nota.ok .icono { color: #9BF3C9; }
-html[data-theme="light"] .cot-nota.ok .icono { color: #127A4B; }
-.cot-nota.alerta { padding: 10px 12px; border-radius: 12px; color: var(--tinta); background: rgba(247, 197, 106, 0.12); border: 1px solid rgba(247, 197, 106, 0.35); }
-.cot-nota.alerta .icono { color: #F7C56A; }
+/* Nota de estado */
+.cot-nota { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: var(--t-xs); color: var(--tinta-2); }
+.cot-nota .icono { flex: none; width: 16px; height: 16px; margin-top: 1px; fill: none; stroke: #34D399; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.cot-nota.alerta { padding: 10px 12px; border-radius: 12px; color: var(--tinta); background: rgba(247, 197, 106, 0.10); border: 1px solid rgba(247, 197, 106, 0.3); }
+.cot-nota.alerta .icono { stroke: #F7C56A; }
 .cot-resp .cot-envio { display: flex; gap: 8px; }
 .cot-resp .cot-envio .btn-chico { border-radius: 999px; height: 36px; }
-/* Botón OK siempre visible abajo, como en el modal de cierre */
+
+/* Pie con el botón integrado: fijo abajo, ancho completo y violeta */
 .modal-caja.modal-cot { padding-bottom: 0; }
 .modal-cot .modal-botones {
-    position: sticky; bottom: 0; z-index: 1; margin: 16px -24px 0; padding: 12px 24px 16px;
-    background: var(--superficie-1); border-top: 1px solid var(--linea);
+    position: sticky; bottom: 0; z-index: 1; margin: 20px -24px 0; padding: 14px 24px 18px;
+    background: linear-gradient(to bottom, rgba(17, 15, 38, 0), rgba(17, 15, 38, 0.96) 30%);
+    border-top: 0;
 }
-html[data-theme="dark"] .modal-cot .modal-botones { background: #161a44; }
-@media (max-width: 560px) { .modal-cot .modal-botones { margin: 14px -16px 0; padding: 12px 16px 14px; } }
+html[data-theme="light"] .modal-cot .modal-botones { background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 30%); }
+.modal-cot .modal-btn-ok {
+    width: 100%; height: 48px; border-radius: 14px; border: 0;
+    background: linear-gradient(135deg, #8A2BE2 0%, #A855F7 100%) !important; color: #fff !important;
+    font-weight: 700; font-size: var(--t-m); box-shadow: 0 10px 26px rgba(138, 43, 226, 0.35);
+}
+.modal-cot .modal-btn-ok:hover { filter: brightness(1.08); }
+@media (max-width: 560px) {
+    .modal-caja.modal-cot { padding: 20px 18px 0; }
+    .modal-cot .modal-botones { margin: 16px -18px 0; padding: 12px 18px 16px; }
+    .cot-resumen b { font-size: 1.75rem; }
+}

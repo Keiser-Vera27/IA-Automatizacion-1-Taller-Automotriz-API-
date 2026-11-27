@@ -3838,52 +3838,62 @@ function respuestaCotizacionHTML(c) {
     const lineas = c.lineas || [];
     const si = lineas.filter(l => l.decision === 'aprobado');
     const no = lineas.filter(l => l.decision === 'rechazado');
+    const pendientes = lineas.filter(l => l.decision !== 'aprobado' && l.decision !== 'rechazado');
     const respondida = c.respondida !== false;
+    const nAprob = c.n_aprobados ?? si.length;
+    const nItems = c.n_items ?? lineas.length;
     const pct = c.total > 0 ? Math.min(100, (Number(c.total_aprobado || 0) / c.total) * 100) : 0;
     const icono = cuerpo => `<svg class="icono" viewBox="0 0 24 24" aria-hidden="true">${cuerpo}</svg>`;
-    const linea = l => `<li><span>${e(l.descripcion)}${Number(l.cantidad) !== 1 && l.cantidad ? ` <span class="sub">(x${Number(l.cantidad)})</span>` : ''}</span>
+    const fila = l => `<li><span>${e(l.descripcion)}${Number(l.cantidad) !== 1 && l.cantidad ? ` <span class="cot-cant">x${Number(l.cantidad)}</span>` : ''}</span>
         ${l.subtotal !== undefined ? `<b class="num">${dinero(l.subtotal)}</b>` : ''}</li>`;
 
-    let cifra;
-    if (!respondida) {
-        cifra = `<div class="cot-resp-cifra"><span class="cot-resp-etq">${e(c.estadoTexto || 'Esperando respuesta')}</span>
-            <b class="num">${dinero(c.total)}</b><span class="cot-resp-etq">total cotizado</span></div>`;
-    } else {
-        cifra = `<div class="cot-resp-cifra ${si.length || c.n_aprobados ? '' : 'nada'}">
-            <span class="cot-resp-etq">${(c.n_aprobados ?? si.length) ? 'Aprobó' : 'No aprobó nada'}</span>
-            <b class="num">${dinero(c.total_aprobado)}</b>
-            <span class="cot-resp-etq">de ${dinero(c.total)}, ${c.n_aprobados ?? si.length} de ${c.n_items ?? lineas.length} trabajos</span>
-            <div class="cot-resp-barra" aria-hidden="true"><span style="width:${pct}%"></span></div>
-        </div>`;
-    }
+    // Estado en una píldora junto al cliente
+    const estado = !respondida
+        ? `<span class="cot-chip">${e(c.estadoTexto || 'Esperando respuesta')}</span>`
+        : (nAprob ? `<span class="cot-chip ok">${nAprob === nItems ? 'Aprobó todo' : 'Aprobó en parte'}</span>`
+                  : '<span class="cot-chip no">No aprobó</span>');
 
-    const grupoSi = si.length ? `<div class="cot-grupo si">
-            <h4>${icono('<path d="m5 12 5 5L20 7"/>')}Aprobó <span>${si.length}</span></h4><ul>${si.map(linea).join('')}</ul></div>` : '';
-    const grupoNo = no.length ? `<div class="cot-grupo no">
-            <h4>${icono('<path d="M6 6l12 12M18 6 6 18"/>')}No aprobó por ahora <span>${no.length}</span></h4><ul>${no.map(linea).join('')}</ul>
-            <p class="cot-pista">Puedes volver a ofrecérselo en su próxima visita.</p></div>` : '';
-    const pendientes = lineas.filter(l => l.decision !== 'aprobado' && l.decision !== 'rechazado');
-    const grupoPend = pendientes.length ? `<div class="cot-grupo">
-            <h4>${icono('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>')}Sin respuesta <span>${pendientes.length}</span></h4><ul>${pendientes.map(linea).join('')}</ul></div>` : '';
+    // Resumen: monto aprobado (o total cotizado si aún no responde) y barra fina
+    const resumen = respondida ? `
+        <div class="cot-resumen">
+            <span class="cot-resumen-etq">Aprobado</span>
+            <b class="num ${nAprob ? 'ok' : ''}">${dinero(c.total_aprobado)}</b>
+            <span class="cot-resumen-sub separados"><span>de ${dinero(c.total)}</span><span>${nAprob} de ${nItems} trabajos</span></span>
+            <div class="cot-barra" aria-hidden="true"><span style="width:${pct}%"></span></div>
+        </div>` : `
+        <div class="cot-resumen">
+            <span class="cot-resumen-etq">Total cotizado</span>
+            <b class="num">${dinero(c.total)}</b>
+            <span class="cot-resumen-sub">${nItems === 1 ? '1 trabajo' : `${nItems} trabajos`}</span>
+        </div>`;
+
+    const grupo = (clase, titulo, filas, pista = '') => filas.length ? `
+        <section class="cot-grupo ${clase}">
+            <h4><span class="cot-punto"></span>${titulo}<span class="cot-cuenta">${filas.length}</span></h4>
+            <ul>${filas.map(fila).join('')}</ul>${pista}
+        </section>` : '';
 
     let nota = '';
-    if (respondida && (c.n_aprobados ?? si.length)) {
+    if (respondida && nAprob) {
         nota = c.aplicada_a_orden
-            ? `<div class="cot-nota ok">${icono('<path d="m5 12 5 5L20 7"/>')}<span>Lo aprobado ya se agregó a la orden.</span></div>`
-            : `<div class="cot-nota alerta">${icono('<path d="M12 8v5"/><circle cx="12" cy="16.5" r=".8"/><path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0z"/>')}<span>La orden ya estaba cerrada: lo aprobado <b>no</b> se agregó. Regístralo en una orden nueva.</span></div>`;
+            ? `<p class="cot-nota">${icono('<path d="m5 12 5 5L20 7"/>')}Lo aprobado ya se agregó a la orden.</p>`
+            : `<p class="cot-nota alerta">${icono('<path d="M12 8v5"/><circle cx="12" cy="16.5" r=".8"/><path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0z"/>')}La orden ya estaba cerrada: lo aprobado no se agregó. Regístralo en una orden nueva.</p>`;
     }
 
-    return `<div class="cot-resp">
-        ${c.vehiculo || c.cliente ? `<div class="cot-resp-cab">
+    return `<article class="cot-resp">
+        <header class="cot-resp-cab">
             ${c.vehiculo ? `<span class="placa chica">${e(c.vehiculo)}</span>` : ''}
-            <div><b>${e(c.cliente || 'Cliente')}</b><span>Cotización N° ${e(String(c.id))}</span></div>
-        </div>` : `<div class="cot-resp-cab solo"><b>Cotización N° ${e(String(c.id))}</b></div>`}
-        ${cifra}
-        ${grupoSi}${grupoNo}${grupoPend}
+            <div class="cot-quien"><b>${e(c.cliente || `Cotización #${c.id}`)}</b>${c.cliente ? `<span>Cotización #${e(String(c.id))}</span>` : ''}</div>
+            ${estado}
+        </header>
+        ${resumen}
+        ${grupo('si', 'Aprobados', si)}
+        ${grupo('no', 'No aprobados', no, '<p class="cot-pista">Puedes volver a ofrecerlos en su próxima visita.</p>')}
+        ${grupo('', 'Sin respuesta', pendientes)}
         ${c.comentario ? `<blockquote class="cot-comentario"><span>Comentario del cliente</span>${e(c.comentario)}</blockquote>` : ''}
         ${nota}
         ${c.acciones || ''}
-    </div>`;
+    </article>`;
 }
 
 // Un bloque por cotización respondida (normalmente es una sola)
