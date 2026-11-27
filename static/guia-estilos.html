@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Guía de estilos de Oficial de Registros</title>
+    <link rel="preload" href="fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <!-- Usa el mismo CSS de la app: lo que se ve aquí es exactamente lo que se ve allá -->
+    <link rel="stylesheet" href="style.css?v=29">
+    <style>
+        /* Solo el armado de esta página (no son componentes de la app) */
+        .guia { max-width: 1120px; margin: 0 auto; padding: 32px 24px 80px; }
+        .guia-cab { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+        .guia h2 { font-size: 1.2rem; margin: 48px 0 6px; }
+        .guia h2 + p { margin: 0 0 18px; color: var(--tinta-3); font-size: var(--t-s); max-width: 70ch; }
+        .fila { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+        .rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+        .muestra { border-radius: 18px; overflow: hidden; border: 1px solid var(--linea); background: var(--superficie-1); }
+        .muestra .color { height: 72px; }
+        .muestra .txt { padding: 10px 12px; font-size: var(--t-xs); color: var(--tinta-2); line-height: 1.4; }
+        .muestra .txt b { display: block; color: var(--tinta); font-size: var(--t-s); }
+        .tipo-fila { display: grid; grid-template-columns: 120px 1fr; gap: 16px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--linea); }
+        .tipo-fila code, .guia code { font-size: 12px; color: var(--tinta-3); }
+        .caja-demo { padding: 20px; border-radius: 24px; border: 1px solid var(--linea); background: var(--superficie-1); }
+        html[data-theme="dark"] .caja-demo { backdrop-filter: var(--vidrio-blur); -webkit-backdrop-filter: var(--vidrio-blur); }
+        .espacios .barra-e { height: 14px; border-radius: 4px; background: var(--holo); }
+        .espacios .tipo-fila { grid-template-columns: 120px 1fr; }
+        .curva { display: grid; gap: 8px; }
+        .curva .pista { height: 36px; border-radius: 999px; background: var(--superficie-2); border: 1px solid var(--linea); position: relative; overflow: hidden; }
+        .curva .bola { position: absolute; top: 6px; left: 6px; width: 24px; height: 24px; border-radius: 50%; background: var(--holo); }
+        .curva.corre .bola { left: calc(100% - 30px); }
+        .nota-regla { font-size: var(--t-xs); color: var(--tinta-3); margin-top: 8px; }
+    </style>
+</head>
+<body>
+<main class="guia">
+    <div class="guia-cab">
+        <div>
+            <h1>Guía de estilos</h1>
+            <p class="tenue" style="margin:4px 0 0; color: var(--tinta-3);">Componentes reales de la app. Reglas completas en <code>DESIGN.md</code>.</p>
+        </div>
+        <button type="button" class="btn-chico" onclick="cambiarTemaGuia()" id="btn-tema">Ver tema claro</button>
+    </div>
+
+    <!-- COLOR -->
+    <h2>Color</h2>
+    <p>Fondo índigo, vidrio translúcido y un significado por color. El holográfico es escaso: máximo tres piezas por pantalla.</p>
+    <div class="rejilla">
+        <div class="muestra"><div class="color" style="background: var(--holo)"></div><div class="txt"><b>Holográfico</b>--holo, jerarquía máxima</div></div>
+        <div class="muestra"><div class="color" style="background: linear-gradient(135deg,#8A2BE2,#A855F7)"></div><div class="txt"><b>Violeta</b>#8A2BE2 / #A855F7, marca y foco</div></div>
+        <div class="muestra"><div class="color" style="background:#34D399"></div><div class="txt"><b>Esmeralda</b>#34D399, aprobado y entregado</div></div>
+        <div class="muestra"><div class="color" style="background:#F7C56A"></div><div class="txt"><b>Ámbar</b>#F7C56A, pendiente y aviso</div></div>
+        <div class="muestra"><div class="color" style="background:#FDA4AF"></div><div class="txt"><b>Rosa</b>#FDA4AF, rechazado y error</div></div>
+        <div class="muestra"><div class="color" style="background: var(--fondo)"></div><div class="txt"><b>Fondo</b>--fondo</div></div>
+        <div class="muestra"><div class="color" style="background: var(--superficie-2)"></div><div class="txt"><b>Superficie</b>--superficie-1 / -2 / -3</div></div>
+        <div class="muestra"><div class="color" style="background: var(--tinta)"></div><div class="txt"><b>Tinta</b>--tinta / -2 / -3</div></div>
+    </div>
+
+    <!-- TIPOGRAFÍA -->
+    <h2>Tipografía</h2>
+    <p>Plus Jakarta Sans en todos los tamaños. Cifras siempre con números tabulares.</p>
+    <div class="caja-demo">
+        <div class="tipo-fila"><code>--t-2xl 30</code><span style="font-size: var(--t-2xl); font-weight: 800; letter-spacing: -.03em;">Vehículos y clientes</span></div>
+        <div class="tipo-fila"><code>--t-xl 22</code><span style="font-size: var(--t-xl); font-weight: 700;">El cliente respondió la cotización</span></div>
+        <div class="tipo-fila"><code>--t-l 18</code><span style="font-size: var(--t-l); font-weight: 700;">Servicios recientes</span></div>
+        <div class="tipo-fila"><code>--t-m 15</code><span style="font-size: var(--t-m);">Texto base de la interfaz para leer con calma.</span></div>
+        <div class="tipo-fila"><code>--t-s 14</code><span style="font-size: var(--t-s); color: var(--tinta-2);">Filas y listas: Cambio de aceite y filtro</span></div>
+        <div class="tipo-fila"><code>--t-xs 13</code><span style="font-size: var(--t-xs); color: var(--tinta-3);">Etiquetas, fechas y ayudas: 20 nov 2026</span></div>
+        <div class="tipo-fila"><code>cifra</code><span class="num" style="font-size: 2rem; font-weight: 800; letter-spacing: -.02em;">$1,234.50</span></div>
+    </div>
+
+    <!-- ESPACIO -->
+    <h2>Espacio y radios</h2>
+    <p>Base de 4 px. Entre tarjetas 12–16 px. Radios: píldora para controles, 18–24 px para tarjetas.</p>
+    <div class="caja-demo espacios">
+        <div class="tipo-fila"><code>--e-2 8</code><div class="barra-e" style="width:8px"></div></div>
+        <div class="tipo-fila"><code>--e-3 12</code><div class="barra-e" style="width:12px"></div></div>
+        <div class="tipo-fila"><code>--e-4 16</code><div class="barra-e" style="width:16px"></div></div>
+        <div class="tipo-fila"><code>--e-5 24</code><div class="barra-e" style="width:24px"></div></div>
+        <div class="tipo-fila"><code>--e-6 32</code><div class="barra-e" style="width:32px"></div></div>
+        <div class="tipo-fila"><code>--e-7 48</code><div class="barra-e" style="width:48px"></div></div>
+    </div>
+
+    <!-- BOTONES -->
+    <h2>Botones y controles</h2>
+    <p>Una acción principal por pantalla. Los botones se hunden al presionar.</p>
+    <div class="caja-demo">
+        <div class="fila">
+            <button type="button" class="btn btn-primario">Registrar vehículo</button>
+            <button type="button" class="btn-chico principal">Nueva orden</button>
+            <button type="button" class="btn-chico">Ver historial</button>
+            <button type="button" class="btn-icono" aria-label="Editar"><svg class="icono" viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button>
+            <button type="button" class="btn-icono peligro" aria-label="Eliminar"><svg class="icono" viewBox="0 0 24 24" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2"><path d="M4 7h16M18 7l-1 13H7L6 7M9 7V4h6v3"/></svg></button>
+        </div>
+        <div class="fila" style="margin-top:16px">
+            <button type="button" class="veh-chip" aria-pressed="true" onclick="elegirChip(this)">Todos <span>10</span></button>
+            <button type="button" class="veh-chip" aria-pressed="false" onclick="elegirChip(this)">En taller <span>3</span></button>
+            <button type="button" class="veh-chip" aria-pressed="false" onclick="elegirChip(this)">Recientes <span>7</span></button>
+        </div>
+        <div class="buscador-grande" style="margin-top:16px; max-width:420px">
+            <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input type="search" class="buscador-vehiculos" placeholder="Placa, cliente, cédula o teléfono">
+        </div>
+    </div>
+
+    <!-- ESTADOS -->
+    <h2>Estados e identificadores</h2>
+    <p>Estado siempre con texto y color. La placa es el identificador del vehículo en toda la app.</p>
+    <div class="caja-demo">
+        <div class="fila">
+            <span class="badge-estado estado-pendiente">En taller</span>
+            <span class="badge-estado estado-terminado">Entregado</span>
+            <span class="badge-estado estado-info">Cotización enviada</span>
+            <span class="badge-estado estado-sin-cobro">Cerrado sin cobro</span>
+            <span class="placa">GTH6787</span>
+            <span class="placa chica">PBX1234</span>
+            <span class="separados" style="color: var(--tinta-3); font-size: var(--t-s);"><span>Chevrolet Spark</span><span>0991234567</span><span>20 nov 2026</span></span>
+        </div>
+        <p class="nota-regla">Nunca "·" en el texto: varios datos en una línea van dentro de <code>.separados</code>.</p>
+    </div>
+
+    <!-- CIFRAS -->
+    <h2>Cifras</h2>
+    <p>Resumen arriba de cada vista. La primera tarjeta grande puede ser holográfica; las cifras cuentan hasta su valor.</p>
+    <div class="veh-cifras" id="demo-cifras">
+        <div class="veh-cifra"><span class="veh-cifra-icono"><svg class="icono" viewBox="0 0 24 24"><rect x="3" y="16" width="18" height="4" rx="1.5"/><path d="M5 16l1.5-5A2 2 0 0 1 8.4 9.5h7.2a2 2 0 0 1 1.9 1.5L19 16"/></svg></span><div><div class="veh-cifra-etiqueta">Vehículos registrados</div><div class="veh-cifra-valor">248</div></div></div>
+        <div class="veh-cifra ambar"><span class="veh-cifra-icono"><svg class="icono" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg></span><div><div class="veh-cifra-etiqueta">En el taller ahora</div><div class="veh-cifra-valor">3</div></div></div>
+        <div class="veh-cifra menta"><span class="veh-cifra-icono"><svg class="icono" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg></span><div><div class="veh-cifra-etiqueta">Garantías activas</div><div class="veh-cifra-valor">17</div></div></div>
+        <div class="veh-cifra lila"><span class="veh-cifra-icono"><svg class="icono" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/></svg></span><div><div class="veh-cifra-etiqueta">Visitas este mes</div><div class="veh-cifra-valor">64</div></div></div>
+    </div>
+    <div class="dash-kpis ficha-kpis" style="margin-top:12px; grid-template-columns: repeat(3, minmax(0,1fr));">
+        <div class="dash-kpi"><div class="dash-kpi-etiqueta">Total gastado</div><div class="dash-kpi-valor">$612.50</div><div class="dash-kpi-extra">desde 3 ago 2024</div></div>
+        <div class="dash-kpi"><div class="dash-kpi-etiqueta">Visitas</div><div class="dash-kpi-valor">4</div><div class="dash-kpi-extra">promedio $153.13</div></div>
+        <div class="dash-kpi"><div class="dash-kpi-etiqueta">Kilometraje</div><div class="dash-kpi-valor">84.210 km</div></div>
+    </div>
+
+    <!-- LISTAS -->
+    <h2>Listas</h2>
+    <p>Filas de vidrio con la fila activa en violeta. Entran escalonadas.</p>
+    <div class="caja-demo" style="max-width: 560px">
+        <div class="resultados-vehiculos" id="demo-lista" style="margin:0">
+            <button type="button" class="resultado-vehiculo activo"><span class="resultado-mini"><img src="vehiculos/modelos/chevrolet-spark-blanco.webp" alt=""></span><span class="resultado-datos"><b>Juan Pérez</b><span class="separados"><span>GTH6787</span><span>Chevrolet Spark</span></span></span><span class="resultado-fecha"><span class="badge-estado estado-pendiente">En taller</span></span></button>
+            <button type="button" class="resultado-vehiculo"><span class="resultado-mini"><span class="placa chica">PBX1234</span></span><span class="resultado-datos"><b>María Torres</b><span class="separados"><span>Kia Rio</span><span>0987654321</span></span></span><span class="resultado-fecha">Última visita<br> <b>20 nov 2026</b></span></button>
+            <button type="button" class="resultado-vehiculo"><span class="resultado-mini"><img src="vehiculos/modelos/chevrolet-aveo-blanco.webp" alt=""></span><span class="resultado-datos"><b>Carla Mendoza</b><span class="separados"><span>MBA3345</span><span>Chevrolet Aveo</span></span></span><span class="resultado-fecha">Última visita<br> <b>12 nov 2026</b></span></button>
+        </div>
+    </div>
+
+    <!-- MOVIMIENTO -->
+    <h2>Movimiento</h2>
+    <p>Corporativo con toque premium: curva firma (0.2, 0, 0, 1), 140 / 240 / 360 ms, sin rebotes. Toca para ver cada curva.</p>
+    <div class="caja-demo">
+        <div class="curva" style="margin-bottom:14px"><code>--curva, 240 ms (casi todo)</code><div class="pista" onclick="correr(this, 'var(--curva)', 240)"><span class="bola"></span></div></div>
+        <div class="curva" style="margin-bottom:14px"><code>--curva-entra, 360 ms (lo que aparece)</code><div class="pista" onclick="correr(this, 'var(--curva-entra)', 360)"><span class="bola"></span></div></div>
+        <div class="curva" style="margin-bottom:14px"><code>--curva-sale, 200 ms (lo que se va)</code><div class="pista" onclick="correr(this, 'var(--curva-sale)', 200)"><span class="bola"></span></div></div>
+        <div class="fila">
+            <button type="button" class="btn-chico principal" onclick="repetirEntradas()">Repetir entradas</button>
+            <span class="nota-regla" style="margin:0">Entrada única: sube 8 px con fundido; escalonado de 30 ms.</span>
+        </div>
+    </div>
+</main>
+<script>
+    // Utilidades solo de esta página
+    function cambiarTemaGuia() {
+        const raiz = document.documentElement;
+        const nuevo = raiz.dataset.theme === 'dark' ? 'light' : 'dark';
+        const aplicar = () => {
+            raiz.dataset.theme = nuevo;
+            document.getElementById('btn-tema').textContent = nuevo === 'dark' ? 'Ver tema claro' : 'Ver tema oscuro';
+        };
+        if (document.startViewTransition) document.startViewTransition(aplicar); else aplicar();
+    }
+    function elegirChip(boton) {
+        boton.parentElement.querySelectorAll('.veh-chip').forEach(b => b.setAttribute('aria-pressed', String(b === boton)));
+    }
+    function correr(pista, curva, ms) {
+        const bola = pista.querySelector('.bola');
+        bola.style.transition = `left ${ms}ms ${curva}`;
+        pista.parentElement.classList.toggle('corre');
+    }
+    // Vuelve a pintar cifras y lista para que se vean sus entradas
+    function repetirEntradas() {
+        ['demo-cifras', 'demo-lista'].forEach(id => {
+            const el = document.getElementById(id);
+            el.innerHTML = el.innerHTML;
+        });
+    }
+</script>
+</body>
+</html>

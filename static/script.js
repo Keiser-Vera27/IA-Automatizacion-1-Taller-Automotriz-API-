@@ -4,6 +4,15 @@
 
 // Modo claro/oscuro (persistido en localStorage, aplicado también al cargar en index.html)
 function alternarTema() {
+    // Fundido suave entre temas donde el navegador lo permite (y sin él, cambio directo)
+    if (document.startViewTransition && !prefiereMenosMovimiento()) {
+        document.startViewTransition(aplicarCambioTema);
+    } else {
+        aplicarCambioTema();
+    }
+}
+
+function aplicarCambioTema() {
     const raiz = document.documentElement;
     const temaActual = raiz.getAttribute("data-theme") || "dark";
     const nuevoTema = temaActual === "light" ? "dark" : "light";
@@ -12,6 +21,50 @@ function alternarTema() {
     actualizarIconoTema(nuevoTema);
     // El gráfico del dashboard toma sus colores del tema: se redibuja
     if (typeof ultimoDashboard !== 'undefined' && ultimoDashboard) renderTendencia(ultimoDashboard);
+}
+
+// ==============================================================================
+// MOVIMIENTO: utilidades compartidas (ver la sección MOVIMIENTO de style.css)
+// ==============================================================================
+function prefiereMenosMovimiento() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// Vuelve a disparar la animación de entrada de un elemento (al cambiar de vista)
+function reanimar(el, clase) {
+    if (!el || prefiereMenosMovimiento()) return;
+    el.classList.remove(clase);
+    void el.offsetWidth;   // fuerza el reinicio de la animación
+    el.classList.add(clase);
+}
+
+// Las cifras grandes cuentan desde su valor anterior hasta el nuevo (700 ms, desacelerando).
+// Solo se animan formatos sin ambigüedad: enteros ("248") y dinero ("$1,234.50").
+// Si el valor no cambió, no se anima (al filtrar o repintar no se repite).
+const valoresCifras = new Map();
+function animarCifras(raiz, selector = '.veh-cifra-valor, .dash-kpi-valor, .cifra dd') {
+    if (!raiz) return;
+    raiz.querySelectorAll(selector).forEach((el, i) => {
+        const texto = el.textContent.trim();
+        const esDinero = /^\$[\d,]+\.\d{2}$/.test(texto);
+        const esEntero = /^\d{1,7}$/.test(texto);
+        if (!esDinero && !esEntero) return;
+        const destino = Number(texto.replace(/[$,]/g, ''));
+        const clave = (raiz.id || 'cifras') + ':' + (el.id || i);
+        const origen = valoresCifras.has(clave) ? valoresCifras.get(clave) : 0;
+        valoresCifras.set(clave, destino);
+        if (origen === destino || prefiereMenosMovimiento()) return;
+        const formato = v => esDinero ? dinero(v) : String(Math.round(v));
+        const inicio = performance.now(), duracion = 700;
+        const paso = ahora => {
+            const t = Math.min(1, (ahora - inicio) / duracion);
+            const e = 1 - Math.pow(1 - t, 3);                 // ease-out cúbico
+            el.textContent = formato(origen + (destino - origen) * e);
+            if (t < 1 && el.isConnected) requestAnimationFrame(paso);
+            else el.textContent = texto;                       // termina con el texto exacto
+        };
+        requestAnimationFrame(paso);
+    });
 }
 
 const ICONO_LUNA = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
@@ -149,6 +202,17 @@ window.onload = function() {
     });
 };
 
+// Mostrar u ocultar la contraseña en el inicio de sesión
+function alternarVerClave(forzarOculta = false) {
+    const input = document.getElementById('password_login');
+    const boton = document.getElementById('ver-clave');
+    if (!input || !boton) return;
+    const mostrar = forzarOculta ? false : input.type === 'password';
+    input.type = mostrar ? 'text' : 'password';
+    boton.setAttribute('aria-pressed', String(mostrar));
+    boton.setAttribute('aria-label', mostrar ? 'Ocultar contraseña' : 'Mostrar contraseña');
+}
+
 // Función de Login
 async function iniciarSesion() {
     const email = document.getElementById("email_login").value;
@@ -161,6 +225,18 @@ async function iniciarSesion() {
         msgError.style.display = "block";
         return;
     }
+
+    // Mientras se envía: botón desactivado con "Ingresando..." (evita envíos dobles)
+    const boton = document.querySelector('#login-container .btn-login');
+    if (boton?.classList.contains('enviando')) return;
+    const ponerEnviando = activo => {
+        if (!boton) return;
+        boton.classList.toggle('enviando', activo);
+        boton.disabled = activo;
+        boton.setAttribute('aria-busy', String(activo));
+        boton.textContent = activo ? 'Ingresando...' : 'Ingresar';
+    };
+    ponerEnviando(true);
 
     try {
         const response = await fetch("/login", {
@@ -187,6 +263,8 @@ async function iniciarSesion() {
     } catch (error) {
         msgError.innerText = "Error de conexión con el servidor.";
         msgError.style.display = "block";
+    } finally {
+        ponerEnviando(false);
     }
 }
 
@@ -200,6 +278,7 @@ function cerrarSesion() {
     document.getElementById("app-container").style.display = "none";
     document.getElementById("login-container").style.display = "block";
     document.getElementById("password_login").value = "";
+    alternarVerClave(true);   // la contraseña vuelve a quedar oculta
 
     // Conversación, vehículos y cifras del día no deben verse en la próxima sesión
     const conversacion = document.getElementById('conversacion-geor');
@@ -1238,6 +1317,7 @@ async function cargarReporteGarantias() {
         ${tarjeta(`Detalle de reclamos <span class="gar-conteo">${d.detalle.length}</span>`,
             tabla([['Fecha'], ['Placa'], ['Trabajo original'], ['Técnico'], ['Causa'], ['Qué se hizo'], ['Costo', 'num']], filasDet, 'Sin reclamos de garantía en el período.')
             + (tarjetasDet ? `<div class="gar-det-lista">${tarjetasDet}</div>` : ''), '', 'gar-detalle')}`;
+    animarCifras(cont.querySelector('.gar-cifras'));
 }
 
 // Registra la respuesta del proveedor a un reclamo
@@ -2013,7 +2093,10 @@ const ICONO_CHAT = '<svg class="icono" viewBox="0 0 24 24"><path d="M21 12a8 8 0
 
 function ponerTexto(id, texto) {
     const el = document.getElementById(id);
-    if (el) el.textContent = texto;
+    if (!el) return;
+    el.textContent = texto;
+    // Las cifras del día (en el taller, entregados, cobrado) cuentan hasta su valor
+    if (id.startsWith('cifra-')) animarCifras(el.parentElement, '#' + id);
 }
 
 // "hace 20 min", "hace 5 h", "ayer", "hace 3 días"
@@ -2910,6 +2993,7 @@ function cambiarVista(idVista, desdeMenu = true) {
     // Mostrar la vista seleccionada
     document.getElementById(idVista).style.display = 'block';
     document.body.dataset.vista = idVista;
+    reanimar(document.getElementById(idVista), 'vista-entra');
 
     // Marcar la sección actual en el menú lateral y en la barra inferior
     document.querySelectorAll('[data-vista]').forEach(b => {
@@ -3055,6 +3139,7 @@ function renderKpis(d) {
             ${t.extra ? `<div class="dash-kpi-extra">${escaparHTML(t.extra)}</div>` : ''}
         </div>`;
     }).join('');
+    animarCifras(document.getElementById('dash-kpis'));
 }
 
 // Icono "?" de cada indicador: en PC la explicación sale al pasar el mouse;
@@ -3369,6 +3454,7 @@ function pintarCifrasVehiculos(c) {
         cifra('menta', 'Garantías activas', n(c?.garantias_activas), '<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="m9 12 2 2 4-4"/>'),
         cifra('lila', 'Visitas este mes', n(c?.visitas_mes), '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>')
     ].join('');
+    animarCifras(document.getElementById('veh-cifras'));
 }
 
 // Lista que se ve según el texto buscado y el filtro rápido
@@ -4378,6 +4464,7 @@ function pintarServicios() {
         cifra('menta', 'Con garantía propia', propias, '<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="m9 12 2 2 4-4"/>'),
         cifra('ambar', 'Con materiales', conMateriales, '<path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>', 'materiales_servicio')
     ].join('');
+    animarCifras(cifras);
 
     const q = normalizarTexto(document.getElementById('buscar-servicio')?.value || '');
     const visibles = q ? servicios.filter(s => normalizarTexto(s.nombre_servicio).includes(q)) : servicios;

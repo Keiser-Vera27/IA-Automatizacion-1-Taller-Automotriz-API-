@@ -421,7 +421,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 .login-card .logo-movil.claro { display: none; }
 html[data-theme="light"] .login-card .logo-movil.claro { display: block; }
 html[data-theme="light"] .login-card .logo-movil.oscuro { display: none; }
-@media (min-width: 900px) { .login-card .logo-movil { display: none !important; } }
+@media (min-width: 1025px) { .login-card .logo-movil { display: none !important; } }
 .login-card h1 { margin-bottom: var(--e-2); }
 .login-card > p { color: var(--tinta-2); margin-bottom: var(--e-5); }
 .campo-login { margin-bottom: var(--e-4); }
@@ -3174,3 +3174,483 @@ html[data-theme="light"] .modal-cot .modal-botones { background: linear-gradient
     .modal-cot .modal-botones { margin: 16px -18px 0; padding: 12px 18px 16px; }
     .cot-resumen b { font-size: 1.75rem; }
 }
+
+/* ==========================================================================
+   MOVIMIENTO
+   Personalidad: corporativa con toque premium (SaaS financiero). Sin rebotes.
+   - Curva firma: --curva (0.2, 0, 0, 1) para casi todo; entradas con
+     --curva-entra (desacelera) y salidas con --curva-sale (acelera).
+   - Tres duraciones: rápida 140 ms (hover, presionar), estándar 240 ms
+     (tarjetas, filas), lenta 360 ms (vistas, modales).
+   - Entrada única en toda la app: aparece subiendo 8 px con fundido.
+   - Escalonado: 30 ms entre elementos, máximo 8 (menos de 250 ms en total).
+   Con "reducir movimiento" del sistema, todo queda sin animación (ver arriba).
+   ========================================================================== */
+:root {
+    --curva: cubic-bezier(0.2, 0, 0, 1);
+    --curva-entra: cubic-bezier(0.05, 0.7, 0.1, 1);
+    --curva-sale: cubic-bezier(0.3, 0, 1, 1);
+    --mov-rapido: 140ms;
+    --mov-estandar: 240ms;
+    --mov-lento: 360ms;
+    --paso: 30ms;
+}
+
+@keyframes aparece { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes aparece-suave { from { opacity: 0; } to { opacity: 1; } }
+
+/* --- Cambio de vista: el contenido entra en cascada (cabecera, cifras, cuerpo) --- */
+.vista-app.vista-entra > * { animation: aparece var(--mov-lento) var(--curva-entra) backwards; }
+.vista-app.vista-entra > *:nth-child(2) { animation-delay: calc(var(--paso) * 2); }
+.vista-app.vista-entra > *:nth-child(3) { animation-delay: calc(var(--paso) * 4); }
+.vista-app.vista-entra > *:nth-child(n+4) { animation-delay: calc(var(--paso) * 6); }
+
+/* --- Listas: las filas aparecen escalonadas cada vez que se pintan --- */
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > * {
+    animation: aparece var(--mov-estandar) var(--curva-entra) backwards;
+}
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(2) { animation-delay: calc(var(--paso) * 1); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(3) { animation-delay: calc(var(--paso) * 2); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(4) { animation-delay: calc(var(--paso) * 3); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(5) { animation-delay: calc(var(--paso) * 4); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(6) { animation-delay: calc(var(--paso) * 5); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(7) { animation-delay: calc(var(--paso) * 6); }
+:is(.resultados-vehiculos, .lista-taller, .gar-lista, .gar-provs, .gar-det-lista, .cot-grupo ul, .ficha-historial, .lista) > :nth-child(n+8) { animation-delay: calc(var(--paso) * 7); }
+/* Filas de tablas (catálogo de servicios) */
+#tabla-servicios > tr { animation: aparece-suave var(--mov-estandar) var(--curva) backwards; }
+
+/* --- Cifras y tarjetas de resumen: entran juntas con un escalón corto --- */
+:is(.veh-cifras, .dash-kpis, .ficha-kpis) > * { animation: aparece var(--mov-estandar) var(--curva-entra) backwards; }
+:is(.veh-cifras, .dash-kpis, .ficha-kpis) > :nth-child(2) { animation-delay: calc(var(--paso) * 1); }
+:is(.veh-cifras, .dash-kpis, .ficha-kpis) > :nth-child(3) { animation-delay: calc(var(--paso) * 2); }
+:is(.veh-cifras, .dash-kpis, .ficha-kpis) > :nth-child(n+4) { animation-delay: calc(var(--paso) * 3); }
+
+/* --- Panel de detalle del vehículo y tarjeta destacada del taller --- */
+#ficha-vehiculo > * { animation: aparece var(--mov-estandar) var(--curva-entra) backwards; }
+#ficha-vehiculo > :nth-child(n+3) { animation-delay: calc(var(--paso) * 2); }
+#ficha-vehiculo > :nth-child(n+5) { animation-delay: calc(var(--paso) * 4); }
+.carril-taller > .tv { animation: aparece var(--mov-lento) var(--curva-entra) backwards; }
+/* La imagen del vehículo llega un instante después que su tarjeta (sigue al movimiento) */
+.tv-escena img, .ficha-escena img { animation: aparece-auto 520ms var(--curva-entra) 80ms backwards; }
+@keyframes aparece-auto { from { opacity: 0; transform: translateX(-50%) translateY(6px) scale(0.98); } to { opacity: 1; transform: translateX(-50%); } }
+.ficha-escena img, .det-cabecera .ficha-escena img { animation-name: aparece-auto; }
+
+/* --- Modales: el fondo funde y la caja sube y se asienta; al cerrar, sale más rápido --- */
+.modal-overlay { transition: opacity var(--mov-estandar) var(--curva), visibility var(--mov-estandar) var(--curva); }
+.modal-overlay .modal-caja {
+    transform: translateY(14px) scale(0.98); opacity: 0;
+    transition: transform 200ms var(--curva-sale), opacity 160ms var(--curva-sale);
+}
+.modal-overlay.visible .modal-caja {
+    transform: none; opacity: 1;
+    transition: transform var(--mov-lento) var(--curva-entra), opacity var(--mov-estandar) var(--curva);
+}
+/* El contenido del modal llega 60 ms después de la caja */
+.modal-overlay.visible .modal-caja > :not(.modal-botones) { animation: aparece-suave var(--mov-estandar) var(--curva) 60ms backwards; }
+
+/* --- Respuesta al usuario: presionar, pasar el mouse, foco --- */
+:is(.btn, .btn-primario, .btn-enviar, .btn-chico, .btn-icono, .veh-chip, .dash-chip, .sugerencia, .nav-enlace, .principal, .modal-btn-ok, .modal-btn-secundario, .btn-agregar-servicio) {
+    transition: transform var(--mov-rapido) var(--curva), background-color var(--mov-rapido) var(--curva),
+                color var(--mov-rapido) var(--curva), border-color var(--mov-rapido) var(--curva),
+                box-shadow var(--mov-estandar) var(--curva), filter var(--mov-rapido) var(--curva);
+}
+:is(.btn, .btn-primario, .btn-enviar, .btn-chico, .btn-icono, .veh-chip, .dash-chip, .sugerencia, .principal, .modal-btn-ok, .modal-btn-secundario, .btn-agregar-servicio):active:not(:disabled) {
+    transform: scale(0.97); transition-duration: 80ms;
+}
+/* Tarjetas interactivas: se elevan un poco al pasar el mouse */
+:is(.dash-kpi, .veh-cifra, .gar-prov, .orden-mini, .tv) { transition: transform var(--mov-estandar) var(--curva), border-color var(--mov-estandar) var(--curva), box-shadow var(--mov-estandar) var(--curva); }
+@media (hover: hover) {
+    :is(.veh-cifra, .gar-prov):hover { transform: translateY(-2px); }
+}
+/* Filtros y pestañas: el cambio de selección se siente, no salta */
+:is(.veh-chip, .dash-chip, .segmento button)[aria-pressed="true"] { animation: chip-activo var(--mov-estandar) var(--curva-entra); }
+@keyframes chip-activo { from { transform: scale(0.94); } to { transform: none; } }
+
+/* --- Barras de progreso y de datos: crecen desde cero --- */
+:is(.gar-barra span, .cot-barra span, .dash-barra, .barra-tecnico span) {
+    animation: crece 700ms var(--curva-entra) 120ms backwards; transform-origin: left center;
+}
+@keyframes crece { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* --- Cargando: texto que respira suave (capa ambiental) --- */
+:is(.caja-cargando, .cargando) { animation: respira 1400ms ease-in-out infinite; }
+@keyframes respira { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+
+/* --- Cambio de tema: fundido corto del documento completo (View Transitions) --- */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 280ms; animation-timing-function: var(--curva); }
+
+/* Reducir movimiento: sin entradas ni conteos (las transiciones de color se mantienen instantáneas) */
+@media (prefers-reduced-motion: reduce) {
+    .vista-app.vista-entra > *, .modal-overlay .modal-caja, .modal-overlay.visible .modal-caja > * { animation: none !important; transform: none !important; }
+}
+
+/* ==========================================================================
+   INICIO DE SESIÓN
+   Escritorio (> 1024 px): presentación de Geor IA a la izquierda y formulario
+   a la derecha, dos paneles equilibrados. Tableta (768-1024 px) y celular
+   (< 768 px): formulario primero, centrado, y el ejemplo de Geor IA debajo.
+   El degradado luminoso solo en el botón "Ingresar" y en un badge pequeño.
+   ========================================================================== */
+#login-container {
+    min-height: 100dvh;
+    background:
+        radial-gradient(60% 45% at 15% 10%, rgba(138, 43, 226, 0.28), transparent 70%),
+        radial-gradient(50% 40% at 90% 90%, rgba(168, 85, 247, 0.18), transparent 70%),
+        linear-gradient(160deg, #0B0B1F 0%, #0A0D26 55%, #120E33 100%);
+}
+html[data-theme="light"] #login-container {
+    background:
+        radial-gradient(60% 45% at 15% 10%, rgba(138, 43, 226, 0.12), transparent 70%),
+        radial-gradient(50% 40% at 90% 90%, rgba(168, 85, 247, 0.10), transparent 70%),
+        #F5F3FF;
+}
+#login-container .login-split {
+    display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; justify-items: center;
+    gap: 20px; min-height: 100dvh; padding: 24px 18px 40px; box-sizing: border-box;
+    max-width: 1200px; margin: 0 auto;
+}
+
+/* --- Panel del formulario --- */
+#login-container .login-formulario { display: block; width: 100%; padding: 0; background: none; }
+#login-container .login-card {
+    width: 100%; max-width: 440px; margin: 0 auto; box-sizing: border-box;
+    padding: 28px 24px 26px; border-radius: 24px;
+    background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.09);
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(168, 85, 247, 0.05), 0 0 90px rgba(138, 43, 226, 0.14);
+}
+html[data-theme="light"] #login-container .login-card { background: #fff; border-color: #E7E3F5; box-shadow: 0 24px 60px rgba(60, 40, 140, 0.12); }
+.login-card-marca { margin-bottom: 24px; }
+#login-container .login-card .logo-movil { height: 30px; margin: 0; }
+#login-container .login-card h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.025em; margin: 0 0 6px; color: var(--tinta); }
+#login-container .login-sub { margin: 0 0 22px; color: var(--tinta-2); font-size: var(--t-s); line-height: 1.5; }
+
+.login-campos { display: grid; gap: 16px; }
+#login-container .campo-login { margin: 0; }
+#login-container .campo-login label { margin-bottom: 6px; font-size: var(--t-s); font-weight: 600; color: var(--tinta-2); }
+#login-container .campo-login input {
+    width: 100%; box-sizing: border-box; min-height: 48px; padding: 0 14px; border-radius: 14px;
+    font-size: 16px; font-family: inherit; color: var(--tinta);
+    background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12);
+    transition: border-color var(--mov-rapido, 140ms) ease, box-shadow var(--mov-rapido, 140ms) ease, background var(--mov-rapido, 140ms) ease;
+}
+html[data-theme="light"] #login-container .campo-login input { background: #F8F6FF; border-color: #DCD6F0; }
+#login-container .campo-login input::placeholder { color: var(--tinta-3); }
+#login-container .campo-login input:hover { border-color: rgba(168, 85, 247, 0.4); }
+#login-container .campo-login input:focus {
+    outline: none; border-color: #A855F7; background: rgba(168, 85, 247, 0.08);
+    box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.22);
+}
+
+/* Contraseña con botón para verla */
+.campo-clave { position: relative; }
+.campo-clave input { padding-right: 52px !important; }
+.ver-clave {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+    border: 0; background: transparent; color: var(--tinta-3); cursor: pointer;
+}
+.ver-clave:hover { color: var(--tinta); background: rgba(255, 255, 255, 0.06); }
+.ver-clave:focus-visible { outline: 2px solid #A855F7; outline-offset: 1px; }
+.ver-clave .icono { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ver-clave .ojo-cerrado { display: none; }
+.ver-clave[aria-pressed="true"] .ojo-abierto { display: none; }
+.ver-clave[aria-pressed="true"] .ojo-cerrado { display: block; }
+
+/* Botón Ingresar: el degradado luminoso, con texto oscuro (en ambos temas) */
+#login-container .btn-login {
+    width: 100%; min-height: 50px; margin-top: 6px; border: 0; border-radius: 999px; cursor: pointer;
+    background: linear-gradient(125deg, #B6F2D3 0%, #D9F29A 30%, #F2E6AE 52%, #EDB9E4 76%, #B7A0FF 100%) !important;
+    color: #141124 !important; font-family: inherit; font-weight: 750; font-size: var(--t-m);
+    box-shadow: 0 12px 30px rgba(183, 160, 255, 0.28);
+}
+#login-container .btn-login:hover { filter: brightness(1.05); }
+#login-container .btn-login:focus-visible { outline: 3px solid #A855F7; outline-offset: 3px; }
+#login-container #login_error { margin-top: 14px; border-radius: 12px; }
+
+/* --- Panel de Geor IA --- */
+#login-container .login-marca {
+    display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 440px; margin: 0 auto;
+    padding: 0; background: none !important; overflow: visible; color: var(--tinta);
+}
+#login-container .login-marca::before { display: none; }
+#login-container .login-marca .logo-login { display: none; }
+#login-container .login-mensaje { display: block; }
+#login-container .login-titular { display: none; }   /* en celular y tableta, solo el ejemplo */
+
+.demo-registro {
+    display: grid; gap: 12px; max-width: none; padding: 18px; border-radius: 22px;
+    background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.09);
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+}
+html[data-theme="light"] .demo-registro { background: #fff; border-color: #E7E3F5; }
+.demo-cab { display: flex; align-items: center; gap: 10px; }
+.demo-simbolo { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: rgba(168, 85, 247, 0.16); }
+.demo-simbolo img { width: 20px; height: 20px; }
+.demo-cab b { font-size: var(--t-s); color: var(--tinta); }
+/* Único punto focal luminoso fuera del botón */
+.demo-badge {
+    margin-left: auto; font-size: 11.5px; font-weight: 750; padding: 4px 10px; border-radius: 999px; color: #141124;
+    background: linear-gradient(125deg, #B6F2D3 0%, #D9F29A 30%, #F2E6AE 52%, #EDB9E4 76%, #B7A0FF 100%);
+}
+#login-container .demo-mensaje {
+    justify-self: end; max-width: 92%; margin: 0;
+    background: rgba(168, 85, 247, 0.14); border: 1px solid rgba(168, 85, 247, 0.28); color: var(--tinta);
+    border-radius: 16px 16px 4px 16px; padding: 12px 14px; font-size: var(--t-s); line-height: 1.5;
+}
+#login-container .demo-ficha {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px;
+    padding: 14px; border-radius: 16px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.09);
+}
+html[data-theme="light"] #login-container .demo-ficha { background: #F8F6FF; border-color: #E7E3F5; }
+#login-container .demo-ficha .placa { grid-row: auto; font-size: 0.85rem; }
+.demo-datos { min-width: 0; display: grid; gap: 2px; }
+#login-container .demo-vehiculo { font-weight: 650; color: var(--tinta); font-size: var(--t-s); }
+#login-container .demo-detalle { color: var(--tinta-3); font-size: var(--t-xs); grid-column: auto; }
+.demo-cobro { display: grid; justify-items: end; gap: 4px; }
+#login-container .demo-monto { grid-row: auto; font-size: 1.15rem; font-weight: 800; color: #34D399; font-variant-numeric: tabular-nums; font-stretch: 100%; }
+html[data-theme="light"] #login-container .demo-monto { color: #047857; }
+.demo-estado { font-size: 11px; font-weight: 700; color: #34D399; background: rgba(52, 211, 153, 0.12); padding: 2px 8px; border-radius: 999px; }
+html[data-theme="light"] .demo-estado { color: #047857; }
+#login-container .demo-pie { margin: 0; font-size: var(--t-xs); color: var(--tinta-3); }
+
+/* --- Tableta (768-1024 px): formulario centrado y ejemplo debajo --- */
+@media (min-width: 768px) {
+    #login-container .login-split { padding: 56px 32px 56px; gap: 24px; }
+    #login-container .login-card, #login-container .login-marca { max-width: 520px; }
+    #login-container .login-card { padding: 36px 36px 32px; }
+    #login-container .login-card h1 { font-size: 1.85rem; }
+}
+
+/* --- Escritorio (> 1024 px): dos columnas, Geor IA a la izquierda --- */
+@media (min-width: 1025px) {
+    #login-container .login-split {
+        grid-template-columns: minmax(0, 1.1fr) minmax(400px, 0.9fr); align-items: center; align-content: center;
+        gap: clamp(40px, 6vw, 96px); padding: 48px clamp(32px, 5vw, 72px);
+    }
+    #login-container .login-marca { order: -1; max-width: 560px; justify-self: start; gap: 40px; }
+    #login-container .login-marca .logo-login { display: block; height: 34px; align-self: flex-start; }
+    #login-container .login-titular { display: block; margin-bottom: 28px; }
+    #login-container .login-marca h2 { color: var(--tinta); font-size: clamp(2.2rem, 3.2vw, 2.8rem); line-height: 1.08; letter-spacing: -0.035em; max-width: 15ch; margin: 0 0 14px; }
+    #login-container .login-marca .bajada { color: var(--tinta-2); font-size: var(--t-l); max-width: 40ch; margin: 0; line-height: 1.55; }
+    #login-container .login-formulario { justify-self: end; }
+    #login-container .login-card { max-width: 440px; padding: 40px 36px 34px; }
+    .login-card-marca { display: none; }   /* la marca ya está en el panel izquierdo */
+    .demo-registro { padding: 22px; }
+}
+html[data-theme="light"] #login-container .login-marca .logo-login { content: url("brand/horizontal.svg"); }
+
+/* Entrada: la tarjeta del formulario primero, el ejemplo después */
+#login-container .login-card { animation: aparece var(--mov-lento, 360ms) var(--curva-entra, ease-out) backwards; }
+#login-container .login-marca > * { animation: aparece var(--mov-lento, 360ms) var(--curva-entra, ease-out) 90ms backwards; }
+#login-container .demo-ficha { animation: aparece var(--mov-lento, 360ms) var(--curva-entra, ease-out) 420ms backwards; }
+/* Celular: ejemplo de Geor IA compacto (no alarga la pantalla inicial) */
+@media (max-width: 767px) {
+    .demo-registro { padding: 14px; gap: 10px; border-radius: 20px; }
+    .demo-simbolo { width: 28px; height: 28px; border-radius: 9px; }
+    .demo-simbolo img { width: 17px; height: 17px; }
+    .demo-badge { font-size: 10.5px; padding: 3px 9px; }
+    #login-container .demo-mensaje { font-size: 13px; padding: 10px 12px; max-width: 100%; }
+    .demo-conector { height: 30px; }
+    /* Ficha en dos filas: placa y monto arriba, vehículo y trabajo abajo */
+    #login-container .demo-ficha { grid-template-columns: auto minmax(0, 1fr); gap: 8px 10px; padding: 12px; }
+    #login-container .demo-ficha .placa { font-size: 0.78rem; }
+    .demo-cobro { grid-column: 2; grid-row: 1; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+    .demo-datos { grid-column: 1 / -1; grid-row: 2; }
+    #login-container .demo-monto { font-size: 1.05rem; }
+    #login-container .demo-pie { font-size: 11.5px; }
+}
+
+/* ==========================================================================
+   TEMA CLARO: profundidad y capas
+   Fondo lavanda muy suave; las superficies principales en blanco limpio con
+   borde fino de tinte violeta y sombras difusas violeta (nunca negras).
+   Solo cambia el tema claro; la estructura y el tema oscuro quedan igual.
+   ========================================================================== */
+html[data-theme="light"] {
+    --fondo: #F5F4FB;
+    --superficie-1: #FFFFFF;
+    --superficie-2: #F8F7FD;
+    --superficie-3: #F0EDFA;
+    --linea: rgba(124, 58, 237, 0.10);
+    --linea-fuerte: rgba(124, 58, 237, 0.16);
+    --linea-intensa: rgba(124, 58, 237, 0.28);
+    --tinta: #1E1B4B;
+    --tinta-2: #334155;
+    --tinta-3: #5B6478;
+    --borde-claro: rgba(124, 58, 237, 0.10);
+    --sombra-claro: 0 8px 24px -8px rgba(88, 28, 135, 0.08), 0 1px 2px rgba(88, 28, 135, 0.04);
+    --sombra-claro-alta: 0 18px 40px -14px rgba(88, 28, 135, 0.14), 0 2px 6px rgba(88, 28, 135, 0.05);
+}
+
+/* Fondo con un halo lavanda muy tenue en las esquinas */
+html[data-theme="light"] body {
+    background:
+        radial-gradient(55% 40% at 0% 0%, rgba(167, 139, 250, 0.10), transparent 70%),
+        radial-gradient(45% 40% at 100% 100%, rgba(196, 181, 253, 0.10), transparent 70%),
+        #F5F4FB;
+    background-attachment: fixed;
+}
+
+/* Barra superior blanca separada del fondo */
+html[data-theme="light"] .barra-app {
+    background: rgba(255, 255, 255, 0.92); border-bottom: 1px solid var(--borde-claro);
+    box-shadow: 0 6px 20px -12px rgba(88, 28, 135, 0.12);
+    -webkit-backdrop-filter: blur(12px) saturate(140%); backdrop-filter: blur(12px) saturate(140%);
+}
+html[data-theme="light"] .nav-app { background: transparent; border-right-color: var(--borde-claro); }
+
+/* Tarjetas principales: blanco, borde fino violeta y elevación suave */
+html[data-theme="light"] :is(.geor, .cifras, .tv, .tv-fila-lista, .panel-caja, .compositor,
+    .veh-cifra, .dash-kpi, .veh-col-lista, .veh-col-detalle, .srv-catalogo, .srv-tarjeta,
+    .gar-tarjeta, .dash-panel, .orden-historial, .resultado-vehiculo) {
+    background-color: #FFFFFF; border: 1px solid var(--borde-claro); box-shadow: var(--sombra-claro);
+}
+/* Las filas dentro de un panel no llevan sombra propia (evita capas encimadas) */
+html[data-theme="light"] :is(.veh-col-lista .resultado-vehiculo, .lista-taller .tv-fila-lista) { box-shadow: none; }
+html[data-theme="light"] .veh-col-lista .resultado-vehiculo { border-color: transparent; }
+html[data-theme="light"] .veh-col-lista .resultado-vehiculo.activo { border-color: rgba(124, 58, 237, 0.45); background: #F5F0FF; }
+html[data-theme="light"] :is(.tv, .geor):hover { box-shadow: var(--sombra-claro-alta); }
+
+/* Geor IA: el compositor se separa del fondo blanco del chat */
+html[data-theme="light"] .compositor { background: #FBFAFF; box-shadow: 0 6px 18px -10px rgba(88, 28, 135, 0.12); }
+html[data-theme="light"] .compositor:focus-within { border-color: rgba(124, 58, 237, 0.4); box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.10), 0 6px 18px -10px rgba(88, 28, 135, 0.14); }
+
+/* Cabecera de Geor IA: halo lila ambiental un poco más presente */
+html[data-theme="light"] .geor::before { background: radial-gradient(closest-side, rgba(139, 92, 246, 0.20), transparent 70%); }
+html[data-theme="light"] .geor-cabecera {
+    background: linear-gradient(180deg, rgba(245, 240, 255, 0.85), rgba(255, 255, 255, 0));
+    border-bottom-color: var(--borde-claro);
+}
+
+/* Cifras del día: números tabulares, más aire y separadores finos violeta */
+html[data-theme="light"] .cifras { border-radius: 16px; }
+html[data-theme="light"] .cifra { padding: 12px 22px; }
+html[data-theme="light"] .cifra + .cifra { border-left-color: var(--borde-claro); }
+html[data-theme="light"] .cifra dt { color: #5B6478; font-weight: 550; }
+html[data-theme="light"] .cifra dd { color: #1E1B4B; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
+
+/* Selector "En el taller / Entregados hoy" */
+html[data-theme="light"] .segmento { background: #FFFFFF; border-color: var(--borde-claro); box-shadow: var(--sombra-claro); }
+html[data-theme="light"] .segmento button[aria-pressed="true"] { background: #F0EBFF; color: #4C1D95; box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.25); }
+
+/* Estado vacío: marco discontinuo lila definido y botón con acento violeta */
+html[data-theme="light"] .vacio-taller {
+    border: 1.5px dashed rgba(124, 58, 237, 0.32); background: rgba(245, 240, 255, 0.55); box-shadow: none;
+}
+html[data-theme="light"] .vacio-taller .simbolo { background: #EDE7FE; color: #6D28D9; box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.12); }
+html[data-theme="light"] .vacio-taller b { color: #1E1B4B; }
+html[data-theme="light"] .vacio-taller p { color: #334155; }
+html[data-theme="light"] .vacio-taller .btn-chico {
+    height: 36px; padding: 0 16px; border-radius: 999px;
+    color: #5B21B6; background: #FFFFFF; border: 1px solid rgba(124, 58, 237, 0.35);
+    box-shadow: 0 4px 12px -6px rgba(88, 28, 135, 0.18);
+    transition: background-color var(--mov-rapido, 140ms) var(--curva, ease), border-color var(--mov-rapido, 140ms) var(--curva, ease),
+                color var(--mov-rapido, 140ms) var(--curva, ease), box-shadow var(--mov-estandar, 240ms) var(--curva, ease);
+}
+html[data-theme="light"] .vacio-taller .btn-chico:hover {
+    background: #F3EEFF; border-color: rgba(124, 58, 237, 0.6); color: #4C1D95;
+    box-shadow: 0 8px 18px -8px rgba(88, 28, 135, 0.28);
+}
+html[data-theme="light"] .vacio-taller .btn-chico:focus-visible { outline: 2px solid #7C3AED; outline-offset: 2px; }
+/* En claro, la lista con desplazamiento deja espacio para que las sombras no se corten */
+@media (min-width: 1101px) {
+    html[data-theme="light"] #panel-vehiculos-pendientes-container.carril-taller { padding: 16px 14px 20px; margin: 0 -14px; }
+}
+
+/* --- Login: acabado final --- */
+/* Conector vertical entre el mensaje y el registro, con un punto luminoso que baja */
+.demo-conector { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; column-gap: 12px; height: 40px; margin: -2px 0; }
+.demo-conector .demo-linea { grid-column: 2; }
+.demo-linea {
+    position: relative; width: 2px; height: 100%; border-radius: 2px; overflow: visible;
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.15), rgba(168, 85, 247, 0.65));
+}
+/* Punta de flecha al final de la línea */
+.demo-linea::after {
+    content: ""; position: absolute; left: 50%; bottom: -2px; width: 7px; height: 7px;
+    border-right: 2px solid #A855F7; border-bottom: 2px solid #A855F7; transform: translateX(-50%) rotate(45deg);
+}
+/* Punto luminoso que recorre la línea (capa ambiental) */
+.demo-linea i {
+    position: absolute; left: 50%; top: 0; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, 0);
+    background: #D9F29A; box-shadow: 0 0 10px 2px rgba(217, 242, 154, 0.65), 0 0 18px rgba(168, 85, 247, 0.5);
+    animation: punto-conector 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes punto-conector {
+    0% { top: 0; opacity: 0; }
+    15% { opacity: 1; }
+    70% { top: calc(100% - 10px); opacity: 1; }
+    100% { top: calc(100% - 10px); opacity: 0; }
+}
+.demo-conector-texto { font-size: 11.5px; font-weight: 650; color: var(--tinta-3); letter-spacing: 0.02em; }
+html[data-theme="light"] .demo-linea { background: linear-gradient(180deg, rgba(124, 58, 237, 0.12), rgba(124, 58, 237, 0.5)); }
+html[data-theme="light"] .demo-linea::after { border-color: #7C3AED; }
+html[data-theme="light"] .demo-linea i { background: #A855F7; box-shadow: 0 0 10px 2px rgba(168, 85, 247, 0.45); }
+/* La línea queda centrada y el texto a su derecha */
+.demo-conector-texto { grid-column: 3; justify-self: start; }
+@media (prefers-reduced-motion: reduce) { .demo-linea i { animation: none; top: calc(100% - 10px); } }
+
+/* Tarjeta del formulario en claro: sombra difusa violeta y borde fino */
+html[data-theme="light"] #login-container .login-card {
+    background: #FFFFFF; border: 1px solid rgba(124, 58, 237, 0.12);
+    box-shadow: 0 16px 40px -12px rgba(88, 28, 135, 0.12);
+}
+
+/* Foco de los campos: borde y halo lila en ambos temas */
+html[data-theme="light"] #login-container .campo-login input:hover { border-color: rgba(124, 58, 237, 0.35); }
+html[data-theme="light"] #login-container .campo-login input:focus {
+    border-color: #7C3AED; background: #FFFFFF; box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.15);
+}
+#login-container .campo-clave:focus-within .ver-clave { color: #A855F7; }
+html[data-theme="light"] #login-container .campo-clave:focus-within .ver-clave { color: #7C3AED; }
+
+/* Botón Ingresar: al pasar el mouse sube un poco y brilla; al enviarse muestra "Ingresando..." */
+#login-container .btn-login {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    transition: transform var(--mov-rapido, 140ms) var(--curva, ease), box-shadow var(--mov-estandar, 240ms) var(--curva, ease),
+                filter var(--mov-rapido, 140ms) var(--curva, ease), opacity var(--mov-rapido, 140ms) ease;
+}
+#login-container .btn-login:hover:not(:disabled) {
+    filter: brightness(1.05) saturate(1.05); transform: translateY(-1px);
+    box-shadow: 0 16px 34px rgba(183, 160, 255, 0.38);
+}
+#login-container .btn-login:active:not(:disabled) { transform: scale(0.98); }
+#login-container .btn-login.enviando { cursor: progress; opacity: 0.92; transform: none; filter: saturate(0.85); }
+#login-container .btn-login.enviando::before {
+    content: ""; width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid rgba(20, 17, 36, 0.25); border-top-color: #141124;
+    animation: giro-login 0.7s linear infinite;
+}
+@keyframes giro-login { to { transform: rotate(360deg); } }
+
+/* ============================================================
+   MODO CLARO ESCRITORIO: retoques finales de coherencia
+   ============================================================ */
+@media (min-width: 960px) {
+    /* 1. KPIs de Geor IA: tres tarjetas compactas independientes */
+    html[data-theme="light"] .cifras {
+        gap: 10px; background: transparent; border: 0; box-shadow: none; border-radius: 0;
+    }
+    html[data-theme="light"] .cifra {
+        padding: 11px 18px; border-radius: 14px;
+        background: #FFFFFF; border: 1px solid var(--borde-claro);
+        box-shadow: 0 6px 18px -8px rgba(88, 28, 135, 0.12), 0 1px 2px rgba(88, 28, 135, 0.04);
+    }
+    html[data-theme="light"] .cifra + .cifra { border-left: 1px solid var(--borde-claro); }
+    html[data-theme="light"] .cifra dd { font-variant-numeric: tabular-nums; }
+
+    /* 2. Compositor del chat: borde de 1px parejo en los cuatro lados.
+       En reposo sin sombra descendente (era la que engrosaba el lado inferior);
+       al enfocar, halo violeta sutil alrededor de todo el borde. */
+    html[data-theme="light"] .compositor {
+        border: 1px solid rgba(124, 58, 237, 0.18); box-shadow: none;
+    }
+    html[data-theme="light"] .compositor:focus-within {
+        border-color: rgba(124, 58, 237, 0.45); box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.10);
+    }
+}
+
+/* 3. Ficha de "Vehículos y clientes": respiro al final del panel con scroll */
+.veh-col-detalle { padding-bottom: 24px; }
+.veh-col-detalle #ficha-vehiculo > :last-child { margin-bottom: 0; }
