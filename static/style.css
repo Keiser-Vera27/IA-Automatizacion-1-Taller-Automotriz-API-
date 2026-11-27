@@ -2922,3 +2922,54 @@ html[data-theme="dark"] .gar-prov-recuperado { color: #9BF3C9; }
     .gar-tabla .gar-celda { text-align: right; min-width: 0; overflow-wrap: anywhere; }
     .gar-tabla tbody tr:hover td { background: none; }
 }
+
+/* ==========================================================================
+   GARANTÍAS — detalle de reclamos en el celular (< 768 px)
+   Tarjeta de 4 bloques: cabecera, trabajo y costo, técnico y causa, qué se hizo.
+   En escritorio se usa la tabla y estas tarjetas no se muestran.
+   ========================================================================== */
+.gar-det-lista { display: none; }
+
+@media (max-width: 767px) {
+    /* En el detalle, la tabla cede su lugar a las tarjetas */
+    #gar-detalle .tabla-scroll { display: none; }
+    #gar-detalle { padding: 16px 0 0; background: none !important; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+    #gar-detalle .gar-tarjeta-titulo { padding: 0 4px; margin-bottom: 12px; }
+    .gar-det-lista { display: grid; gap: 14px; }   /* los 100 px finales los pone #vista-garantias */
+
+    .gar-det {
+        display: grid; gap: 14px; padding: 16px; border-radius: 18px;
+        background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    }
+    html[data-theme="light"] .gar-det { background: #fff; border-color: var(--linea); }
+
+    /* 1. Cabecera: placa + cliente y orden a la izquierda, fecha discreta a la derecha */
+    .gar-det-cab { display: flex; align-items: center; gap: 10px; }
+    .gar-det-cab .placa.chica { flex: none; font-size: 0.72rem; }
+    .gar-det-quien { min-width: 0; display: grid; gap: 1px; line-height: 1.25; }
+    .gar-det-quien b { font-size: var(--t-s); font-weight: 650; color: var(--tinta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .gar-det-quien span { font-size: var(--t-xs); color: var(--tinta-3); }
+    .gar-det-fecha { margin-left: auto; flex: none; align-self: flex-start; font-size: var(--t-xs); color: var(--tinta-3); white-space: nowrap; }
+
+    /* 2. Trabajo original y costo */
+    .gar-det-trabajo {
+        display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+        padding: 12px 14px; border-radius: 14px; background: rgba(165, 139, 255, 0.10); border: 1px solid rgba(165, 139, 255, 0.18);
+    }
+    html[data-theme="light"] .gar-det-trabajo { background: rgba(108, 92, 231, 0.06); border-color: rgba(108, 92, 231, 0.16); }
+    .gar-det-trabajo span { min-width: 0; font-size: var(--t-s); font-weight: 600; color: var(--tinta); line-height: 1.35; }
+    .gar-det-trabajo b { flex: none; font-size: 1.05rem; font-weight: 800; color: var(--tinta); font-variant-numeric: tabular-nums; }
+
+    /* 3. Técnico y causa: dos columnas compactas, etiqueta arriba y valor abajo */
+    .gar-det-datos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0; }
+    .gar-det-datos div { min-width: 0; display: grid; gap: 2px; }
+    .gar-det-datos dt { font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 650; color: var(--tinta-3); }
+    .gar-det-datos dd { margin: 0; font-size: var(--t-s); color: var(--tinta); overflow-wrap: anywhere; }
+
+    /* Qué se hizo: bloque propio, alineado a la izquierda y con interlineado cómodo */
+    .gar-det-hizo { padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.07); }
+    html[data-theme="light"] .gar-det-hizo { border-top-color: var(--linea); }
+    .gar-det-hizo span { display: block; margin-bottom: 4px; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 650; color: var(--tinta-3); }
+    .gar-det-hizo p { margin: 0; font-size: var(--t-s); line-height: 1.55; color: var(--tinta-2); text-align: left; }
+}

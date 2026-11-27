@@ -1183,6 +1183,28 @@ async function cargarReporteGarantias() {
         ${celda('Técnico', e(x.tecnico))}${celda('Causa', e(x.causa))}
         ${celda('Qué se hizo', e(x.detalle || '-'), 'celda-trabajo')}
         ${celda('Costo', `<b>${dinero(x.costo)}</b>`, 'num')}</tr>`).join('');
+    // Celular (< 768 px): cada reclamo como tarjeta de 4 bloques
+    // (cabecera, trabajo y costo, técnico y causa, qué se hizo). En escritorio se oculta.
+    const tarjetasDet = d.detalle.map(x => `
+        <article class="gar-det">
+            <header class="gar-det-cab">
+                <span class="placa chica">${e(x.vehiculo)}</span>
+                <div class="gar-det-quien">
+                    <b>${x.cliente && x.cliente !== '-' ? e(x.cliente) : 'Sin cliente registrado'}</b>
+                    <span>Orden N° ${e(String(x.orden_origen))}</span>
+                </div>
+                <time class="gar-det-fecha" datetime="${e(x.fecha)}">${fechaCorta(x.fecha)}</time>
+            </header>
+            <div class="gar-det-trabajo">
+                <span>${e(x.trabajo_original)}</span>
+                <b>${dinero(x.costo)}</b>
+            </div>
+            <dl class="gar-det-datos">
+                <div><dt>Técnico</dt><dd>${e(x.tecnico)}</dd></div>
+                <div><dt>Causa</dt><dd>${e(x.causa)}</dd></div>
+            </dl>
+            ${x.detalle ? `<div class="gar-det-hizo"><span>Qué se hizo</span><p>${e(x.detalle)}</p></div>` : ''}
+        </article>`).join('');
     const tabla = (cabeceras, filas, vacio) => filas
         ? `<div class="tabla-scroll"><table class="gar-tabla">
             <thead><tr>${cabeceras.map(([t, cl]) => `<th class="${cl || ''}">${t}</th>`).join('')}</tr></thead>
@@ -1210,7 +1232,8 @@ async function cargarReporteGarantias() {
             '<span class="gar-nota">Los del período y todos los pendientes</span>', 'gar-proveedores')}
         ${tarjeta('Repuestos que fallaron', tabla([['Código'], ['Repuesto'], ['Proveedor'], ['Reclamos', 'num']], filasRep, 'Ningún reclamo por falla de repuesto en el período.'))}
         ${tarjeta(`Detalle de reclamos <span class="gar-conteo">${d.detalle.length}</span>`,
-            tabla([['Fecha'], ['Placa'], ['Trabajo original'], ['Técnico'], ['Causa'], ['Qué se hizo'], ['Costo', 'num']], filasDet, 'Sin reclamos de garantía en el período.'))}`;
+            tabla([['Fecha'], ['Placa'], ['Trabajo original'], ['Técnico'], ['Causa'], ['Qué se hizo'], ['Costo', 'num']], filasDet, 'Sin reclamos de garantía en el período.')
+            + (tarjetasDet ? `<div class="gar-det-lista">${tarjetasDet}</div>` : ''), '', 'gar-detalle')}`;
 }
 
 // Registra la respuesta del proveedor a un reclamo
