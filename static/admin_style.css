@@ -5,21 +5,125 @@
    oscuro holográfico por defecto, claro blanco con profundidad violeta.
    ========================================================================== */
 
+/* ==========================================================================
+   TEMA LIMA (solo el panel de administración)
+   Verde carbón con acento lima. Los tokens se redefinen en body.adm, así
+   todo lo que hereda de style.css (inputs, modal, navegación) toma esta paleta
+   sin tocar la app del taller.
+   ========================================================================== */
+html[data-theme="dark"] body.adm {
+    --fondo: #161D1B;
+    --superficie-1: #1F2826;          /* tarjetas */
+    --superficie-2: #27322F;          /* campos y controles */
+    --superficie-3: #2F3B38;          /* píldora activa del menú */
+    --superficie-hundida: #1A2220;
+    --superficie-elevada: #1F2826;
+    --linea: rgba(255, 255, 255, 0.06);
+    --linea-fuerte: rgba(255, 255, 255, 0.10);
+    --linea-intensa: rgba(255, 255, 255, 0.18);
+    --tinta: #F1F5F2;
+    --tinta-2: #C3CDC8;
+    --tinta-3: #8D9A95;
+    --lima: #B8F35B;                  /* acento: botones, activo, cifras positivas */
+    --lima-texto: #C6F57A;
+    --sobre-lima: #16210F;
+    --exito: #B8F35B;   --exito-fondo: rgba(184, 243, 91, 0.12);
+    --aviso: #F6C85F;   --aviso-fondo: rgba(246, 200, 95, 0.12);
+    --peligro: #FF8A80; --peligro-fondo: rgba(255, 138, 128, 0.12);
+    --info: #9FD7FF;    --info-fondo: rgba(159, 215, 255, 0.12);
+    --foco: 0 0 0 3px rgba(184, 243, 91, 0.30);
+    --borde: rgba(255, 255, 255, 0.08);
+    --texto: #F1F5F2;
+    background: radial-gradient(70% 50% at 100% 0%, rgba(184, 243, 91, 0.05), transparent 60%), #161D1B;
+}
+html[data-theme="light"] body.adm {
+    --fondo: #EEF2EE;
+    --superficie-1: #FFFFFF;
+    --superficie-2: #F3F6F2;
+    --superficie-3: #E6ECE5;
+    --superficie-hundida: #F3F6F2;
+    --superficie-elevada: #FFFFFF;
+    --linea: rgba(22, 40, 30, 0.08);
+    --linea-fuerte: rgba(22, 40, 30, 0.12);
+    --linea-intensa: rgba(22, 40, 30, 0.22);
+    --tinta: #16201D;
+    --tinta-2: #3B4945;
+    --tinta-3: #6A7773;
+    --lima: #B8F35B;
+    --lima-texto: #4D7C0F;            /* en fondo claro el lima puro no se lee: verde oliva */
+    --sobre-lima: #16210F;
+    --exito: #3F7A12;   --exito-fondo: rgba(132, 204, 22, 0.14);
+    --aviso: #9A6A00;   --aviso-fondo: rgba(234, 179, 8, 0.14);
+    --peligro: #C0392B; --peligro-fondo: rgba(220, 38, 38, 0.10);
+    --info: #1F6FA8;    --info-fondo: rgba(31, 111, 168, 0.10);
+    --foco: 0 0 0 3px rgba(132, 204, 22, 0.35);
+    --borde: rgba(22, 40, 30, 0.10);
+    --texto: #16201D;
+    --sombra-panel: 0 10px 28px -12px rgba(22, 40, 30, 0.14), 0 1px 2px rgba(22, 40, 30, 0.05);
+    background: #EEF2EE;
+}
+
+/* --- Barra superior: se funde con el fondo ------------------------------- */
+html[data-theme] .adm .barra-app { background: color-mix(in srgb, var(--fondo) 88%, transparent); border-bottom-color: var(--linea); }
+html[data-theme] .adm .inicial-taller { background: var(--lima); color: var(--sobre-lima); border: 0; border-radius: 50%; }
+
+/* --- Navegación: tarjeta propia; la sección actual es una píldora con ícono lima --- */
+html[data-theme] .adm .nav-app { background: var(--superficie-1); border-right: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+@media (min-width: 960px) {
+    html[data-theme] .adm .nav-app {
+        margin: 16px 0 16px 16px; border-radius: 24px; border: 1px solid var(--linea);
+        height: calc(100vh - var(--alto-barra) - 32px); top: calc(var(--alto-barra) + 16px);
+    }
+    html[data-theme="light"] .adm .nav-app { box-shadow: var(--sombra-panel); }
+}
+html[data-theme] .adm .nav-enlace { color: var(--tinta-2); }
+html[data-theme] .adm .nav-enlace:hover { background: var(--superficie-2); color: var(--tinta); }
+html[data-theme] .adm .nav-enlace[aria-current="page"] {
+    background: var(--superficie-3); color: var(--lima-texto); box-shadow: none; font-weight: 650;
+}
+html[data-theme] .adm .nav-enlace[aria-current="page"] .icono { stroke: var(--lima-texto); }
+@media (max-width: 959px) {
+    html[data-theme] .adm .nav-inferior {
+        left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
+        border-radius: 9999px; border: 1px solid var(--linea-fuerte); padding: 6px;
+        background: color-mix(in srgb, var(--superficie-1) 94%, transparent);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+    }
+    html[data-theme] .adm .nav-inferior button { border-radius: 9999px; min-height: 50px; }
+    html[data-theme] .adm .nav-inferior button[aria-current="page"] { background: var(--lima); color: var(--sobre-lima); }
+    html[data-theme] .adm .nav-inferior button[aria-current="page"] .icono { stroke: var(--sobre-lima); }
+    html[data-theme] .adm .contenedor { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
+}
+
+/* --- Botones: lima sólido con texto oscuro (sin degradados) --------------- */
+html[data-theme] .adm :is(.btn-primario, .modal-btn-ok, .btn-chico.principal) {
+    background: var(--lima); color: var(--sobre-lima); border-color: transparent; font-weight: 650;
+    box-shadow: 0 8px 20px -8px rgba(184, 243, 91, 0.55);
+}
+html[data-theme] .adm :is(.btn-primario, .modal-btn-ok, .btn-chico.principal):hover { background: #C8F77A; filter: none; }
+html[data-theme] .adm .btn-chico { background: var(--superficie-2); border-color: var(--linea-fuerte); color: var(--tinta-2); }
+html[data-theme] .adm .btn-chico:hover { color: var(--tinta); border-color: var(--lima); }
+html[data-theme] .adm .modal-btn-secundario { background: var(--superficie-2); color: var(--tinta); border-color: var(--linea-fuerte); }
+html[data-theme] .adm .modal-btn-ok:focus-visible, html[data-theme] .adm .btn:focus-visible { outline: none; box-shadow: var(--foco); }
+
+/* --- Campos ---------------------------------------------------------------- */
+html[data-theme] .adm :is(input, select):focus { border-color: var(--lima); box-shadow: var(--foco); }
+.adm input[type="checkbox"], .adm input[type="radio"] { accent-color: #9BDB3C; }
+
+/* --- Modal ----------------------------------------------------------------- */
+html[data-theme] .adm .modal-caja { background: var(--superficie-1) !important; border: 1px solid var(--linea-fuerte); border-radius: 24px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45); }
+html[data-theme="light"] .adm .modal-caja { box-shadow: 0 30px 80px rgba(22, 40, 30, 0.18); }
+html[data-theme] .adm .modal-overlay { background: rgba(8, 12, 10, 0.6); }
+html[data-theme] .adm .modal-icono.success { background: var(--exito-fondo); color: var(--lima-texto); }
+html[data-theme] .adm .modal-icono.info { background: var(--superficie-3); color: var(--tinta-2); }
+
 /* --- Superficie de tarjeta compartida por todo el panel ------------------ */
 .adm :is(.panel-box, .metric-card, .taller-card, .ficha-360-container, .plan-card, .cola-card) {
-    border-radius: 20px;
-    background: var(--superficie-1);
-    border: 1px solid var(--linea);
+    border-radius: 24px; background: var(--superficie-1); border: 1px solid var(--linea);
 }
-html[data-theme="dark"] .adm :is(.panel-box, .metric-card, .taller-card, .ficha-360-container, .plan-card) {
-    background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.09);
-    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
-}
-html[data-theme="light"] .adm :is(.panel-box, .metric-card, .taller-card, .ficha-360-container, .plan-card) {
-    background: #FFFFFF; border-color: var(--borde-claro); box-shadow: var(--sombra-claro);
-}
-/* Tarjetas dentro de un panel: sin sombra propia (evita capas encimadas) */
-html[data-theme="light"] .adm .panel-box :is(.plan-card, .cola-card) { box-shadow: none; }
+html[data-theme="light"] .adm :is(.panel-box, .metric-card, .taller-card, .ficha-360-container, .plan-card) { box-shadow: var(--sombra-panel); }
+/* Tarjetas dentro de un panel: un tono distinto y sin sombra (evita capas encimadas) */
+.adm .panel-box :is(.plan-card, .cola-card) { background: var(--superficie-2); box-shadow: none; }
 
 /* ==========================================================================
    ESTRUCTURA: barra superior, insignia, navegación
@@ -28,8 +132,7 @@ html[data-theme="light"] .adm .panel-box :is(.plan-card, .cola-card) { box-shado
 .adm-insignia {
     padding: 4px 10px; border-radius: 9999px;
     font-size: 11.5px; font-weight: 700; letter-spacing: 0.02em;
-    color: var(--sobre-holo, #141124);
-    background: linear-gradient(125deg, #B6F2D3 0%, #D9F29A 30%, #F2E6AE 52%, #EDB9E4 76%, #B7A0FF 100%);
+    color: var(--lima-texto); background: var(--exito-fondo); border: 1px solid color-mix(in srgb, var(--lima) 35%, transparent);
 }
 .adm .banner-bienvenida { color: var(--tinta-2); font-weight: 550; }
 
@@ -67,10 +170,24 @@ html[data-theme="light"] .adm-login .logo-movil.oscuro { display: none !importan
 html[data-theme="light"] .adm-login .logo-movil.claro { display: block !important; }
 .adm-login-etiqueta {
     display: inline-block; margin-bottom: 10px; padding: 3px 10px; border-radius: 9999px;
-    font-size: 11.5px; font-weight: 700; color: #C4B5FD;
-    background: rgba(168, 85, 247, 0.14); border: 1px solid rgba(168, 85, 247, 0.28);
+    font-size: 11.5px; font-weight: 700; color: var(--lima-texto);
+    background: var(--exito-fondo); border: 1px solid color-mix(in srgb, var(--lima) 35%, transparent);
 }
-html[data-theme="light"] .adm-login-etiqueta { color: #6D28D9; background: #F3EEFF; border-color: rgba(124, 58, 237, 0.2); }
+html[data-theme] .adm #login-container { background: radial-gradient(60% 45% at 85% 10%, rgba(184, 243, 91, 0.08), transparent 70%), var(--fondo); }
+html[data-theme] .adm #login-container .login-card {
+    background: var(--superficie-1); border: 1px solid var(--linea-fuerte); backdrop-filter: none; -webkit-backdrop-filter: none;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+}
+html[data-theme="light"] .adm #login-container .login-card { box-shadow: var(--sombra-panel); }
+html[data-theme] .adm #login-container .campo-login input { background: var(--superficie-2); border-color: var(--linea-fuerte); }
+html[data-theme] .adm #login-container .campo-login input:focus { border-color: var(--lima); box-shadow: var(--foco); }
+html[data-theme] .adm #login-container .campo-clave:focus-within .ver-clave { color: var(--lima-texto); }
+html[data-theme] .adm #login-container .btn-login {
+    background: var(--lima) !important; color: var(--sobre-lima) !important;
+    box-shadow: 0 12px 30px -10px rgba(184, 243, 91, 0.6);
+}
+html[data-theme] .adm #login-container .btn-login:hover:not(:disabled) { background: #C8F77A !important; box-shadow: 0 16px 34px -10px rgba(184, 243, 91, 0.7); }
+html[data-theme] .adm #login-container .btn-login:focus-visible { outline: 3px solid var(--lima); }
 .adm-login #login_error { margin: 14px 0 0; min-height: 1.2em; color: var(--peligro); font-size: var(--t-s); text-align: center; }
 
 /* ==========================================================================
@@ -106,7 +223,7 @@ html[data-theme="light"] .adm-login-etiqueta { color: #6D28D9; background: #F3EE
 .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 28px; }
 .metric-card { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
 .metric-card h4 { margin: 0; font-size: var(--t-s); font-weight: 600; color: var(--tinta-3); }
-.metric-main-value { font-size: 2rem; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--tinta); }
+.metric-main-value { font-size: 2.25rem; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--tinta); }
 .metric-sub-stats { display: flex; flex-wrap: wrap; gap: 6px; }
 .metric-card .btn-chico { align-self: flex-start; margin-top: auto; }
 .adm-lista-alertas { display: flex; flex-direction: column; gap: 8px; }
@@ -114,7 +231,7 @@ html[data-theme="light"] .adm-login-etiqueta { color: #6D28D9; background: #F3EE
 .alerta-card b { color: var(--tinta); }
 .alerta-critico { border-left-color: var(--peligro); }
 .alerta-advertencia { border-left-color: var(--aviso); }
-.alerta-riesgo { border-left-color: #A855F7; }
+.alerta-riesgo { border-left-color: var(--info); }
 .alerta-ok { border-left-color: var(--exito); }
 
 /* Talleres */
@@ -150,7 +267,7 @@ html[data-theme="light"] .adm-login-etiqueta { color: #6D28D9; background: #F3EE
     min-height: 38px; padding: 0 16px; border-radius: 9999px; cursor: pointer;
     font: 600 var(--t-s) var(--fuente-ui); color: var(--tinta-2); background: var(--superficie-2); border: 1px solid var(--linea);
 }
-.ficha-360-footer .btn-primary { background: var(--gradiente-marca); color: #fff; border: 0; }
+.ficha-360-footer .btn-primary { background: var(--lima); color: var(--sobre-lima); border: 0; }
 
 /* Planes */
 .planes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
@@ -159,11 +276,11 @@ html[data-theme="light"] .adm-login-etiqueta { color: #6D28D9; background: #F3EE
 .precios-plan { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .checks-modulos { display: flex; flex-direction: column; gap: 10px; }
 .check-modulo { display: flex; gap: 10px; align-items: flex-start; font-size: var(--t-s); cursor: pointer; }
-.check-modulo input { margin-top: 3px; accent-color: #8B5CF6; width: 16px; height: 16px; }
+.check-modulo input { margin-top: 3px; width: 16px; height: 16px; }
 .check-modulo .texto-ayuda { margin: 0; font-size: var(--t-xs); }
 .plan-card .btn-primary {
     min-height: 42px; border: 0; border-radius: 9999px; cursor: pointer;
-    font: 700 var(--t-s) var(--fuente-ui); background: var(--gradiente-marca); color: #fff;
+    font: 700 var(--t-s) var(--fuente-ui); background: var(--lima); color: var(--sobre-lima);
 }
 
 /* Monitor de IA */
@@ -177,7 +294,7 @@ html[data-theme="light"] .adm-login-etiqueta { color: #6D28D9; background: #F3EE
 .modulos-cabecera label { display: flex; flex-direction: column; gap: 6px; }
 .lista-modulos { display: flex; flex-direction: column; gap: 8px; }
 .modulo-fila { padding: 12px 14px; border: 1px solid var(--linea); border-radius: 14px; display: flex; flex-direction: column; gap: 10px; }
-.modulo-fila.con-excepcion { border-color: rgba(168, 85, 247, 0.45); }
+.modulo-fila.con-excepcion { border-color: color-mix(in srgb, var(--lima) 55%, transparent); }
 .modulo-titulo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .modulo-info .texto-ayuda { margin: 4px 0 0; font-size: var(--t-xs); }
 .modulo-controles { display: grid; grid-template-columns: 1.3fr 0.9fr 1.3fr; gap: 8px; }
