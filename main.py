@@ -4506,17 +4506,22 @@ def avisos_cotizaciones(request: Request):
         return {"avisos": []}
 
     ids = [c["id"] for c in cots]
-    items = (supabase.table("cotizacion_items").select("cotizacion_id, descripcion, decision")
+    items = (supabase.table("cotizacion_items").select("cotizacion_id, descripcion, decision, cantidad, precio_unitario")
              .in_("cotizacion_id", ids).eq("taller_id", taller_id).order("orden").execute().data or [])
     avisos = []
     for c in cots:
         propios = [i for i in items if str(i["cotizacion_id"]) == str(c["id"])]
         aprobados = [i["descripcion"] for i in propios if i.get("decision") == "aprobado"]
+        # Cada línea con su precio y lo que decidió el cliente (también lo rechazado,
+        # que el taller puede volver a ofrecer más adelante)
+        lineas = [{"descripcion": i["descripcion"], "cantidad": float(i.get("cantidad") or 1),
+                   "subtotal": round(float(i.get("cantidad") or 1) * float(i.get("precio_unitario") or 0), 2),
+                   "decision": i.get("decision") or "pendiente"} for i in propios]
         avisos.append({
             "id": c["id"], "reparacion_id": c["reparacion_id"],
             "vehiculo": c.get("vehiculo") or "", "cliente": c.get("cliente") or "",
             "total": float(c.get("total") or 0), "total_aprobado": float(c.get("total_aprobado") or 0),
-            "n_items": len(propios), "n_aprobados": len(aprobados), "aprobados": aprobados,
+            "n_items": len(propios), "n_aprobados": len(aprobados), "aprobados": aprobados, "lineas": lineas,
             "comentario": c.get("comentario_cliente") or "",
             # Si la orden ya estaba cerrada, lo aprobado NO se agregó (hay que avisarlo)
             "aplicada_a_orden": bool(c.get("aplicada_a_orden")),

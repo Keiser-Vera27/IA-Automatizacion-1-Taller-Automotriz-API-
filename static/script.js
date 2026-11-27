@@ -690,7 +690,7 @@ function mostrarModal({ tipo = 'info', titulo = '', mensaje = '', detalles = [],
     if (!overlay) { mostrarNotificacion(mensaje, tipo); return; }  // respaldo
 
     const caja = overlay.querySelector('.modal-caja');
-    if (caja) caja.classList.remove('ancho', 'modal-cierre');   // la cotización usa un modal más ancho
+    if (caja) caja.classList.remove('ancho', 'modal-cierre', 'modal-cot');   // la cotización usa un modal más ancho
 
     const icono = document.getElementById('modal-icono');
     icono.className = `modal-icono ${cargando ? 'info cargando' : tipo}`;
@@ -3787,12 +3787,12 @@ function estadoCotizacionHTML(v) {
     if (!c) return '';
     let texto, clase;
     if (c.estado === 'respondida') {
-        texto = c.n_aprobados ? `Cliente aprobó ${c.n_aprobados} de ${c.n_items} · ${dinero(c.total_aprobado)}` : 'Cliente rechazó la cotización';
+        texto = c.n_aprobados ? `Cliente aprobó ${c.n_aprobados} de ${c.n_items}, ${dinero(c.total_aprobado)}` : 'Cliente rechazó la cotización';
         clase = c.n_aprobados ? 'aprobada' : 'rechazada';
     } else if (c.vencida) {
         texto = 'Cotización vencida sin respuesta'; clase = 'rechazada';
     } else {
-        texto = `Cotización enviada · ${dinero(c.total)} · esperando respuesta`; clase = 'pendiente';
+        texto = `Cotización enviada por ${dinero(c.total)}, esperando respuesta`; clase = 'pendiente';
     }
     return `<button type="button" class="marca-cotizacion ${clase}" title="Ver cotizaciones de esta orden"
         onclick='event.stopPropagation(); verCotizacionesOrden(${JSON.stringify(String(v.id))}, ${JSON.stringify(v.vehiculo || '')})'>${escaparHTML(texto)}</button>`;
@@ -3830,33 +3830,67 @@ async function revisarAvisosCotizacion() {
     }
 }
 
+// Respuesta del cliente a una cotización: cifra de lo aprobado, lo que aprobó,
+// lo que no aprobó (para volver a ofrecerlo), su comentario y si ya se agregó a la orden.
+// Se usa en el aviso automático y en "Cotizaciones" de cada orden.
+function respuestaCotizacionHTML(c) {
+    const e = escaparHTML;
+    const lineas = c.lineas || [];
+    const si = lineas.filter(l => l.decision === 'aprobado');
+    const no = lineas.filter(l => l.decision === 'rechazado');
+    const respondida = c.respondida !== false;
+    const pct = c.total > 0 ? Math.min(100, (Number(c.total_aprobado || 0) / c.total) * 100) : 0;
+    const icono = cuerpo => `<svg class="icono" viewBox="0 0 24 24" aria-hidden="true">${cuerpo}</svg>`;
+    const linea = l => `<li><span>${e(l.descripcion)}${Number(l.cantidad) !== 1 && l.cantidad ? ` <span class="sub">(x${Number(l.cantidad)})</span>` : ''}</span>
+        ${l.subtotal !== undefined ? `<b class="num">${dinero(l.subtotal)}</b>` : ''}</li>`;
+
+    let cifra;
+    if (!respondida) {
+        cifra = `<div class="cot-resp-cifra"><span class="cot-resp-etq">${e(c.estadoTexto || 'Esperando respuesta')}</span>
+            <b class="num">${dinero(c.total)}</b><span class="cot-resp-etq">total cotizado</span></div>`;
+    } else {
+        cifra = `<div class="cot-resp-cifra ${si.length || c.n_aprobados ? '' : 'nada'}">
+            <span class="cot-resp-etq">${(c.n_aprobados ?? si.length) ? 'Aprobó' : 'No aprobó nada'}</span>
+            <b class="num">${dinero(c.total_aprobado)}</b>
+            <span class="cot-resp-etq">de ${dinero(c.total)}, ${c.n_aprobados ?? si.length} de ${c.n_items ?? lineas.length} trabajos</span>
+            <div class="cot-resp-barra" aria-hidden="true"><span style="width:${pct}%"></span></div>
+        </div>`;
+    }
+
+    const grupoSi = si.length ? `<div class="cot-grupo si">
+            <h4>${icono('<path d="m5 12 5 5L20 7"/>')}Aprobó <span>${si.length}</span></h4><ul>${si.map(linea).join('')}</ul></div>` : '';
+    const grupoNo = no.length ? `<div class="cot-grupo no">
+            <h4>${icono('<path d="M6 6l12 12M18 6 6 18"/>')}No aprobó por ahora <span>${no.length}</span></h4><ul>${no.map(linea).join('')}</ul>
+            <p class="cot-pista">Puedes volver a ofrecérselo en su próxima visita.</p></div>` : '';
+    const pendientes = lineas.filter(l => l.decision !== 'aprobado' && l.decision !== 'rechazado');
+    const grupoPend = pendientes.length ? `<div class="cot-grupo">
+            <h4>${icono('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>')}Sin respuesta <span>${pendientes.length}</span></h4><ul>${pendientes.map(linea).join('')}</ul></div>` : '';
+
+    let nota = '';
+    if (respondida && (c.n_aprobados ?? si.length)) {
+        nota = c.aplicada_a_orden
+            ? `<div class="cot-nota ok">${icono('<path d="m5 12 5 5L20 7"/>')}<span>Lo aprobado ya se agregó a la orden.</span></div>`
+            : `<div class="cot-nota alerta">${icono('<path d="M12 8v5"/><circle cx="12" cy="16.5" r=".8"/><path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0z"/>')}<span>La orden ya estaba cerrada: lo aprobado <b>no</b> se agregó. Regístralo en una orden nueva.</span></div>`;
+    }
+
+    return `<div class="cot-resp">
+        ${c.vehiculo || c.cliente ? `<div class="cot-resp-cab">
+            ${c.vehiculo ? `<span class="placa chica">${e(c.vehiculo)}</span>` : ''}
+            <div><b>${e(c.cliente || 'Cliente')}</b><span>Cotización N° ${e(String(c.id))}</span></div>
+        </div>` : `<div class="cot-resp-cab solo"><b>Cotización N° ${e(String(c.id))}</b></div>`}
+        ${cifra}
+        ${grupoSi}${grupoNo}${grupoPend}
+        ${c.comentario ? `<blockquote class="cot-comentario"><span>Comentario del cliente</span>${e(c.comentario)}</blockquote>` : ''}
+        ${nota}
+        ${c.acciones || ''}
+    </div>`;
+}
+
 // Un bloque por cotización respondida (normalmente es una sola)
 function avisoCotizacionHTML(a) {
-    const e = escaparHTML;
-    const cabecera = [a.vehiculo ? `<b>${e(a.vehiculo)}</b>` : '', a.cliente ? e(a.cliente) : '',
-                      `Cotización N° ${e(String(a.id))}`].filter(Boolean).join(' · ');
-    let estado, clase;
-    if (!a.n_aprobados) {
-        estado = 'Rechazó toda la cotización'; clase = 'rechazada';
-    } else if (a.n_aprobados === a.n_items) {
-        estado = `Aprobó todo · ${dinero(a.total_aprobado)}`; clase = 'aprobada';
-    } else {
-        estado = `Aprobó ${a.n_aprobados} de ${a.n_items} · ${dinero(a.total_aprobado)} de ${dinero(a.total)}`; clase = 'aprobada';
-    }
-    const lista = a.aprobados.length ? `<ul class="aviso-cot-lista">${a.aprobados.map(d => `<li>${e(d)}</li>`).join('')}</ul>` : '';
-    let nota = '';
-    if (a.n_aprobados) {
-        nota = a.aplicada_a_orden
-            ? 'Lo aprobado ya se agregó a la orden.'
-            : 'La orden ya estaba cerrada: lo aprobado <b>no</b> se agregó. Regístralo en una orden nueva.';
-    }
-    return `<div class="aviso-cot">
-        <div class="resumen-orden">${cabecera}</div>
-        <div class="marca-cotizacion ${clase} aviso-cot-estado">${estado}</div>
-        ${lista}
-        ${a.comentario ? `<div class="oh-notas">Comentario del cliente: ${e(a.comentario)}</div>` : ''}
-        ${nota ? `<div class="nota-cierre">${nota}</div>` : ''}
-    </div>`;
+    // Con el backend anterior solo llega la lista de aprobados (sin precios)
+    const lineas = a.lineas || (a.aprobados || []).map(d => ({ descripcion: d, decision: 'aprobado' }));
+    return respuestaCotizacionHTML({ ...a, lineas });
 }
 
 function mostrarAvisosCotizacion(avisos) {
@@ -3867,6 +3901,7 @@ function mostrarAvisosCotizacion(avisos) {
         titulo: unaSola ? 'El cliente respondió la cotización' : `${avisos.length} clientes respondieron sus cotizaciones`,
         mensaje: avisos.map(avisoCotizacionHTML).join(''),
     });
+    document.querySelector('#modal-aviso .modal-caja').classList.add('ancho', 'modal-cot');
     // OK = visto: se marca en el servidor para que no vuelva a aparecer
     const btnOk = document.getElementById('modal-btn-ok');
     btnOk.onclick = () => {
@@ -4084,24 +4119,21 @@ async function verCotizacionesOrden(id, placa) {
     }
     const e = escaparHTML;
     window._cotizacionesOrden = data.cotizaciones;
-    const decision = d => d === 'aprobado' ? '<span class="cot-dec aprobado">Aprobado</span>'
-        : d === 'rechazado' ? '<span class="cot-dec rechazado">Rechazado</span>' : '<span class="cot-dec">Sin respuesta</span>';
     const html = data.cotizaciones.map((c, n) => {
-        const estado = c.estado === 'respondida' ? `Respondida · aprobó ${dinero(c.total_aprobado)} de ${dinero(c.total)}`
-            : c.estado === 'anulada' ? 'Anulada' : (c.vencida ? 'Vencida sin respuesta' : `Esperando respuesta · vence ${fechaCorta(c.vence)}`);
-        return `<div class="cot-historial">
-            <div class="cot-historial-cab"><b>N° ${e(String(c.id))}</b> <span>${e(estado)}</span></div>
-            <ul class="oh-lista">${c.items.map(i => `<li><span>${e(i.descripcion)}${i.cantidad !== 1 ? ` (x${i.cantidad})` : ''}</span>
-                <span class="num">${dinero(i.subtotal)} ${decision(i.decision)}</span></li>`).join('')}</ul>
-            ${c.comentario_cliente ? `<div class="oh-notas">Comentario del cliente: ${e(c.comentario_cliente)}</div>` : ''}
-            ${c.estado === 'respondida' && c.n_aprobados && !c.aplicada_a_orden ? '<div class="oh-notas">La orden ya estaba cerrada: lo aprobado no se agregó.</div>' : ''}
-            ${c.estado === 'pendiente' ? `<div class="cot-envio">
-                ${!c.vencida ? `<button type="button" class="dash-chip" onclick="reenviarCotizacion(${n})">Reenviar</button>` : ''}
-                <button type="button" class="dash-chip" onclick='anularCotizacion(${JSON.stringify(String(c.id))}, ${JSON.stringify(id)}, ${JSON.stringify(placa)})'>Anular</button></div>` : ''}
-        </div>`;
+        const estadoTexto = c.estado === 'anulada' ? 'Anulada'
+            : (c.vencida ? 'Vencida sin respuesta' : `Esperando respuesta, vence ${fechaCorta(c.vence)}`);
+        const acciones = c.estado === 'pendiente' ? `<div class="cot-envio">
+                ${!c.vencida ? `<button type="button" class="btn-chico" onclick="reenviarCotizacion(${n})">Reenviar</button>` : ''}
+                <button type="button" class="btn-chico" onclick='anularCotizacion(${JSON.stringify(String(c.id))}, ${JSON.stringify(id)}, ${JSON.stringify(placa)})'>Anular</button></div>` : '';
+        return respuestaCotizacionHTML({
+            id: c.id, total: c.total, total_aprobado: c.total_aprobado, n_items: c.n_items, n_aprobados: c.n_aprobados,
+            respondida: c.estado === 'respondida', estadoTexto,
+            lineas: c.items.map(i => ({ descripcion: i.descripcion, cantidad: i.cantidad, subtotal: i.subtotal, decision: i.decision })),
+            comentario: c.comentario_cliente, aplicada_a_orden: c.aplicada_a_orden, acciones
+        });
     }).join('') || '<p class="vacio-vehiculos">Esta orden no tiene cotizaciones.</p>';
-    mostrarModal({ tipo: 'info', titulo: `Cotizaciones · ${placa}` });
-    document.querySelector('#modal-aviso .modal-caja').classList.add('ancho');
+    mostrarModal({ tipo: 'info', titulo: `Cotizaciones de ${placa}` });
+    document.querySelector('#modal-aviso .modal-caja').classList.add('ancho', 'modal-cot');
     document.getElementById('modal-mensaje').innerHTML = html;
 }
 

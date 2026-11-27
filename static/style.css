@@ -3062,3 +3062,74 @@ html[data-theme="dark"] .modal-cierre .modal-botones { background: #161a44; }
     .modal-cierre .modal-botones { margin: 16px -16px 0; padding: 12px 16px 16px; }
     .modal-cierre .modal-botones button { flex: 1; }
 }
+
+/* ==========================================================================
+   RESPUESTA DEL CLIENTE A UNA COTIZACIÓN (aviso y "Cotizaciones" de la orden)
+   ========================================================================== */
+.modal-caja.modal-cot { max-width: 560px; max-height: min(90dvh, 860px); overflow-x: hidden; }
+.cot-resp { display: grid; gap: 12px; text-align: left; margin-top: 6px; }
+.cot-resp + .cot-resp { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--linea); }
+
+/* Cabecera: placa, cliente y número de cotización */
+.cot-resp-cab { display: flex; align-items: center; gap: 12px; }
+.cot-resp-cab > div { display: grid; line-height: 1.3; }
+.cot-resp-cab b { color: var(--tinta); font-size: var(--t-m); }
+.cot-resp-cab span:not(.placa) { font-size: var(--t-xs); color: var(--tinta-3); }
+
+/* Cifra principal: lo aprobado sobre el total */
+.cot-resp-cifra {
+    display: grid; gap: 2px; padding: 14px 16px; border-radius: 18px;
+    background: rgba(155, 243, 201, 0.10); border: 1px solid rgba(155, 243, 201, 0.30);
+}
+.cot-resp-cifra.nada { background: rgba(255, 99, 120, 0.08); border-color: rgba(255, 138, 154, 0.3); }
+.cot-resp-etq { font-size: var(--t-xs); color: var(--tinta-3); font-weight: 600; }
+.cot-resp-cifra b { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; color: var(--tinta); line-height: 1.15; }
+.cot-resp-barra { height: 6px; border-radius: 999px; margin-top: 8px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+html[data-theme="light"] .cot-resp-barra { background: var(--superficie-3); }
+.cot-resp-barra span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #9BF3C9, #D6F56A); }
+html[data-theme="light"] .cot-resp-cifra { background: rgba(46, 158, 107, 0.07); border-color: rgba(46, 158, 107, 0.25); }
+
+/* Grupos: lo aprobado y lo que no */
+.cot-grupo { padding: 12px 14px; border-radius: 16px; background: var(--superficie-2); border: 1px solid var(--linea); }
+html[data-theme="dark"] .cot-grupo { background: rgba(255, 255, 255, 0.035); }
+.cot-grupo h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: var(--t-s); font-weight: 700; color: var(--tinta); }
+.cot-grupo h4 span { margin-left: auto; font-size: var(--t-xs); font-weight: 650; color: var(--tinta-3); font-variant-numeric: tabular-nums; }
+.cot-grupo h4 .icono { width: 18px; height: 18px; padding: 3px; border-radius: 6px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.cot-grupo.si h4 .icono { color: #9BF3C9; background: rgba(155, 243, 201, 0.14); }
+.cot-grupo.no h4 .icono { color: #FFA3B1; background: rgba(255, 99, 120, 0.14); }
+html[data-theme="light"] .cot-grupo.si h4 .icono { color: #127A4B; }
+html[data-theme="light"] .cot-grupo.no h4 .icono { color: #B4233A; }
+.cot-grupo:not(.si):not(.no) h4 .icono { color: var(--tinta-3); background: var(--superficie-3); }
+.cot-grupo.no { border-color: rgba(255, 138, 154, 0.28); }
+.cot-grupo ul { list-style: none; margin: 0; padding: 0; }
+.cot-grupo li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--linea); font-size: var(--t-s); color: var(--tinta); }
+.cot-grupo li:first-child { border-top: 0; }
+.cot-grupo li b { font-weight: 700; white-space: nowrap; }
+.cot-grupo.no li span, .cot-grupo.no li b { color: var(--tinta-2); }
+.cot-grupo .sub { color: var(--tinta-3); font-size: var(--t-xs); }
+.cot-pista { margin: 6px 0 0; font-size: var(--t-xs); color: var(--tinta-3); }
+
+/* Comentario del cliente */
+.cot-comentario {
+    margin: 0; padding: 12px 14px; border-radius: 14px; border-left: 3px solid #A58BFF;
+    background: rgba(165, 139, 255, 0.10); color: var(--tinta); font-size: var(--t-s); line-height: 1.5;
+}
+.cot-comentario span { display: block; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; color: var(--tinta-3); margin-bottom: 2px; }
+
+/* Nota de estado: ya se agregó a la orden, o la orden estaba cerrada */
+.cot-nota { display: flex; align-items: flex-start; gap: 8px; font-size: var(--t-xs); color: var(--tinta-2); }
+.cot-nota .icono { flex: none; width: 16px; height: 16px; margin-top: 1px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.cot-nota.ok .icono { color: #9BF3C9; }
+html[data-theme="light"] .cot-nota.ok .icono { color: #127A4B; }
+.cot-nota.alerta { padding: 10px 12px; border-radius: 12px; color: var(--tinta); background: rgba(247, 197, 106, 0.12); border: 1px solid rgba(247, 197, 106, 0.35); }
+.cot-nota.alerta .icono { color: #F7C56A; }
+.cot-resp .cot-envio { display: flex; gap: 8px; }
+.cot-resp .cot-envio .btn-chico { border-radius: 999px; height: 36px; }
+/* Botón OK siempre visible abajo, como en el modal de cierre */
+.modal-caja.modal-cot { padding-bottom: 0; }
+.modal-cot .modal-botones {
+    position: sticky; bottom: 0; z-index: 1; margin: 16px -24px 0; padding: 12px 24px 16px;
+    background: var(--superficie-1); border-top: 1px solid var(--linea);
+}
+html[data-theme="dark"] .modal-cot .modal-botones { background: #161a44; }
+@media (max-width: 560px) { .modal-cot .modal-botones { margin: 14px -16px 0; padding: 12px 16px 14px; } }
