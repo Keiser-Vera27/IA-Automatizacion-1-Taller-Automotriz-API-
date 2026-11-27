@@ -44,8 +44,8 @@ function aplicarModulos() {
     const texto = document.getElementById('texto_reporte');
     if (texto) {
         texto.placeholder = moduloActivo('consultas_ia')
-            ? "Escribe aquí un registro (ej: Entró Toyota PXY9876...) o haz una pregunta analítica (ej: ¿Cuál fue el cliente que gastó más?)"
-            : "Escribe aquí un registro (ej: Entró Toyota PXY9876 por falla de frenos...)";
+            ? "Escribe un ingreso, un trabajo, un gasto o una pregunta…"
+            : "Escribe un ingreso, un trabajo o un gasto…";
     }
     // Mientras no se conocen los módulos, lo marcado con data-modulo no se ve
     // (evita que aparezca y desaparezca un botón al cargar)
@@ -89,7 +89,14 @@ async function cargarDatosTaller() {
         // Módulos que incluye el plan del taller
         modulosTaller = Array.isArray(data.modulos) ? data.modulos : null;
         
-        banner.innerHTML = `¡Bienvenido, <span class="nombre-taller-destacado">${data.nombre_taller}</span>! Empecemos a trabajar`;
+        // Nombre del taller en la barra superior (como texto: nunca como HTML)
+        banner.textContent = data.nombre_taller || '';
+        banner.title = data.nombre_taller || '';
+        ponerTexto('saludo-taller', data.nombre_taller || '');
+        // Iniciales del taller para el distintivo de la barra ("Lubricadora El Pana" -> "LP")
+        const iniciales = String(data.nombre_taller || '').split(/\s+/).filter(p => p.length > 2).slice(0, 2).map(p => p[0]).join('').toUpperCase();
+        ponerTexto('inicial-taller', iniciales);
+        iniciarConversacion();
     } catch (e) {
         console.error("No se pudo cargar el nombre del taller:", e);
     }
@@ -105,6 +112,7 @@ window.onload = function() {
         document.getElementById("app-container").style.display = "block";
         
         // Al ejecutarse estas funciones, si el token expiró, la app se cerrará sola
+        actualizarSaludo();
         cargarVehiculosPendientes();
         cargarBienvenidaTaller();
         iniciarActualizacionCuadre();   // cuadre de caja siempre visible y en vivo
@@ -167,6 +175,7 @@ async function iniciarSesion() {
             localStorage.setItem("taller_token", data.token);
             document.getElementById("login-container").style.display = "none";
             document.getElementById("app-container").style.display = "block";
+            actualizarSaludo();
             cargarVehiculosPendientes();
             cargarBienvenidaTaller();
             iniciarActualizacionCuadre();   // cuadre de caja siempre visible y en vivo
@@ -192,16 +201,21 @@ function cerrarSesion() {
     document.getElementById("login-container").style.display = "block";
     document.getElementById("password_login").value = "";
 
-    const cajaNotificacion = document.getElementById('caja-notificacion-ia');
-    if (cajaNotificacion) {
-        cajaNotificacion.innerHTML = "";
-        cajaNotificacion.style.padding = "0";
-    }
-    
-    const panelPendientes = document.getElementById('panel-vehiculos-pendientes');
-    if (panelPendientes) {
-        panelPendientes.remove();
-    }
+    // Conversación, vehículos y cifras del día no deben verse en la próxima sesión
+    const conversacion = document.getElementById('conversacion-geor');
+    if (conversacion) conversacion.innerHTML = "";
+    quitarContextoPlaca();
+    const panelPendientes = document.getElementById('panel-vehiculos-pendientes-container');
+    if (panelPendientes) panelPendientes.innerHTML = "";
+    ultimosVehiculos = [];
+    vehiculoDestacadoId = null;
+    historialCaja = null;
+    vehiculosResumen = null; resultadosBusquedaVeh = null; placaActivaVehiculos = null;
+    const fichaVeh = document.getElementById('ficha-vehiculo');
+    if (fichaVeh) fichaVeh.innerHTML = '';
+    try { sessionStorage.removeItem('historial_caja'); } catch (e) {}
+    ['cifra-taller', 'cifra-entregados', 'cifra-cobrado'].forEach(id => ponerTexto(id, '–'));
+    ['saludo-taller', 'inicial-taller', 'conteo-taller'].forEach(id => ponerTexto(id, ''));
 
     detenerActualizacionCuadre();   // no seguir consultando sin sesión
     const panelCaja = document.getElementById('panel-cuadre-caja');
@@ -556,6 +570,11 @@ async function enviarReporte() {
         return;
     }
 
+    // El mensaje queda en la conversación; el vehículo del contexto ya va escrito en el texto
+    agregarMensajeUsuario(texto.trim());
+    ultimoMensajeUsuario = texto;
+    quitarContextoPlaca();
+
     try {
         mostrarNotificacion("Analizando mensaje con inteligencia artificial...", "info");
 
@@ -569,11 +588,13 @@ async function enviarReporte() {
         });
 
         const data = await res.json().catch(() => ({}));
+        estadoConexionGeor(true);
         await manejarRespuestaRegistro(res, data, false);
 
     } catch (e) {
         console.error("Error:", e);
-        mostrarNotificacion("Error al conectar con el servidor.", "error");
+        estadoConexionGeor(false);
+        mostrarNotificacion("<b>No pude conectarme con el servidor.</b><br>Tu mensaje sigue en el campo de texto. Revisa el internet y vuelve a enviarlo.", "error");
     }
 }
 
@@ -669,7 +690,7 @@ function mostrarModal({ tipo = 'info', titulo = '', mensaje = '', detalles = [],
     if (!overlay) { mostrarNotificacion(mensaje, tipo); return; }  // respaldo
 
     const caja = overlay.querySelector('.modal-caja');
-    if (caja) caja.classList.remove('ancho');   // la cotización usa un modal más ancho
+    if (caja) caja.classList.remove('ancho', 'modal-cierre', 'modal-cot');   // la cotización usa un modal más ancho
 
     const icono = document.getElementById('modal-icono');
     icono.className = `modal-icono ${cargando ? 'info cargando' : tipo}`;
@@ -692,7 +713,7 @@ function mostrarModal({ tipo = 'info', titulo = '', mensaje = '', detalles = [],
 
     // Modo aviso: sin formulario ni botón Cancelar, OK solo cierra
     const formulario = document.getElementById('modal-formulario');
-    if (formulario) { formulario.hidden = true; formulario.innerHTML = ''; }
+    if (formulario) { formulario.hidden = true; formulario.innerHTML = ''; formulario.classList.remove('en-columnas'); }
     const btnCancelar = document.getElementById('modal-btn-cancelar');
     if (btnCancelar) { btnCancelar.hidden = true; btnCancelar.textContent = 'Cancelar'; btnCancelar.disabled = false; }
     overlay.dataset.modo = '';
@@ -815,14 +836,15 @@ function mostrarFormularioFaltantes(data) {
     overlay.dataset.modo = 'formulario';
 
     const tipoOrden = ctx.es_cierre ? 'Cierre de trabajo' : 'Ingreso al taller';
-    const resumen = [ctx.placa && ctx.placa !== 'S/C' ? `<b>${e(ctx.placa)}</b>` : '',
-                     ctx.modelo ? e(ctx.modelo) : '', ctx.cliente ? e(ctx.cliente) : '']
-                    .filter(Boolean).join(' · ');
+    // Placa como badge y modelo/cliente como piezas separadas (sin puntos medios)
+    const placaRes = ctx.placa && ctx.placa !== 'S/C' ? `<span class="placa chica">${e(ctx.placa)}</span>` : '';
+    const piezasRes = [ctx.modelo, ctx.cliente].filter(Boolean).map(x => `<span>${e(x)}</span>`).join('');
     // Nombra exactamente lo que falta (antes era un texto genérico)
     const pendientes = faltantes.filter(f => !f.opcional).map(f => e(f.etiqueta));
     const listaFaltan = pendientes.length ? `<b>${pendientes.join(', ')}</b>` : 'los datos marcados';
     document.getElementById('modal-mensaje').innerHTML =
-        `<div class="resumen-orden">${tipoOrden}${resumen ? ': ' + resumen : ''}</div>
+        `<div class="resumen-orden"><span class="resumen-tipo">${tipoOrden}</span>
+            ${placaRes || piezasRes ? `<span class="resumen-vehiculo">${placaRes}<span class="separados">${piezasRes}</span></span>` : ''}</div>
          ${avisoGarantiaHTML(ctx.garantia)}
          ${ctx.es_cierre ? resumenTrabajosHTML(ctx, true) : ''}
          <div class="nota-faltantes">${ctx.es_cierre
@@ -834,6 +856,9 @@ function mostrarFormularioFaltantes(data) {
     formulario.innerHTML = faltantes.map(f => campoFaltanteHTML(f, tecnicos)).join('')
         + `<datalist id="lista-bancos">${BANCOS_SUGERIDOS.map(b => `<option value="${e(b)}">`).join('')}</datalist>`;
     formulario.hidden = false;
+    // Con 2 o más datos, los campos van en dos columnas (en el celular, una)
+    formulario.classList.toggle('en-columnas', faltantes.length > 1);
+    overlay.querySelector('.modal-caja').classList.add('modal-cierre');
 
     const btnCancelar = document.getElementById('modal-btn-cancelar');
     btnCancelar.hidden = false;
@@ -1023,15 +1048,35 @@ function ajustarProveedorGarantia() {
 }
 
 // ---------------------------- Vista "Garantías" ----------------------------
-function iniciarVistaGarantias() {
+// Período del reporte: 30 días, 90 días (por defecto), este año o fechas propias
+let periodoGarantias = '90';
+
+function isoLocal(d) {
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function elegirPeriodoGarantias(periodo) {
+    periodoGarantias = periodo;
+    document.querySelectorAll('.gar-chips .veh-chip').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.periodo === periodo)));
+    const fechas = document.getElementById('gar-fechas');
+    fechas.hidden = periodo !== 'propio';
+    if (periodo === 'propio') { document.getElementById('garantias-desde').focus(); return; }
     const hoy = new Date();
-    const desde = new Date(hoy.getTime() - 90 * 86400000);
-    const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-    const inDesde = document.getElementById('garantias-desde');
-    const inHasta = document.getElementById('garantias-hasta');
-    if (!inDesde.value) inDesde.value = iso(desde);
-    if (!inHasta.value) inHasta.value = iso(hoy);
+    const desde = periodo === 'anio' ? new Date(hoy.getFullYear(), 0, 1) : new Date(hoy.getTime() - Number(periodo) * 86400000);
+    document.getElementById('garantias-desde').value = isoLocal(desde);
+    document.getElementById('garantias-hasta').value = isoLocal(hoy);
     cargarReporteGarantias();
+}
+
+function iniciarVistaGarantias() {
+    const inDesde = document.getElementById('garantias-desde');
+    if (!inDesde.value) { elegirPeriodoGarantias(periodoGarantias); return; }
+    cargarReporteGarantias();
+}
+
+// Baja hasta la sección de reclamos a proveedores (desde el aviso de pendientes)
+function irAReclamosProveedor() {
+    document.getElementById('gar-proveedores')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function cargarReporteGarantias() {
@@ -1051,64 +1096,148 @@ async function cargarReporteGarantias() {
     }
     const r = d.resumen;
     const pct = v => v === null || v === undefined ? '—' : `${v}%`;
-    const tabla = (cabeceras, filas, vacio) => `
-        <div class="tabla-scroll"><table class="tabla-caja">
-            <thead><tr>${cabeceras.map(([t, al]) => `<th style="text-align:${al || 'left'}">${t}</th>`).join('')}</tr></thead>
-            <tbody>${filas.length ? filas.join('') : `<tr><td colspan="${cabeceras.length}" class="vacio">${vacio}</td></tr>`}</tbody>
-        </table></div>`;
+    const icono = cuerpo => `<svg class="icono" viewBox="0 0 24 24" aria-hidden="true">${cuerpo}</svg>`;
+    const LIMITE_TASA = 10;   // desde este % de retorno se marca en rojo
 
-    const filasTec = d.por_tecnico.map(t => `<tr>
-        <td>${e(t.tecnico)}</td><td class="centro">${t.entregadas}</td><td class="centro">${t.reclamos}</td>
-        <td class="num ${t.tasa >= 10 ? 'monto-negativo' : ''}">${pct(t.tasa)}</td><td class="num">${dinero(t.costo)}</td></tr>`);
-    const filasSrv = d.por_servicio.map(s => `<tr>
-        <td>${e(s.servicio)}</td><td class="centro">${s.entregadas}</td><td class="centro">${s.reclamos}</td>
-        <td class="num">${pct(s.tasa)}</td><td class="num">${dinero(s.costo)}</td></tr>`);
-    const filasCausa = d.por_causa.map(c => `<tr><td>${e(c.causa)}</td><td class="centro">${c.reclamos}</td><td class="num">${dinero(c.costo)}</td></tr>`);
-    const filasRep = d.por_repuesto.map(p => `<tr><td>${e(p.codigo || '-')}</td><td>${e(p.nombre)}</td><td>${e(p.proveedor || '-')}</td><td class="centro">${p.reclamos}</td></tr>`);
-    const filasProv = d.reclamos_proveedor.map(p => `<tr>
-        <td>${e(p.fecha)}</td><td><b>${e(p.vehiculo)}</b><div class="sub">orden N° ${e(String(p.orden_origen))}</div></td>
-        <td>${e(p.repuestos)}</td><td>${e(p.proveedor)}</td><td class="num">${dinero(p.costo)}</td>
-        <td><span class="estado-reclamo ${e(p.estado.toLowerCase())}">${e(p.estado)}</span>${p.estado === 'Aprobado' ? `<div class="sub">recuperado ${dinero(p.recuperado)}</div>` : ''}</td>
-        <td class="centro">${p.estado === 'Pendiente'
-            ? `<button class="btn-link" onclick='resolverReclamoProveedor(${JSON.stringify(String(p.id))}, "Aprobado", ${p.costo})'>Aprobado</button>
-               <button class="btn-link" onclick='resolverReclamoProveedor(${JSON.stringify(String(p.id))}, "Rechazado", 0)'>Rechazado</button>`
-            : `<button class="btn-link" onclick='resolverReclamoProveedor(${JSON.stringify(String(p.id))}, "Pendiente", 0)'>Reabrir</button>`}</td></tr>`);
+    // --- Cifras ---
+    const cifra = (clase, etiqueta, valor, ic, extra = '') => `
+        <div class="veh-cifra ${clase}">
+            <span class="veh-cifra-icono" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24">${ic}</svg></span>
+            <div><div class="veh-cifra-etiqueta">${etiqueta}</div><div class="veh-cifra-valor">${valor}</div>${extra ? `<div class="gar-cifra-extra">${extra}</div>` : ''}</div>
+        </div>`;
+    const cifras = [
+        cifra('menta', 'Garantías entregadas', r.entregadas, '<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="m9 12 2 2 4-4"/>'),
+        cifra('lila', 'Reclamos atendidos', r.reclamos, '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/>'),
+        cifra(r.tasa_retorno >= LIMITE_TASA ? 'rojo' : '', 'Tasa de retorno', pct(r.tasa_retorno), '<path d="M4 19h16"/><path d="M7 15l4-4 3 3 5-6"/>'),
+        cifra('ambar', 'Costo neto para el taller', dinero(r.costo_neto), '<path d="M12 3v18M16.5 7.5C16 6 14.4 5 12 5c-2.8 0-4.5 1.3-4.5 3.2 0 4.6 9 2.5 9 7 0 2-1.8 3.3-4.5 3.3-2.5 0-4.2-1-4.8-2.6"/>',
+              `Costo ${dinero(r.costo_total)}, recuperado ${dinero(r.recuperado_proveedores)}`)
+    ].join('');
+
+    const avisoPendientes = r.reclamos_proveedor_pendientes ? `
+        <div class="gar-aviso">
+            ${icono('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>')}
+            <span><b>${r.reclamos_proveedor_pendientes} ${r.reclamos_proveedor_pendientes === 1 ? 'reclamo a proveedor espera' : 'reclamos a proveedores esperan'} respuesta.</b> Márcalos cuando el proveedor conteste.</span>
+            <button type="button" class="btn-chico" onclick="irAReclamosProveedor()">Ver reclamos</button>
+        </div>` : '';
+
+    // --- Por técnico: lista con barra de tasa de retorno ---
+    const maxTasa = Math.max(LIMITE_TASA * 2, ...d.por_tecnico.map(t => t.tasa || 0));
+    const filasTec = d.por_tecnico.map(t => {
+        const alta = (t.tasa || 0) >= LIMITE_TASA;
+        return `
+        <li class="gar-tec ${alta ? 'alta' : ''}">
+            <span class="avatar-tecnico" style="--tono:${alta ? '#E5486A' : '#8B5CF6'}">${e(String(t.tecnico || '?').trim().charAt(0).toUpperCase())}</span>
+            <div class="gar-tec-datos">
+                <div class="gar-tec-fila"><b>${e(t.tecnico)}</b><span class="gar-tasa">${pct(t.tasa)}</span></div>
+                <div class="gar-barra" aria-hidden="true"><span style="width:${Math.min(100, ((t.tasa || 0) / maxTasa) * 100)}%"></span></div>
+                <div class="gar-tec-meta separados"><span>${t.entregadas} ${t.entregadas === 1 ? 'entregada' : 'entregadas'}</span><span>${t.reclamos} ${t.reclamos === 1 ? 'reclamo' : 'reclamos'}</span><span>${dinero(t.costo)}</span></div>
+            </div>
+        </li>`;
+    }).join('');
+
+    // --- Por causa: barras horizontales ---
+    const maxCausa = Math.max(1, ...d.por_causa.map(c => c.reclamos));
+    const filasCausa = d.por_causa.slice().sort((a, b) => b.reclamos - a.reclamos).map(c => `
+        <li class="gar-causa">
+            <div class="gar-tec-fila"><span>${e(c.causa)}</span><b>${c.reclamos}</b></div>
+            <div class="gar-barra lila" aria-hidden="true"><span style="width:${(c.reclamos / maxCausa) * 100}%"></span></div>
+            <div class="gar-tec-meta">${dinero(c.costo)}</div>
+        </li>`).join('');
+
+    // --- Servicios con más reclamos ---
+    const filasSrv = d.por_servicio.map(s => `
+        <li class="gar-servicio">
+            <div class="gar-servicio-nombre"><b>${e(s.servicio)}</b>
+                <span class="separados"><span>${s.reclamos} de ${s.entregadas} ${s.entregadas === 1 ? 'entregada' : 'entregadas'}</span><span>${dinero(s.costo)}</span></span></div>
+            <span class="gar-tasa ${(s.tasa || 0) >= LIMITE_TASA ? 'alta' : ''}">${pct(s.tasa)}</span>
+        </li>`).join('');
+
+    // --- Reclamos a proveedores: tarjetas con su respuesta ---
+    const claseReclamo = est => ({ Pendiente: 'estado-pendiente', Aprobado: 'estado-terminado', Rechazado: 'estado-sin-cobro' })[est] || '';
+    const filasProv = d.reclamos_proveedor.map(p => {
+        const id = JSON.stringify(String(p.id));
+        return `
+        <article class="gar-prov ${p.estado === 'Pendiente' ? 'pendiente' : ''}">
+            <div class="gar-prov-cabecera">
+                <span class="placa chica">${e(p.vehiculo)}</span>
+                <span class="badge-estado ${claseReclamo(p.estado)}">${e(p.estado)}</span>
+                <span class="gar-prov-monto">${dinero(p.costo)}</span>
+            </div>
+            <div class="gar-prov-proveedor"><b>${e(p.proveedor)}</b></div>
+            <div class="gar-prov-meta">${e(p.repuestos)}</div>
+            <div class="gar-prov-meta separados"><span>Orden N° ${e(String(p.orden_origen))}</span><span>${fechaCorta(p.fecha)}</span></div>
+            ${p.estado === 'Aprobado' ? `<div class="gar-prov-recuperado">Recuperado ${dinero(p.recuperado)}</div>` : ''}
+            <div class="gar-prov-acciones">${p.estado === 'Pendiente'
+                ? `<button type="button" class="btn-chico principal" onclick='resolverReclamoProveedor(${id}, "Aprobado", ${Number(p.costo) || 0})'>${icono('<path d="m5 12 5 5L20 7"/>')}Aprobado</button>
+                   <button type="button" class="btn-chico" onclick='resolverReclamoProveedor(${id}, "Rechazado", 0)'>${icono('<path d="M6 6l12 12M18 6 6 18"/>')}Rechazado</button>`
+                : `<button type="button" class="btn-chico" onclick='resolverReclamoProveedor(${id}, "Pendiente", 0)'>${icono('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/>')}Reabrir</button>`}</div>
+        </article>`;
+    }).join('');
+
+    // --- Repuestos que fallaron y detalle (tablas que en el celular se vuelven tarjetas) ---
+    // Cada celda lleva su título (data-titulo) para mostrarse como "etiqueta: valor" en el celular
+    const celda = (titulo, contenido, clase = '') => `<td data-titulo="${titulo}" class="${clase}"><div class="gar-celda">${contenido}</div></td>`;
+    const filasRep = d.por_repuesto.map(p => `<tr>
+        ${celda('Código', e(p.codigo || '-'))}${celda('Repuesto', `<b>${e(p.nombre)}</b>`)}
+        ${celda('Proveedor', e(p.proveedor || '-'))}${celda('Reclamos', String(p.reclamos), 'num')}</tr>`).join('');
     const filasDet = d.detalle.map(x => `<tr>
-        <td>${e(x.fecha)}</td><td><b>${e(x.vehiculo)}</b><div class="sub">${e(x.cliente)}</div></td>
-        <td>${e(x.trabajo_original)}<div class="sub">orden N° ${e(String(x.orden_origen))}</div></td>
-        <td>${e(x.tecnico)}</td><td>${e(x.causa)}</td><td class="celda-trabajo" title="${e(x.detalle)}">${e(x.detalle || '-')}</td>
-        <td class="num">${dinero(x.costo)}</td></tr>`);
+        ${celda('Fecha', fechaCorta(x.fecha))}
+        ${celda('Placa', `<span class="placa chica">${e(x.vehiculo)}</span><div class="sub">${e(x.cliente)}</div>`)}
+        ${celda('Trabajo original', `${e(x.trabajo_original)}<div class="sub">Orden N° ${e(String(x.orden_origen))}</div>`)}
+        ${celda('Técnico', e(x.tecnico))}${celda('Causa', e(x.causa))}
+        ${celda('Qué se hizo', e(x.detalle || '-'), 'celda-trabajo')}
+        ${celda('Costo', `<b>${dinero(x.costo)}</b>`, 'num')}</tr>`).join('');
+    // Celular (< 768 px): cada reclamo como tarjeta de 4 bloques
+    // (cabecera, trabajo y costo, técnico y causa, qué se hizo). En escritorio se oculta.
+    const tarjetasDet = d.detalle.map(x => `
+        <article class="gar-det">
+            <header class="gar-det-cab">
+                <span class="placa chica">${e(x.vehiculo)}</span>
+                <div class="gar-det-quien">
+                    <b>${x.cliente && x.cliente !== '-' ? e(x.cliente) : 'Sin cliente registrado'}</b>
+                    <span>Orden N° ${e(String(x.orden_origen))}</span>
+                </div>
+                <time class="gar-det-fecha" datetime="${e(x.fecha)}">${fechaCorta(x.fecha)}</time>
+            </header>
+            <div class="gar-det-trabajo">
+                <span>${e(x.trabajo_original)}</span>
+                <b>${dinero(x.costo)}</b>
+            </div>
+            <dl class="gar-det-datos">
+                <div><dt>Técnico</dt><dd>${e(x.tecnico)}</dd></div>
+                <div><dt>Causa</dt><dd>${e(x.causa)}</dd></div>
+            </dl>
+            ${x.detalle ? `<div class="gar-det-hizo"><span>Qué se hizo</span><p>${e(x.detalle)}</p></div>` : ''}
+        </article>`).join('');
+    const tabla = (cabeceras, filas, vacio) => filas
+        ? `<div class="tabla-scroll"><table class="gar-tabla">
+            <thead><tr>${cabeceras.map(([t, cl]) => `<th class="${cl || ''}">${t}</th>`).join('')}</tr></thead>
+            <tbody>${filas}</tbody></table></div>`
+        : `<p class="gar-vacio">${vacio}</p>`;
+
+    const tarjeta = (titulo, cuerpo, extra = '', id = '') => `
+        <section class="gar-tarjeta" ${id ? `id="${id}"` : ''}>
+            <div class="gar-tarjeta-titulo"><h2>${titulo}</h2>${extra}</div>
+            ${cuerpo}
+        </section>`;
 
     cont.innerHTML = `
-        <div class="tarjetas-resumen-caja">
-            <div class="tarjeta-resumen-caja"><div class="etiqueta">Garantías entregadas</div><div class="monto monto-neutro">${r.entregadas}</div></div>
-            <div class="tarjeta-resumen-caja"><div class="etiqueta">Reclamos atendidos</div><div class="monto ${r.reclamos ? 'monto-negativo' : 'monto-neutro'}">${r.reclamos}</div></div>
-            <div class="tarjeta-resumen-caja"><div class="etiqueta">Tasa de retorno</div><div class="monto monto-neutro">${pct(r.tasa_retorno)}</div></div>
-            <div class="tarjeta-resumen-caja"><div class="etiqueta">Costo neto para el taller</div><div class="monto monto-negativo">${dinero(r.costo_neto)}</div></div>
+        <div class="veh-cifras gar-cifras">${cifras}</div>
+        ${avisoPendientes}
+        <div class="gar-grid">
+            ${tarjeta('Por técnico', filasTec ? `<ol class="gar-lista">${filasTec}</ol>` : '<p class="gar-vacio">Sin trabajos con garantía en el período.</p>',
+                `<span class="gar-nota">Reclamos sobre garantías entregadas</span>`)}
+            <div class="gar-columna">
+                ${tarjeta('Por causa', filasCausa ? `<ul class="gar-lista">${filasCausa}</ul>` : '<p class="gar-vacio">Sin reclamos en el período.</p>')}
+                ${tarjeta('Servicios con más reclamos', filasSrv ? `<ul class="gar-lista">${filasSrv}</ul>` : '<p class="gar-vacio">Sin reclamos en el período.</p>')}
+            </div>
         </div>
-        <div class="linea-detalle">Costo de reclamos <b>${dinero(r.costo_total)}</b> · Recuperado de proveedores <b>${dinero(r.recuperado_proveedores)}</b>
-            ${r.reclamos_proveedor_pendientes ? ` · <b>${r.reclamos_proveedor_pendientes}</b> reclamo(s) a proveedores pendientes` : ''}</div>
-
-        <h4>Por técnico</h4>
-        <p class="nota-cierre">La tasa de retorno compara los reclamos con las garantías que ese técnico entregó en el mismo período.</p>
-        ${tabla([['Técnico'], ['Entregadas', 'center'], ['Reclamos', 'center'], ['Tasa', 'right'], ['Costo', 'right']], filasTec, 'Sin trabajos con garantía en el período.')}
-
-        <div class="grid-caja">
-            <div><h4>Servicios con más reclamos</h4>
-                ${tabla([['Servicio'], ['Entregadas', 'center'], ['Reclamos', 'center'], ['Tasa', 'right'], ['Costo', 'right']], filasSrv, 'Sin reclamos en el período.')}</div>
-            <div><h4>Por causa</h4>
-                ${tabla([['Causa'], ['Reclamos', 'center'], ['Costo', 'right']], filasCausa, '')}</div>
-        </div>
-
-        <h4>Repuestos que fallaron</h4>
-        ${tabla([['Código'], ['Repuesto'], ['Proveedor'], ['Reclamos', 'center']], filasRep, 'Ningún reclamo por falla de repuesto en el período.')}
-
-        <h4>Reclamos a proveedores</h4>
-        <p class="nota-cierre">Se muestran los del período y todos los pendientes. Cuando el proveedor responda, márcalo aquí.</p>
-        ${tabla([['Fecha'], ['Placa'], ['Repuestos'], ['Proveedor'], ['Costo', 'right'], ['Estado'], ['Acción', 'center']], filasProv, 'No hay reclamos a proveedores.')}
-
-        <h4>Detalle de reclamos (${d.detalle.length})</h4>
-        ${tabla([['Fecha'], ['Placa'], ['Trabajo original'], ['Técnico'], ['Causa'], ['Qué se hizo'], ['Costo', 'right']], filasDet, 'Sin reclamos de garantía en el período.')}`;
+        ${tarjeta('Reclamos a proveedores', filasProv ? `<div class="gar-provs">${filasProv}</div>` : '<p class="gar-vacio">No hay reclamos a proveedores.</p>',
+            '<span class="gar-nota">Los del período y todos los pendientes</span>', 'gar-proveedores')}
+        ${tarjeta('Repuestos que fallaron', tabla([['Código'], ['Repuesto'], ['Proveedor'], ['Reclamos', 'num']], filasRep, 'Ningún reclamo por falla de repuesto en el período.'))}
+        ${tarjeta(`Detalle de reclamos <span class="gar-conteo">${d.detalle.length}</span>`,
+            tabla([['Fecha'], ['Placa'], ['Trabajo original'], ['Técnico'], ['Causa'], ['Qué se hizo'], ['Costo', 'num']], filasDet, 'Sin reclamos de garantía en el período.')
+            + (tarjetasDet ? `<div class="gar-det-lista">${tarjetasDet}</div>` : ''), '', 'gar-detalle')}`;
 }
 
 // Registra la respuesta del proveedor a un reclamo
@@ -1337,6 +1466,8 @@ async function cargarCuadreCaja(silencioso = false) {
         const data = await response.json();
         renderizarCuadreDeCaja(data);
         cuadreYaMostrado = true;
+        ponerTexto('cifra-cobrado', dinero(data.total_ingresos || 0));
+        pintarTendenciaCaja(data.total_ingresos);
     } catch (error) {
         const estado = document.getElementById('estado-cuadre');
         if (cuadreYaMostrado && estado) {
@@ -1397,17 +1528,21 @@ async function descargarCuadreCaja(panelId = 'panel-cuadre-caja') {
         if (boton) boton.disabled = true;
         const canvas = await html2canvas(tarjeta, {
             scale: 2,                                     // doble resolución: se lee bien al hacer zoom
-            backgroundColor: oscuro ? "#15112E" : "#FFFFFF",
+            backgroundColor: oscuro ? "#100E18" : "#FFFFFF",
             // Cambios SOLO en la copia que se fotografía (la pantalla no cambia):
             onclone: (doc) => {
                 const copia = doc.querySelector(selector);
                 copia.style.width = '1000px';             // ancho fijo, también desde móvil
                 copia.style.backdropFilter = 'none';
-                copia.style.background = oscuro ? "#15112E" : "#FFFFFF";
+                copia.style.background = oscuro ? "#100E18" : "#FFFFFF";
                 copia.querySelectorAll('.tabla-scroll').forEach(t => t.style.overflow = 'visible');
+                // En la imagen va todo el detalle: se abren las secciones y se muestran todas las tablas
+                copia.querySelectorAll('details').forEach(d => d.open = true);
+                copia.querySelectorAll('.pestanas').forEach(p => p.remove());
+                copia.querySelectorAll('.panel-pestana').forEach(p => { p.hidden = false; p.style.marginTop = '18px'; });
                 if (nombreTaller) {
                     const titulo = copia.querySelector('.titulo-cuadre');
-                    if (titulo) titulo.textContent = `${nombreTaller} · ${titulo.textContent}`;
+                    if (titulo) titulo.textContent = `${nombreTaller}: ${titulo.textContent}`;
                 }
                 // Pie con la hora exacta de generación (evita confundir cortes del mismo día)
                 const pie = doc.createElement('p');
@@ -1441,9 +1576,15 @@ function dinero(valor) {
 
 // Colores fijos por método de pago (la barra y los puntos de la tabla coinciden)
 const COLORES_METODO = {
-    'Efectivo': '#16A34A', 'Transferencia': '#7030EF', 'Tarjeta': '#2563EB',
-    'Otro': '#D97706', 'Sin especificar': '#9CA3AF'
+    'Efectivo': '#34C77B', 'Transferencia': '#8B5CF6', 'Tarjeta': '#3B82F6',
+    'Otro': '#F59E0B', 'Sin especificar': '#8E88A4'
 };
+
+function fechaLarga(iso) {
+    if (!iso) return '';
+    const d = new Date(iso + 'T12:00:00');
+    return isNaN(d) ? iso : d.toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
 
 function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
     const panel = document.getElementById(panelId);
@@ -1459,18 +1600,9 @@ function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
 
     // ---------- Alertas: datos incompletos que impiden cuadrar bien ----------
     const alertas = data.alertas || [];
-    const bloqueAlertas = alertas.length ? `
-        <div class="alertas-caja">
-            <b>Revisar antes de cerrar caja (${alertas.length})</b>
-            <ul>${alertas.map(a => `<li>${e(a)}</li>`).join('')}</ul>
-        </div>` : '';
 
     // ---------- Ingresos por método de pago ----------
     const metodos = data.ingresos_por_metodo || [];
-    const barra = metodos.length ? `
-        <div class="barra-metodos">${metodos.map(m =>
-            `<span style="width:${m.porcentaje}%; background:${COLORES_METODO[m.metodo]}" title="${e(m.metodo)} ${m.porcentaje}%"></span>`).join('')}
-        </div>` : '';
     const filasMetodos = metodos.length ? metodos.map(m => `
             <tr class="fila-metodo">
                 <td><span class="punto-metodo" style="background:${COLORES_METODO[m.metodo]}"></span>${e(m.metodo)}</td>
@@ -1553,97 +1685,243 @@ function renderizarCuadreDeCaja(data, panelId = 'panel-cuadre-caja') {
             <tr class="fila-total"><td colspan="4">Total comisiones a pagar</td><td class="num comision">${dinero(data.total_comisiones)}</td></tr>`
         : `<tr><td colspan="5" class="vacio">Sin datos de técnicos ${cuando}.</td></tr>`;
 
+    // Pestañas del detalle (una tabla a la vez). El id evita choques si hay
+    // dos cuadres en pantalla (el de hoy y uno pedido desde el chat).
+    const idc = `cuadre-${panelId}`;
+    const pestana = (clave, texto, n, activa) => `<button type="button" role="tab" class="pestana" id="${idc}-tab-${clave}"
+        aria-controls="${idc}-${clave}" aria-selected="${activa}" onclick="mostrarPestanaCuadre(this)">${texto}${n !== null ? ` <span class="n">${n}</span>` : ''}</button>`;
+
+    // Leyenda corta de métodos de pago (nombre y porcentaje)
+    const leyendaMetodos = metodos.map(m =>
+        `<span><span class="punto-metodo" style="background:${COLORES_METODO[m.metodo]}"></span>${e(m.metodo)} <b>${m.porcentaje}%</b></span>`).join('');
+
     panel.innerHTML = `
-        <div class="panel-caja" data-fecha="${e(data.fecha)}">
+        <div class="panel-caja cuadre" data-fecha="${e(data.fecha)}">
             <div class="cabecera-caja">
                 <div class="titulo-caja-wrap">
-                    <h3 class="titulo-cuadre">Cuadre de Caja — ${e(data.fecha)}</h3>
-                    <span id="estado-cuadre" class="estado-cuadre" data-html2canvas-ignore="true">Actualizado ${new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <h3 class="titulo-cuadre">Cuadre de caja</h3>
+                    <span class="fecha-cuadre">${e(fechaLarga(data.fecha))}</span>
                 </div>
-                <button id="btn-descargar-cuadre" class="btn-descargar-cuadre" onclick="descargarCuadreCaja()" data-html2canvas-ignore="true"
-                        title="Descargar cuadre de caja (imagen PNG)" aria-label="Descargar cuadre de caja"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg></button>
-            </div>
-
-            <!-- Resumen principal -->
-            <div class="tarjetas-resumen-caja">
-                <div class="tarjeta-resumen-caja">
-                    <div class="etiqueta">Ingresos</div>
-                    <div class="monto monto-positivo">${dinero(data.total_ingresos)}</div>
-                </div>
-                <div class="tarjeta-resumen-caja">
-                    <div class="etiqueta">Egresos</div>
-                    <div class="monto monto-negativo">${dinero(data.total_egresos)}</div>
-                </div>
-                <div class="tarjeta-resumen-caja">
-                    <div class="etiqueta">Neto del día</div>
-                    <div class="monto ${claseNeto}">${dinero(data.neto)}</div>
-                </div>
-                <div class="tarjeta-resumen-caja tarjeta-efectivo">
-                    <div class="etiqueta">Efectivo en caja</div>
-                    <div class="monto ${claseCaja}">${dinero(data.efectivo_en_caja)}</div>
+                <div class="acciones-cuadre" data-html2canvas-ignore="true">
+                    <span id="estado-cuadre" class="estado-cuadre">Actualizado ${new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <button id="btn-descargar-cuadre" class="btn-chico btn-descargar-cuadre" onclick="descargarCuadreCaja()"
+                            title="Descargar cuadre de caja (imagen PNG)"><svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg>Descargar</button>
                 </div>
             </div>
-            <div class="linea-detalle">
-                Mano de obra <b>${dinero(data.total_mano_obra)}</b> · Repuestos <b>${dinero(data.total_repuestos)}</b> · Comisiones <b>${dinero(data.total_comisiones)}</b>
-                <span class="separador">|</span>
-                Vehículos: <b>${v.ingresados_hoy || 0}</b> ingresaron · <b>${v.entregados_hoy || 0}</b> entregados${v.cerrados_sin_cobro ? ` · <b>${v.cerrados_sin_cobro}</b> sin cobro` : ''} · <b>${v.pendientes_en_taller || 0}</b> ${esHoy ? 'en taller' : 'quedaron en taller'}
+
+            <!-- Lo que se mira a diario: cuánto debe haber en caja y cómo va la semana -->
+            <div class="cuadre-banda">
+                <div class="banda-cifra">
+                    <span class="etiqueta">Debe haber en caja</span>
+                    <span class="monto ${claseCaja}">${dinero(data.efectivo_en_caja)}</span>
+                    <span class="explica"><span class="pastilla">Efectivo</span>${dinero(data.efectivo_cobrado)} cobrado menos ${dinero(data.total_egresos)} de egresos</span>
+                </div>
+                <!-- Tendencia de ingresos de los últimos 7 días (se completa con datos reales) -->
+                <div class="banda-tendencia" id="tendencia-${panelId}" ${esHoy ? '' : 'hidden'}></div>
             </div>
 
-            ${bloqueAlertas}
+            <div class="cuadre-cuerpo">
+                <dl class="cuadre-cifras">
+                    <div class="cifra-caja ingreso">
+                        <span class="icono-cifra" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span>
+                        <dt>Ingresos</dt><dd>${dinero(data.total_ingresos)}</dd>
+                        <span class="delta" id="delta-ingresos-${panelId}"></span>
+                    </div>
+                    <div class="cifra-caja egreso">
+                        <span class="icono-cifra" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg></span>
+                        <dt>Egresos</dt><dd>${dinero(data.total_egresos)}</dd>
+                    </div>
+                    <div class="cifra-caja neto">
+                        <span class="icono-cifra" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24"><path d="M5 9h14M5 15h14"/></svg></span>
+                        <dt>Neto del día</dt><dd class="${claseNeto}">${dinero(data.neto)}</dd>
+                    </div>
+                </dl>
 
-            <!-- Métodos de pago + cuadre de efectivo -->
-            <div class="grid-caja">
-                <div>
-                    <h4>Ingresos por método de pago</h4>
-                    ${barra}
-                    <table class="tabla-caja tabla-compacta">
-                        <thead><tr><th>Método</th><th style="text-align:center;">Órdenes</th><th style="text-align:right;">Total</th><th style="text-align:right;">%</th></tr></thead>
-                        <tbody>${filasMetodos}</tbody>
-                    </table>
+                ${metodos.length ? `
+                <div class="cuadre-metodos">
+                    ${donaMetodos(metodos, data.total_ingresos)}
+                    <ul class="leyenda-metodos">${metodos.map(m => `
+                        <li><span class="punto-metodo" style="background:${COLORES_METODO[m.metodo]}"></span>
+                            <span class="nombre">${e(m.metodo)}</span>
+                            <span class="valor">${dinero(m.total)}</span>
+                            <span class="pct">${m.porcentaje}%</span></li>`).join('')}
+                    </ul>
+                </div>` : `<p class="cargando-panel">Sin cobros registrados ${cuando}.</p>`}
+            </div>
+
+            ${alertas.length ? `
+            <details class="alertas-caja">
+                <summary>Hay ${alertas.length === 1 ? '1 dato por revisar' : `${alertas.length} datos por revisar`} antes de cerrar caja</summary>
+                <ul>${alertas.map(a => `<li>${e(a)}</li>`).join('')}</ul>
+            </details>` : ''}
+
+            <!-- El detalle queda guardado: se abre solo cuando se necesita -->
+            <details class="cuadre-detalle">
+                <summary>
+                    <span>Ver detalle del día</span>
+                    <span class="resumen-detalle">${ordenes.length} ${ordenes.length === 1 ? 'orden cerrada' : 'órdenes cerradas'}, ${egresos.length} ${egresos.length === 1 ? 'egreso' : 'egresos'}</span>
+                </summary>
+
+                <div class="pestanas" role="tablist" aria-label="Detalle del cuadre">
+                    ${pestana('ordenes', 'Órdenes', ordenes.length, true)}
+                    ${pestana('egresos', 'Egresos', egresos.length, false)}
+                    ${pestana('tecnicos', 'Técnicos', tecnicos.length, false)}
+                    ${pestana('pagos', 'Pagos', null, false)}
                 </div>
-                <div class="cuadre-efectivo">
-                    <h4>Cuadre de efectivo</h4>
-                    <div class="linea-cuadre"><span>Efectivo cobrado</span><span class="monto-positivo">+ ${dinero(data.efectivo_cobrado)}</span></div>
-                    <div class="linea-cuadre"><span>Egresos pagados de caja</span><span class="monto-negativo">− ${dinero(data.total_egresos)}</span></div>
-                    <div class="linea-cuadre total"><span>Debe haber en caja</span><span class="${claseCaja}">${dinero(data.efectivo_en_caja)}</span></div>
+
+                <div class="panel-pestana" role="tabpanel" id="${idc}-ordenes" aria-labelledby="${idc}-tab-ordenes">
+                    <div class="tabla-scroll">
+                        <table class="tabla-caja">
+                            <thead><tr>
+                                <th>Hora</th><th>Placa</th><th>Cliente</th><th>Trabajo</th><th>Técnico</th><th>Pago</th><th style="text-align:right;">Cobro</th>
+                            </tr></thead>
+                            <tbody>${filasOrdenes}</tbody>
+                        </table>
+                    </div>
+                    ${bloqueSinCobro}
+                </div>
+
+                <div class="panel-pestana" role="tabpanel" id="${idc}-egresos" aria-labelledby="${idc}-tab-egresos" hidden>
+                    ${bloqueResponsables}
+                    <div class="tabla-scroll">
+                        <table class="tabla-caja">
+                            <thead><tr>
+                                <th>Hora</th><th>Motivo</th><th>Placa</th><th>Responsable</th><th style="text-align:right;">Monto</th>
+                            </tr></thead>
+                            <tbody>${filasEgresos}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel-pestana" role="tabpanel" id="${idc}-tecnicos" aria-labelledby="${idc}-tab-tecnicos" hidden>
+                    <div class="tabla-scroll">
+                        <table class="tabla-caja">
+                            <thead><tr>
+                                <th>Técnico</th><th style="text-align:center;">Trabajos</th><th style="text-align:right;">Generado</th><th style="text-align:right;">Mano de obra</th><th style="text-align:right;">Comisión</th>
+                            </tr></thead>
+                            <tbody>${filasTecnicos}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="panel-pestana" role="tabpanel" id="${idc}-pagos" aria-labelledby="${idc}-tab-pagos" hidden>
+                    <div class="grid-caja">
+                        <table class="tabla-caja tabla-compacta">
+                            <thead><tr><th>Método</th><th style="text-align:center;">Órdenes</th><th style="text-align:right;">Total</th><th style="text-align:right;">%</th></tr></thead>
+                            <tbody>${filasMetodos}</tbody>
+                        </table>
+                        <dl class="linea-detalle">
+                            <div><dt>Mano de obra</dt><dd>${dinero(data.total_mano_obra)}</dd></div>
+                            <div><dt>Repuestos</dt><dd>${dinero(data.total_repuestos)}</dd></div>
+                            <div><dt>Comisiones</dt><dd>${dinero(data.total_comisiones)}</dd></div>
+                            <div><dt>Vehículos que ingresaron</dt><dd>${v.ingresados_hoy || 0}</dd></div>
+                            <div><dt>Entregados</dt><dd>${v.entregados_hoy || 0}</dd></div>
+                            ${v.cerrados_sin_cobro ? `<div><dt>Cerrados sin cobro</dt><dd>${v.cerrados_sin_cobro}</dd></div>` : ''}
+                            <div><dt>${esHoy ? 'En el taller' : 'Quedaron en el taller'}</dt><dd>${v.pendientes_en_taller || 0}</dd></div>
+                        </dl>
+                    </div>
                     <p class="nota-cuadre">Transferencias y tarjeta van directo al banco; no se cuentan en caja. Se asume que los egresos se pagan en efectivo.</p>
                 </div>
-            </div>
-
-            <h4>Órdenes cerradas ${cuando} (${ordenes.length})</h4>
-            <div class="tabla-scroll">
-                <table class="tabla-caja">
-                    <thead><tr>
-                        <th>Hora</th><th>Placa</th><th>Cliente</th><th>Trabajo</th><th>Técnico</th><th>Pago</th><th style="text-align:right;">Cobro</th>
-                    </tr></thead>
-                    <tbody>${filasOrdenes}</tbody>
-                </table>
-            </div>
-
-            ${bloqueSinCobro}
-
-            <h4>Egresos ${esHoy ? 'de hoy' : 'del día'} (${egresos.length})</h4>
-            ${bloqueResponsables}
-            <div class="tabla-scroll">
-                <table class="tabla-caja">
-                    <thead><tr>
-                        <th>Hora</th><th>Motivo</th><th>Placa</th><th>Responsable</th><th style="text-align:right;">Monto</th>
-                    </tr></thead>
-                    <tbody>${filasEgresos}</tbody>
-                </table>
-            </div>
-
-            <h4>Rendimiento y comisiones por técnico</h4>
-            <div class="tabla-scroll">
-                <table class="tabla-caja">
-                    <thead><tr>
-                        <th>Técnico</th><th style="text-align:center;">Trabajos</th><th style="text-align:right;">Generado</th><th style="text-align:right;">Mano de obra</th><th style="text-align:right;">Comisión</th>
-                    </tr></thead>
-                    <tbody>${filasTecnicos}</tbody>
-                </table>
-            </div>
+            </details>
         </div>
     `;
+}
+
+// Gráfico circular de métodos de pago (SVG), con el total al centro
+function donaMetodos(metodos, total) {
+    const R = 42, C = 2 * Math.PI * R;
+    let acumulado = 0;
+    const arcos = metodos.map(m => {
+        const largo = Math.max(0, (m.porcentaje / 100) * C - 3);   // 3 = separación entre tramos
+        const arco = `<circle r="${R}" cx="50" cy="50" fill="none" stroke="${COLORES_METODO[m.metodo]}" stroke-width="11"
+            stroke-dasharray="${largo} ${C - largo}" stroke-dashoffset="${-acumulado}" stroke-linecap="round"/>`;
+        acumulado += (m.porcentaje / 100) * C;
+        return arco;
+    }).join('');
+    return `<div class="dona" role="img" aria-label="Ingresos por método de pago">
+        <svg viewBox="0 0 100 100"><g transform="rotate(-90 50 50)">
+            <circle r="${R}" cx="50" cy="50" fill="none" stroke="var(--linea)" stroke-width="11"/>${arcos}</g></svg>
+        <div class="dona-centro"><span>Cobrado</span><b>${dinero(total)}</b></div>
+    </div>`;
+}
+
+// --------------------------------------------------------------------------
+// TENDENCIA DE 7 DÍAS: ingresos de los 6 días anteriores (se piden una vez por
+// sesión y se guardan, porque un día cerrado ya no cambia) + el de hoy en vivo.
+// --------------------------------------------------------------------------
+let historialCaja = null;
+
+async function cargarHistorialCaja() {
+    if (historialCaja) return historialCaja;
+    let guardado = {};
+    try { guardado = JSON.parse(sessionStorage.getItem('historial_caja') || '{}'); } catch (e) {}
+    const dias = [];
+    for (let i = 6; i >= 1; i--) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        dias.push(isoLocal(d));
+    }
+    const faltan = dias.filter(f => guardado[f] === undefined);
+    await Promise.all(faltan.map(async f => {
+        try {
+            const r = await fetch(`/reporte-dia?fecha=${encodeURIComponent(f)}`, { headers: cabeceraAuth() });
+            if (r.ok) guardado[f] = Number((await r.json()).total_ingresos || 0);
+        } catch (e) { /* sin ese día: la tendencia lo omite */ }
+    }));
+    try { sessionStorage.setItem('historial_caja', JSON.stringify(guardado)); } catch (e) {}
+    historialCaja = dias.filter(f => guardado[f] !== undefined).map(f => ({ fecha: f, total: guardado[f] }));
+    return historialCaja;
+}
+
+// Dibuja la línea de los 7 días y el cambio frente a ayer
+async function pintarTendenciaCaja(totalHoy, panelId = 'panel-cuadre-caja') {
+    const caja = document.getElementById(`tendencia-${panelId}`);
+    if (!caja) return;
+    const previos = await cargarHistorialCaja();
+    const puntos = [...previos, { fecha: isoLocal(new Date()), total: Number(totalHoy || 0) }];
+    if (puntos.length < 2) { caja.hidden = true; return; }
+
+    const W = 260, H = 74, P = 6;
+    const max = Math.max(...puntos.map(p => p.total), 1);
+    const x = i => P + (i * (W - 2 * P)) / (puntos.length - 1);
+    const y = v => H - P - (v / max) * (H - 2 * P - 8);
+    const linea = puntos.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.total).toFixed(1)}`).join(' ');
+    const area = `${linea} L${x(puntos.length - 1).toFixed(1)},${H} L${x(0).toFixed(1)},${H} Z`;
+    const ultimo = puntos[puntos.length - 1];
+    const diasCortos = puntos.map(p => new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-EC', { weekday: 'narrow' }).toUpperCase());
+    const semana = puntos.reduce((s, p) => s + p.total, 0);
+
+    caja.innerHTML = `
+        <div class="tendencia-cab"><span>Ingresos de los últimos 7 días</span><b>${dinero(semana)}</b></div>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+            <defs><linearGradient id="grad-tendencia" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stop-color="currentColor" stop-opacity=".25"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/>
+            </linearGradient></defs>
+            <path d="${area}" fill="url(#grad-tendencia)"/>
+            <path d="${linea}" fill="none" stroke="#C6FF3D" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+            <circle cx="${x(puntos.length - 1)}" cy="${y(ultimo.total)}" r="3.5" fill="#C6FF3D"/>
+        </svg>
+        <div class="tendencia-dias">${diasCortos.map((d, i) => `<span${i === diasCortos.length - 1 ? ' class="hoy"' : ''}>${i === diasCortos.length - 1 ? 'Hoy' : d}</span>`).join('')}</div>`;
+    caja.hidden = false;
+
+    // Cambio frente a ayer en la cifra de ingresos
+    const ayer = previos.length ? previos[previos.length - 1].total : null;
+    const delta = document.getElementById(`delta-ingresos-${panelId}`);
+    if (delta && ayer !== null && ayer > 0) {
+        const cambio = Math.round(((ultimo.total - ayer) / ayer) * 100);
+        delta.textContent = `${cambio >= 0 ? '+' : ''}${cambio}% frente a ayer`;
+        delta.className = `delta ${cambio >= 0 ? 'sube' : 'baja'}`;
+    }
+}
+
+// Pestañas del detalle del cuadre: muestra una tabla a la vez
+function mostrarPestanaCuadre(boton) {
+    const lista = boton.closest('.pestanas');
+    lista.querySelectorAll('[role="tab"]').forEach(t => {
+        const activa = t === boton;
+        t.setAttribute('aria-selected', String(activa));
+        const panel = document.getElementById(t.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !activa;
+    });
 }
 // ==============================================================================
 // GESTIÓN DEL PANEL VISUAL DE VEHÍCULOS
@@ -1656,148 +1934,329 @@ async function cargarVehiculosPendientes(estadoFiltro = 'Pendiente') {
     const token = localStorage.getItem("taller_token");
     if (!token) return;
 
+    // Botones del filtro "En el taller / Entregados hoy"
+    const btnPend = document.getElementById('filtro-pendiente');
+    const btnTerm = document.getElementById('filtro-terminado');
+    if (btnPend) btnPend.setAttribute('aria-pressed', String(estadoFiltro === 'Pendiente'));
+    if (btnTerm) btnTerm.setAttribute('aria-pressed', String(estadoFiltro === 'Terminado'));
+
     try {
         const response = await fetch('/vehiculos-pendientes', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        
-        // ¡NUEVA VALIDACIÓN! Cierre automático si el token expiró
+
+        // Cierre automático si el token expiró
         if (response.status === 401) {
             cerrarSesion();
             mostrarNotificacion("Tu sesión ha caducado por seguridad. Por favor, inicia sesión nuevamente.", "warning");
             return;
         }
-        
+
         if (!response.ok) return;
         const data = await response.json();
-        
-        let container = document.getElementById('panel-vehiculos-pendientes-container') || document.getElementById('panel-vehiculos-pendientes');
-        
-        if (!container || container.id === 'panel-vehiculos-pendientes') {
-            container = document.createElement('div');
-            container.id = 'panel-vehiculos-pendientes';
-            container.className = 'panel-pendientes';
-            
-            // Lo insertamos en el espacio dedicado entre las líneas divisorias
-            const contenedorDestino = document.getElementById('panel-vehiculos-pendientes-container');
-            if (contenedorDestino) {
-                contenedorDestino.appendChild(container);
-            } else {
-                const app = document.getElementById('app-container');
-                if (app) app.appendChild(container);
-            }
-        }
+        const container = document.getElementById('panel-vehiculos-pendientes-container');
+        if (!container) return;
 
         const listaVehiculos = data.vehiculos || [];
-        // "Terminados hoy" también muestra los cerrados sin cobro del día
-        const vehiculosFiltrados = listaVehiculos.filter(v => filtroEstadoActual === 'Terminado'
-            ? (v.estado === 'Terminado' || v.estado === 'Cerrado sin cobro')
-            : v.estado === filtroEstadoActual);
+        // "Entregados hoy" también muestra los cerrados sin cobro del día
+        const enTaller = listaVehiculos.filter(v => v.estado === 'Pendiente');
+        const entregados = listaVehiculos.filter(v => v.estado === 'Terminado' || v.estado === 'Cerrado sin cobro');
+        const vehiculosFiltrados = estadoFiltro === 'Terminado' ? entregados : enTaller;
 
-        // NUEVA ESTRUCTURA HTML: Usando las clases limpias de CSS
-        let html = `
-            <div class="cabecera-panel-vehiculos">
-                <h3>Control de Vehículos</h3>
-                <div class="grupo-filtros">
-                    <button class="btn-filtro ${filtroEstadoActual === 'Pendiente' ? 'activo' : ''}" onclick="cargarVehiculosPendientes('Pendiente')">Pendientes</button>
-                    <button class="btn-filtro ${filtroEstadoActual === 'Terminado' ? 'activo' : ''}" onclick="cargarVehiculosPendientes('Terminado')">Terminados Hoy</button>
-                </div>
-            </div>
-            <div class="grid-vehiculos">
-        `;
+        // Cifras del saludo y conteo del encabezado
+        ultimosVehiculos = listaVehiculos;
+        ponerTexto('cifra-taller', String(enTaller.length));
+        ponerTexto('cifra-entregados', String(entregados.filter(v => v.estado === 'Terminado').length));
+        const conteo = document.getElementById('conteo-taller');
+        if (conteo) conteo.textContent = vehiculosFiltrados.length ? String(vehiculosFiltrados.length) : '';
+        const titulo = document.getElementById('titulo-taller');
+        if (titulo && titulo.firstChild) titulo.firstChild.textContent = estadoFiltro === 'Terminado' ? 'Entregados hoy' : 'En el taller';
 
-        if (vehiculosFiltrados.length > 0) {
-            vehiculosFiltrados.forEach(v => {
-                // Detecta qué colores aplicar
-                let claseEstado = v.estado === 'Pendiente' ? 'estado-pendiente'
-                                 : (v.estado === 'Cerrado sin cobro' ? 'estado-sin-cobro' : 'estado-terminado');
+        // Imágenes de modelos disponibles (se carga una sola vez)
+        await cargarManifiestoVehiculos();
 
-                let detalleExtra;
-                if (v.estado === 'Terminado') {
-                    detalleExtra = `<div class="info-cobro">Cobro: $${v.cobro || 0} (${v.metodo_pago || 'Efectivo'})</div>`;
-                } else if (v.estado === 'Cerrado sin cobro') {
-                    detalleExtra = `<div class="info-taller-item"><strong>Motivo de cierre:</strong> ${escaparHTML(v.motivo_cierre || '-')}</div>`
-                        + (v.detalle_cierre ? `<div class="info-taller-item"><strong>Detalle:</strong> ${escaparHTML(v.detalle_cierre)}</div>` : '');
-                } else {
-                    detalleExtra = `<div class="info-taller-item"><strong>Falla / Motivo:</strong> ${v.motivo || 'No especificado'}</div>`;
-                }
-
-                const partesVehiculo = [v.modelo, v.color, v.anio, v.cilindraje ? `${v.cilindraje}cc` : ''].filter(Boolean);
-                const infoVehiculo = partesVehiculo.length > 0
-                    ? `<div class="info-taller-item"><strong>Vehículo:</strong> ${partesVehiculo.join(' · ')}</div>`
-                    : '';
-
-                const infoTelefono = v.telefono
-                    ? `<div class="info-taller-item"><strong>Tel:</strong> <a href="tel:${v.telefono}" class="link-telefono" onclick="event.stopPropagation()">${v.telefono}</a></div>`
-                    : '';
-
-                // INYECCIÓN DEL BOTÓN DE DESCARGA PARA ORDENES TERMINADAS
-                let botonDescarga = "";
-                if (v.estado === "Terminado") {
-                    const datosVehiculoStr = JSON.stringify(v).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
-                    botonDescarga = `
-                        <button class="btn-filtro activo" style="margin-top: 15px; width: 100%; border:none; padding: 8px; border-radius: 8px; font-weight: 600; cursor: pointer;" 
-                        onclick="event.stopPropagation(); generarComprobantePNG('${datosVehiculoStr}')">
-                            Descargar Orden
-                        </button>
-                    `;
-                }
-
-                // Botón corto "Cerrar orden" (sin cobro) solo en vehículos pendientes
-                const botonCerrar = v.estado === 'Pendiente'
-                    ? `<button class="btn-cerrar-orden" title="Cerrar la orden sin cobro (garantía, sin presupuesto...)"
-                               data-id="${escaparHTML(String(v.id))}" data-placa="${escaparHTML(v.vehiculo || '')}"
-                               data-cliente="${escaparHTML(v.cliente || '')}"
-                               onclick="event.stopPropagation(); abrirCerrarOrden(this)">Cerrar orden</button>`
-                    : '';
-
-                // Botón corto "Reabrir" en las órdenes cerradas hoy (corrige un cierre por error)
-                const botonReabrir = (v.estado === 'Terminado' || v.estado === 'Cerrado sin cobro')
-                    ? `<button class="btn-cerrar-orden" title="Volver a abrir esta orden (cerrada por error)"
-                               data-id="${escaparHTML(String(v.id))}" data-placa="${escaparHTML(v.vehiculo || '')}"
-                               onclick="event.stopPropagation(); abrirReabrirOrden(this)">Reabrir</button>`
-                    : '';
-
-                // Extraer el ID de la base de datos para mostrarlo como Número de Orden
-                let numOrden = v.id || v.id_orden || '---';
-
-                html += `
-                    <div class="tarjeta-vehiculo-pendiente" onclick="usarPlaca('${v.vehiculo}')" title="Haz clic para usar esta placa">
-                        <div class="tarjeta-header">
-                            <span class="placa-badge">${v.vehiculo}</span>
-                            <span class="badge-orden-esquina">N° ${numOrden}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <span class="badge-estado ${claseEstado}">${v.estado}</span>
-                        </div>
-                        <div class="info-taller-item"><strong>Cliente:</strong> ${v.cliente || 'N/A'}</div>
-                        ${infoVehiculo}
-                        ${infoTelefono}
-                        ${detalleExtra}
-                        ${v.estado === 'Pendiente' ? trabajosTarjetaHTML(v) : ''}
-                        ${v.estado === 'Pendiente' ? estadoCotizacionHTML(v) : ''}
-                        ${marcaGarantia(v.garantia_previa)}
-                        ${botonDescarga}
-                        <div class="acciones-tarjeta">
-                            ${v.vehiculo && v.vehiculo !== 'S/C' ? `<button class="btn-cerrar-orden" title="Ver todo el historial de este vehículo"
-                                onclick='event.stopPropagation(); abrirFichaVehiculo(${JSON.stringify(v.vehiculo)})'>Ficha</button>` : ''}
-                            ${v.estado === 'Pendiente' && moduloActivo('cotizaciones') ? `<button class="btn-cerrar-orden" title="Armar una cotización para que el cliente la apruebe"
-                                data-id="${escaparHTML(String(v.id))}" data-placa="${escaparHTML(v.vehiculo || '')}" data-cliente="${escaparHTML(v.cliente || '')}"
-                                onclick="event.stopPropagation(); abrirCotizador(this)">Cotizar</button>` : ''}
-                            ${botonCerrar}
-                            ${botonReabrir}
-                        </div>
-                    </div>
-                `;
-            });
-            html += `</div>`; // Cierra el grid
-            container.innerHTML = html;
-        } else {
-            container.innerHTML = html + `</div><p style="color: var(--texto-tenue); font-size: 0.9rem; text-align: center; margin: 20px 0; width: 100%;">No hay vehículos en la categoría '${filtroEstadoActual}'.</p>`;
+        if (!vehiculosFiltrados.length) {
+            container.innerHTML = estadoFiltro === 'Terminado'
+                ? `<div class="vacio-taller"><div class="simbolo">${ICONO_VEHICULO}</div>
+                     <b>Todavía no hay entregas hoy</b>
+                     <p>Cuando cierres una orden con Geor IA aparecerá aquí.</p></div>`
+                : `<div class="vacio-taller"><div class="simbolo">${ICONO_VEHICULO}</div>
+                     <b>No hay vehículos en el taller</b>
+                     <p>Cuando registres un ingreso con Geor IA aparecerá aquí con su placa.</p>
+                     <button type="button" class="btn-chico" onclick="usarSugerencia('Entró ')">Registrar un ingreso</button></div>`;
+            return;
         }
+
+        // El vehículo destacado: el que se eligió (o del que se habla); si no, el que ingresó último
+        const ordenados = [...vehiculosFiltrados].sort((a, b) => String(b.fecha_hora || '').localeCompare(String(a.fecha_hora || '')));
+        let destacado = ordenados.find(v => String(v.id) === String(vehiculoDestacadoId)) || ordenados[0];
+        vehiculoDestacadoId = destacado.id;
+        const resto = ordenados.filter(v => v !== destacado);
+
+        // En el celular todos se muestran como tarjetas grandes en un carrusel;
+        // en escritorio, el destacado es grande y el resto va en lista compacta.
+        container.innerHTML = tarjetaVehiculoHTML(destacado, true)
+            + resto.map(v => `<div class="solo-carrusel">${tarjetaVehiculoHTML(v, false)}</div>`).join('')
+            + `<div class="lista-taller">${resto.map(filaVehiculoHTML).join('')}</div>`;
     } catch (e) {
         console.error("Error al cargar vehículos:", e);
     }
+}
+
+// --------------------------------------------------------------------------
+// TARJETAS DE VEHÍCULO (estilo Uber: escenario con la imagen del modelo)
+// --------------------------------------------------------------------------
+let vehiculoDestacadoId = null;
+let ultimosVehiculos = [];
+const ICONO_VEHICULO = '<svg class="icono" viewBox="0 0 24 24" style="width:24px;height:24px"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M3 10.5h18M7 14h4"/></svg>';
+const ICONO_CHAT = '<svg class="icono" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>';
+
+function ponerTexto(id, texto) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = texto;
+}
+
+// "hace 20 min", "hace 5 h", "ayer", "hace 3 días"
+function haceCuanto(fecha) {
+    if (!fecha) return '';
+    const t = new Date(fecha).getTime();
+    if (isNaN(t)) return '';
+    const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (min < 1) return 'recién';
+    if (min < 60) return `hace ${min} min`;
+    const h = Math.round(min / 60);
+    if (h < 24) return `hace ${h} h`;
+    const d = Math.round(h / 24);
+    return d === 1 ? 'ayer' : `hace ${d} días`;
+}
+
+// Estado visible de la orden y cuántos tramos del recorrido van hechos
+// (ingreso, cotización, entrega). Solo usa estados que existen en el sistema.
+function estadoOrden(v) {
+    const c = v.cotizacion;
+    const conCotizacion = moduloActivo('cotizaciones');
+    const tramos = conCotizacion ? 3 : 2;
+    if (v.estado === 'Terminado') return { texto: 'Entregado', clase: 'estado-terminado', hechos: tramos, tramos, entregado: true };
+    if (v.estado === 'Cerrado sin cobro') return { texto: 'Cerrado sin cobro', clase: 'estado-sin-cobro', hechos: tramos, tramos, entregado: false };
+    if (c && c.estado === 'respondida' && c.n_aprobados) return { texto: 'Cotización aprobada', clase: 'estado-terminado', hechos: 2, tramos };
+    if (c && c.estado === 'respondida') return { texto: 'Cotización rechazada', clase: 'estado-sin-cobro', hechos: 1, tramos };
+    if (c && !c.vencida) return { texto: 'Cotización enviada', clase: 'estado-info', hechos: 1, tramos };
+    return { texto: 'En trabajo', clase: 'estado-pendiente', hechos: 1, tramos };
+}
+
+function recorridoHTML(est) {
+    const tramos = Array.from({ length: est.tramos }, (_, i) => `<span class="${i < est.hechos ? 'si' : ''}"></span>`).join('');
+    const nombres = est.tramos === 3 ? ['Ingreso', 'Cotización', 'Entrega'] : ['Ingreso', 'Entrega'];
+    return `<div><div class="recorrido ${est.entregado ? 'entregado' : ''}" aria-hidden="true">${tramos}</div>
+        <div class="recorrido-leyenda">${nombres.map(n => `<span>${n}</span>`).join('')}</div></div>`;
+}
+
+// Escenario con la imagen del modelo; si no hay imagen, la placa ocupa su lugar
+function escenaVehiculoHTML(v, est) {
+    const e = escaparHTML;
+    const img = imagenVehiculo(v);
+    const placa = e(v.vehiculo || 'S/C');
+    return `<div class="tv-escena ${img ? '' : 'sin-imagen'}" data-placa="${placa}"
+                 onclick='mencionarVehiculo(${JSON.stringify(String(v.id))})' title="Hablar de este vehículo con Geor IA">
+        <span class="badge-estado ${est.clase} flotante-izq">${e(est.texto)}</span>
+        ${v.fecha_hora ? `<span class="flotante-der">Ingresó ${e(haceCuanto(v.fecha_hora))}</span>` : ''}
+        ${img ? `<img src="${e(img)}" alt="${e(v.modelo || 'Vehículo')}" loading="lazy" onerror="imagenVehiculoFallo(this)">`
+              : `<div class="respaldo"><span class="placa">${placa}</span></div>`}
+    </div>`;
+}
+
+// Si la imagen no carga, se muestra la placa
+function imagenVehiculoFallo(img) {
+    const escena = img.parentElement;
+    escena.classList.add('sin-imagen');
+    const div = document.createElement('div');
+    div.className = 'respaldo';
+    const placa = document.createElement('span');
+    placa.className = 'placa';
+    placa.textContent = escena.dataset.placa;
+    div.appendChild(placa);
+    escena.appendChild(div);
+    img.remove();
+}
+
+function tarjetaVehiculoHTML(v, destacada) {
+    const e = escaparHTML;
+    const est = estadoOrden(v);
+    const img = imagenVehiculo(v);
+    const color = colorVehiculo(v.color);
+    const id = e(String(v.id));
+    const placa = e(v.vehiculo || '');
+    const cliente = e(v.cliente || '');
+
+    // Detalles de la orden (texto de la BD siempre escapado)
+    const detalles = [];
+    if (v.estado === 'Pendiente') detalles.push(['Motivo', v.motivo || 'No especificado']);
+    if (v.estado === 'Terminado') detalles.push(['Cobro', `${dinero(v.cobro || 0)} (${v.metodo_pago || 'Efectivo'})`]);
+    if (v.estado === 'Cerrado sin cobro') detalles.push(['Motivo de cierre', v.motivo_cierre || '-']);
+    if (v.oficial) detalles.push(['Técnico', v.oficial]);
+    if (v.kilometraje) detalles.push(['Kilometraje', `${Number(v.kilometraje).toLocaleString('es-EC')} km`]);
+    if (v.telefono) detalles.push(['Teléfono', null, `<a href="tel:${e(v.telefono)}" class="link-telefono" onclick="event.stopPropagation()">${e(v.telefono)}</a>`]);
+    if (v.detalle_cierre) detalles.push(['Detalle', v.detalle_cierre]);
+
+    // Acciones: las mismas de antes, con los mismos manejadores
+    const acciones = [];
+    acciones.push(`<button type="button" class="btn-chico principal" onclick='mencionarVehiculo(${JSON.stringify(String(v.id))})'>${ICONO_CHAT}En el chat</button>`);
+    if (v.vehiculo && v.vehiculo !== 'S/C') acciones.push(`<button type="button" class="btn-chico" title="Ver todo el historial de este vehículo"
+        onclick='event.stopPropagation(); abrirFichaVehiculo(${JSON.stringify(v.vehiculo)})'>Ficha</button>`);
+    if (v.estado === 'Pendiente' && moduloActivo('cotizaciones')) acciones.push(`<button type="button" class="btn-chico" title="Armar una cotización para que el cliente la apruebe"
+        data-id="${id}" data-placa="${placa}" data-cliente="${cliente}" onclick="event.stopPropagation(); abrirCotizador(this)">Cotizar</button>`);
+    if (v.estado === 'Terminado') {
+        const datosVehiculoStr = JSON.stringify(v).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+        acciones.push(`<button type="button" class="btn-chico" onclick="event.stopPropagation(); generarComprobantePNG('${datosVehiculoStr}')">Descargar orden</button>`);
+    }
+    if (v.estado === 'Pendiente') acciones.push(`<button type="button" class="btn-chico" style="margin-left:auto" title="Cerrar la orden sin cobro (garantía, sin presupuesto...)"
+        data-id="${id}" data-placa="${placa}" data-cliente="${cliente}" onclick="event.stopPropagation(); abrirCerrarOrden(this)">Cerrar orden</button>`);
+    if (v.estado === 'Terminado' || v.estado === 'Cerrado sin cobro') acciones.push(`<button type="button" class="btn-chico" style="margin-left:auto" title="Volver a abrir esta orden (cerrada por error)"
+        data-id="${id}" data-placa="${placa}" onclick="event.stopPropagation(); abrirReabrirOrden(this)">Reabrir</button>`);
+
+    const anio = v.anio ? ` <span class="anio">${e(v.anio)}</span>` : '';
+    const extra = [
+        v.estado === 'Pendiente' ? trabajosTarjetaHTML(v) : '',
+        v.estado === 'Pendiente' ? estadoCotizacionHTML(v) : '',
+        marcaGarantia(v.garantia_previa)
+    ].join('');
+
+    return `<article class="tv ${destacada ? 'destacada' : ''}" data-id="${id}">
+        ${escenaVehiculoHTML(v, est)}
+        <div class="tv-datos">
+            <div class="tv-fila">
+                <div style="min-width:0">
+                    <div class="tv-modelo">${e(v.modelo || 'Modelo sin registrar')}${anio}</div>
+                    <div class="tv-sub">
+                        ${color ? `<span><span class="color-veh" style="background:${color.tono}"></span>${e(v.color)}</span>` : ''}
+                        <span class="${color ? 'separado' : ''}">${cliente || 'Cliente sin nombre'}</span>
+                        <span class="separado">Orden N° ${id}</span>
+                    </div>
+                </div>
+                ${img ? `<span class="placa chica">${placa}</span>` : ''}
+            </div>
+            ${recorridoHTML(est)}
+            ${detalles.length ? `<dl class="tv-detalle">${detalles.map(([dt, dd, html]) =>
+                `<div><dt>${e(dt)}</dt><dd>${html || e(dd)}</dd></div>`).join('')}</dl>` : ''}
+            <div class="tv-extra">${extra}</div>
+            <div class="tv-acciones">${acciones.join('')}</div>
+        </div>
+    </article>`;
+}
+
+// Fila compacta (escritorio): miniatura del modelo, datos y estado
+function filaVehiculoHTML(v) {
+    const e = escaparHTML;
+    const est = estadoOrden(v);
+    const img = imagenVehiculo(v);
+    const placa = e(v.vehiculo || 'S/C');
+    return `<button type="button" class="tv-fila-lista" onclick='destacarVehiculo(${JSON.stringify(String(v.id))})'
+                title="Ver detalles de ${placa}">
+        <span class="mini" data-placa="${placa}">${img
+            ? `<img src="${e(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'placa chica',textContent:this.parentElement.dataset.placa}))">`
+            : `<span class="placa chica">${placa}</span>`}</span>
+        <span style="min-width:0">
+            <span class="t" style="display:block">${e(v.modelo || 'Modelo sin registrar')}</span>
+            <span class="s" style="display:block">${img ? `${placa}, ` : ''}${e(v.cliente || 'Cliente sin nombre')}</span>
+        </span>
+        <span class="lado">
+            <span class="badge-estado ${est.clase}">${e(est.texto)}</span>
+            ${v.fecha_hora ? `<span class="hace">${e(haceCuanto(v.fecha_hora))}</span>` : ''}
+        </span>
+    </button>`;
+}
+
+// Pasa un vehículo de la lista a la tarjeta destacada
+function destacarVehiculo(id) {
+    vehiculoDestacadoId = id;
+    cargarVehiculosPendientes(filtroEstadoActual);
+}
+
+// Tocar un vehículo lo pone como contexto de la conversación con Geor IA
+function mencionarVehiculo(id) {
+    const v = ultimosVehiculos.find(x => String(x.id) === String(id));
+    if (!v) return;
+    if (String(vehiculoDestacadoId) !== String(id)) destacarVehiculo(id);
+    usarPlaca(v.vehiculo, v);
+}
+
+// --------------------------------------------------------------------------
+// IMÁGENES DE LOS MODELOS (galería propia en /web/vehiculos)
+// manifest.json dice qué modelos y colores hay; la búsqueda es:
+//   modelo exacto en su color -> modelo en blanco -> tipo de carrocería -> placa
+// --------------------------------------------------------------------------
+let manifiestoVehiculos = null;
+
+async function cargarManifiestoVehiculos() {
+    if (manifiestoVehiculos) return manifiestoVehiculos;
+    try {
+        const res = await fetch('vehiculos/manifest.json', { cache: 'no-cache' });
+        manifiestoVehiculos = res.ok ? await res.json() : {};
+    } catch (e) {
+        manifiestoVehiculos = {};
+    }
+    return manifiestoVehiculos;
+}
+
+// Colores en español -> color de la galería y tono del punto de color
+// palabra del color -> [color de la galería de imágenes (o null), tono del punto de color]
+// Incluye las formas en femenino ("blanca", "negra") porque así se escriben muchos registros.
+const COLORES_VEHICULO = {
+    blanco: ['blanco', '#E9E9EC'], blanca: ['blanco', '#E9E9EC'], perla: ['blanco', '#EDEAE2'], crema: ['blanco', '#E8E0CC'],
+    negro: ['negro', '#1B1B1F'], negra: ['negro', '#1B1B1F'],
+    gris: ['gris', '#6E727A'], grafito: ['gris', '#4A4D53'], plomo: ['gris', '#6E727A'],
+    plata: ['plata', '#A9ADB4'], plateado: ['plata', '#A9ADB4'], plateada: ['plata', '#A9ADB4'],
+    rojo: ['rojo', '#C8323B'], roja: ['rojo', '#C8323B'], vino: ['rojo', '#7A1F2B'], guinda: ['rojo', '#7A1F2B'], granate: ['rojo', '#7A1F2B'],
+    azul: ['azul', '#2C55B8'], celeste: ['azul', '#6FA8DC'], turquesa: ['azul', '#2FA4A9'],
+    amarillo: ['amarillo', '#E8C33A'], amarilla: ['amarillo', '#E8C33A'],   // taxis
+    verde: [null, '#2F7D4F'], naranja: [null, '#E07B2C'], anaranjado: [null, '#E07B2C'], anaranjada: [null, '#E07B2C'],
+    cafe: [null, '#6B4A33'], marron: [null, '#6B4A33'], beige: [null, '#CDB99A'],
+    dorado: [null, '#B8975A'], dorada: [null, '#B8975A'], morado: [null, '#6A3FB5'], morada: [null, '#6A3FB5']
+};
+
+function normalizarTexto(t) {
+    return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').trim();
+}
+
+// Toma la primera palabra del color que se reconozca ("rojo vino" -> rojo)
+function colorVehiculo(texto) {
+    for (const palabra of normalizarTexto(texto).split(/\s+/)) {
+        if (COLORES_VEHICULO[palabra]) {
+            const [galeria, tono] = COLORES_VEHICULO[palabra];
+            return { galeria, tono };
+        }
+    }
+    return null;
+}
+
+// Devuelve la ruta de la imagen del modelo, o null si no hay ninguna
+function imagenVehiculo(v) {
+    const m = manifiestoVehiculos || {};
+    const modelos = m.modelos || {};
+    const palabras = normalizarTexto(v.modelo).split(/\s+/).filter(Boolean);
+    if (!palabras.length) return null;
+
+    // Prueba de lo más específico a lo menos: "chevrolet-spark-gt", "chevrolet-spark", y sin marca ("spark")
+    const candidatos = [];
+    for (let n = palabras.length; n >= 1; n--) candidatos.push(palabras.slice(0, n).join('-'));
+    for (let n = palabras.length; n >= 2; n--) candidatos.push(palabras.slice(1, n).join('-'));
+    // Primero la clave exacta; si no, el alias que coincida con el candidato más específico
+    // (así "luv d-max" encuentra la Luv D-Max antes que la Luv o la D-Max)
+    let clave = candidatos.find(c => modelos[c]);
+    for (const c of candidatos) {
+        if (clave) break;
+        clave = Object.keys(modelos).find(k => (modelos[k].alias || []).includes(c));
+    }
+    const color = colorVehiculo(v.color);
+
+    if (clave) {
+        const info = modelos[clave];
+        const colores = info.colores || [];
+        const elegido = color && colores.includes(color.galeria) ? color.galeria : (colores.includes('blanco') ? 'blanco' : colores[0]);
+        if (elegido) return `vehiculos/modelos/${clave}-${elegido}.webp`;
+        if (info.tipo && (m.tipos || {})[info.tipo]) return `vehiculos/${m.tipos[info.tipo]}`;
+    }
+    return null;
 }
 
 // Marca en la tarjeta si el vehículo tiene (o tuvo hace poco) garantía de otro trabajo
@@ -1823,51 +2282,220 @@ function avisoGarantiaHTML(g) {
              ${e(g.trabajo || 'trabajo anterior')}. Venció el ${vence}${km}. El taller decide si la cubre.</div>`;
 }
 
-function usarPlaca(placa) {
-    const inputTexto = document.getElementById('texto_reporte');
-    if (inputTexto) {
-        inputTexto.value = placa + " "; 
-        inputTexto.focus();
-    }
+// ==========================================================================
+// CONVERSACIÓN CON GEOR IA
+// Las respuestas que antes se mostraban en un solo recuadro ahora se agregan
+// como mensajes. La conversación es de esta sesión: se reinicia al recargar.
+// ==========================================================================
+const SIMBOLO_GEOR = '<svg aria-hidden="true"><use href="#simbolo-geor"/></svg>';
+const ICONO_OK = '<svg class="icono" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="m5 12 5 5 9-10"/></svg>';
+// Placas ecuatorianas en el texto (ABC123, ABC-1234, AB123C de moto)
+const PATRON_PLACA = /\b([A-Z]{3})-?(\d{3,4})\b/i;
+
+function horaCorta(d = new Date()) {
+    return d.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function mostrarNotificacion(mensaje, tipo) {
-    let cajaNotificacion = document.getElementById('caja-notificacion-ia');
-    if (!cajaNotificacion) {
-        cajaNotificacion = document.createElement('div');
-        cajaNotificacion.id = 'caja-notificacion-ia';
-        cajaNotificacion.style.marginTop = '20px';
-        cajaNotificacion.style.fontFamily = 'var(--fuente-datos)';
-        cajaNotificacion.style.fontSize = '14px';
-        cajaNotificacion.style.lineHeight = '1.6';
-        cajaNotificacion.style.transition = 'all 0.3s ease';
-        cajaNotificacion.style.display = 'block';
-        cajaNotificacion.style.width = '100%';
-        cajaNotificacion.style.boxSizing = 'border-box';
+function conversacionGeor() {
+    return document.getElementById('conversacion-geor');
+}
 
-        const inputTexto = document.getElementById('texto_reporte');
-        inputTexto.parentNode.insertBefore(cajaNotificacion, inputTexto.nextSibling);
+function bajarConversacion() {
+    const c = conversacionGeor();
+    if (!c) return;
+    // En escritorio la conversación tiene su propio scroll; en el celular, la página
+    c.scrollTop = c.scrollHeight;
+    const ultimo = c.lastElementChild;
+    if (ultimo && window.matchMedia('(max-width: 1100px)').matches) ultimo.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// Saludo inicial de Geor (también al pulsar "Nueva conversación")
+function saludoGeorHTML() {
+    const consultas = moduloActivo('consultas_ia');
+    return `<span class="dia-conversacion">Hoy</span>
+        <div class="msg-geor"><div class="mini-geor">${SIMBOLO_GEOR}</div>
+            <div class="cuerpo"><p>Hola. Escríbeme lo que pasa en el taller como se lo dirías a la secretaria${consultas ? ', o pregúntame por tus números' : ''}.</p>
+            <p style="color:var(--tinta-2);font-size:var(--t-s)">Por ejemplo: “Entró Toyota PXY9876 de Juan Pérez por falla de frenos”.</p></div></div>`;
+}
+
+function iniciarConversacion() {
+    const c = conversacionGeor();
+    if (c && !c.children.length) c.innerHTML = saludoGeorHTML();
+}
+
+function nuevaConversacion() {
+    const c = conversacionGeor();
+    if (c) c.innerHTML = saludoGeorHTML();
+    quitarContextoPlaca();
+}
+
+// Mensaje del usuario (siempre como texto, nunca como HTML)
+function agregarMensajeUsuario(texto) {
+    const c = conversacionGeor();
+    if (!c) return;
+    const div = document.createElement('div');
+    div.className = 'msg-usuario';
+    div.textContent = texto;
+    const hora = document.createElement('span');
+    hora.className = 'hora';
+    hora.textContent = horaCorta();
+    div.appendChild(hora);
+    c.appendChild(div);
+    bajarConversacion();
+}
+
+// Indicador "procesando": las celdas del símbolo se encienden en secuencia
+function mostrarGeorTrabajando() {
+    const c = conversacionGeor();
+    if (!c) return;
+    quitarGeorTrabajando();
+    c.insertAdjacentHTML('beforeend', `<div class="trabajando" id="geor-trabajando">
+        <div class="mini-geor pensando">${SIMBOLO_GEOR}</div>
+        <div><div class="texto">Geor IA está procesando tu mensaje…</div><div class="sub">Normalmente tarda unos segundos.</div></div></div>`);
+    document.getElementById('marca-geor')?.classList.add('pensando');
+    bajarConversacion();
+}
+
+function quitarGeorTrabajando() {
+    document.getElementById('geor-trabajando')?.remove();
+    document.getElementById('marca-geor')?.classList.remove('pensando');
+}
+
+// Estado de conexión en la cabecera de Geor
+function estadoConexionGeor(enLinea) {
+    const est = document.getElementById('estado-geor');
+    if (!est) return;
+    est.classList.toggle('sin-conexion', !enLinea);
+    ponerTexto('estado-geor-texto', enLinea ? 'En línea' : 'Sin conexión con el servidor');
+}
+
+// Mensaje de Geor. "mensaje" puede traer HTML propio de la app (negritas, saltos);
+// las consultas analíticas llegan en Markdown y se convierten con marked.
+function agregarMensajeGeor(mensaje, tipo, { markdown = false } = {}) {
+    const c = conversacionGeor();
+    if (!c) return;
+    quitarGeorTrabajando();
+    if (tipo === 'info' && /procesando|analizando|generando/i.test(mensaje)) {
+        // Avisos de "estoy trabajando" se muestran con el indicador, no como mensaje
+        mostrarGeorTrabajando();
+        return;
     }
+    let cuerpo = markdown && typeof marked !== 'undefined' ? marked.parse(mensaje) : mensaje;
+    if (tipo === 'success') {
+        cuerpo = `<span class="resultado">${ICONO_OK}Listo</span><div style="margin-top:4px">${cuerpo}</div>`;
+    }
+    // Enlace al vehículo del que se habló, si aparece en el taller
+    const placa = (ultimoMensajeUsuario.match(PATRON_PLACA) || [])[0];
+    let pie = '';
+    if (tipo === 'success' && placa) {
+        const limpia = placa.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const v = ultimosVehiculos.find(x => String(x.vehiculo || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === limpia);
+        const texto = escaparHTML(v ? v.vehiculo : placa.toUpperCase());
+        pie = `<div class="respuesta-pie"><button type="button" class="btn-chico enlace-veh"
+                  onclick="verPlacaEnTaller(${JSON.stringify(limpia).replace(/"/g, '&quot;')})"><span class="placa chica">${texto}</span>Ver en el taller</button></div>`;
+    }
+    c.insertAdjacentHTML('beforeend', `<div class="msg-geor tipo-${tipo || 'info'}">
+        <div class="mini-geor">${SIMBOLO_GEOR}</div>
+        <div class="cuerpo">${cuerpo}${pie}</div></div>`);
+    bajarConversacion();
+}
 
-    cajaNotificacion.className = `mensaje-procesando-ia ${tipo}`;
-    cajaNotificacion.style.opacity = '1';
-    cajaNotificacion.style.padding = '15px 20px';
-    cajaNotificacion.style.borderRadius = '10px';
+let ultimoMensajeUsuario = '';
 
-    if (tipo === "info" && mensaje.includes("Respuesta del Gerente IA")) {
-        if (typeof marked !== 'undefined') cajaNotificacion.innerHTML = marked.parse(mensaje);
-        else cajaNotificacion.innerHTML = mensaje;
+// Lleva al vehículo en la columna "En el taller"
+function verPlacaEnTaller(placaLimpia) {
+    const v = ultimosVehiculos.find(x => String(x.vehiculo || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === placaLimpia);
+    if (v) {
+        vehiculoDestacadoId = v.id;
+        cargarVehiculosPendientes(v.estado === 'Pendiente' ? 'Pendiente' : 'Terminado').then(() => {
+            document.querySelector('#panel-vehiculos-pendientes-container .tv.destacada')?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+        });
     } else {
-        cajaNotificacion.innerHTML = mensaje;
-    }
-
-    if (tipo === "success") {
-        setTimeout(() => {
-            cajaNotificacion.style.opacity = '0';
-            setTimeout(() => { cajaNotificacion.innerHTML = ""; cajaNotificacion.style.padding = "0"; }, 300);
-        }, 5000);
+        cargarVehiculosPendientes(filtroEstadoActual);
     }
 }
+
+// Sugerencias rápidas del compositor
+function usarSugerencia(texto, enviar = false) {
+    const input = document.getElementById('texto_reporte');
+    if (!input) return;
+    input.value = texto;
+    input.focus();
+    if (enviar) enviarReporte();
+}
+
+// --------------------------------------------------------------------------
+// Vehículo como contexto de la conversación.
+// Igual que antes, la placa se escribe al inicio del mensaje (Geor la necesita
+// en el texto); además se muestra arriba del campo para que se vea de qué se habla.
+// --------------------------------------------------------------------------
+function usarPlaca(placa, vehiculo = null) {
+    const inputTexto = document.getElementById('texto_reporte');
+    if (!inputTexto || !placa) return;
+    const v = vehiculo || ultimosVehiculos.find(x => x.vehiculo === placa);
+    const actual = inputTexto.value.trim();
+    if (!actual.toUpperCase().includes(String(placa).toUpperCase())) {
+        inputTexto.value = placa + " " + actual;
+    }
+    const ctx = document.getElementById('contexto-placa');
+    if (ctx) {
+        const e = escaparHTML;
+        const detalle = v ? [v.modelo, v.cliente ? `de ${v.cliente}` : ''].filter(Boolean).join(' ') : '';
+        ctx.innerHTML = `<span class="placa chica">${e(placa)}</span><span>${detalle ? `Hablando de ${e(detalle)}` : 'Hablando de este vehículo'}</span>
+            <button type="button" onclick="quitarContextoPlaca(true)">Quitar</button>`;
+        ctx.dataset.placa = placa;
+        ctx.hidden = false;
+    }
+    inputTexto.focus();
+    inputTexto.setSelectionRange(inputTexto.value.length, inputTexto.value.length);
+}
+
+function quitarContextoPlaca(borrarDelTexto = false) {
+    const ctx = document.getElementById('contexto-placa');
+    if (!ctx) return;
+    const placa = ctx.dataset.placa;
+    const input = document.getElementById('texto_reporte');
+    if (borrarDelTexto && input && placa && input.value.startsWith(placa + " ")) {
+        input.value = input.value.slice(placa.length + 1);
+    }
+    ctx.hidden = true;
+    ctx.innerHTML = '';
+    delete ctx.dataset.placa;
+}
+
+// Reemplaza al recuadro único de notificaciones: cada aviso es un mensaje de Geor
+function mostrarNotificacion(mensaje, tipo) {
+    const esConsulta = tipo === 'info' && mensaje.includes("Respuesta del Gerente IA");
+    if (esConsulta) {
+        // Se quita la etiqueta interna; el resto llega en Markdown
+        const texto = mensaje.replace(/<b>Respuesta del Gerente IA:<\/b><br>/, '');
+        agregarMensajeGeor(texto, 'info', { markdown: true });
+        return;
+    }
+    agregarMensajeGeor(mensaje, tipo);
+}
+
+// --------------------------------------------------------------------------
+// Saludo del panel: momento del día, fecha y nombre del taller
+// --------------------------------------------------------------------------
+function actualizarSaludo() {
+    const ahora = new Date();
+    const h = ahora.getHours();
+    ponerTexto('saludo-hora', h < 12 ? 'Buenos días' : (h < 19 ? 'Buenas tardes' : 'Buenas noches'));
+    const fecha = ahora.toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long' });
+    ponerTexto('saludo-fecha', `${fecha.charAt(0).toUpperCase()}${fecha.slice(1)}. Geor IA está listo para registrar lo que pase hoy.`);
+}
+
+// Tecla "/" para ir al buscador de placa
+document.addEventListener('keydown', e => {
+    const enCampo = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+    if (e.key === '/' && !enCampo && document.getElementById('app-container')?.style.display !== 'none') {
+        e.preventDefault();
+        const enVehiculos = document.getElementById('vista-vehiculos')?.style.display !== 'none';
+        document.getElementById(enVehiculos ? 'buscar-vehiculo' : 'buscar-barra')?.focus();
+    }
+});
+
 /// ==============================================================================
 // FUNCIÓN MAESTRA PARA LLENAR LA PLANTILLA (Evita código duplicado)
 // ==============================================================================
@@ -2087,7 +2715,7 @@ async function cargarLiquidacionFechas() {
         return;
     }
 
-    contenedorResultado.innerHTML = `<p style="color: #a0a0a0; text-align: center; margin: 20px 0;">Calculando liquidación del periodo...</p>`;
+    contenedorResultado.innerHTML = `<p class="cargando-panel">Calculando liquidación del periodo…</p>`;
 
     try {
         const response = await fetch(`/reporte-liquidacion?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`, {
@@ -2119,23 +2747,23 @@ function renderizarLiquidacion(data) {
             <tr>
                 <td>${escaparHTML(t.tecnico)}</td>
                 <td class="centro">${t.trabajos_realizados}</td>
-                <td class="num">$${t.facturacion_total.toFixed(2)}</td>
-                <td class="num">$${t.mano_de_obra_acumulada.toFixed(2)}</td>
-                <td class="num" style="color: #4CAF50; font-weight: bold;">$${t.comision_a_pagar.toFixed(2)}</td>
+                <td class="num">${dinero(t.facturacion_total)}</td>
+                <td class="num">${dinero(t.mano_de_obra_acumulada)}</td>
+                <td class="num comision">${dinero(t.comision_a_pagar)}</td>
             </tr>`).join('')
         : `<tr><td colspan="5" class="vacio">No hay registros en este periodo.</td></tr>`;
 
     contenedor.innerHTML = `
-        <h4 style="margin-top: 15px; margin-bottom: 10px;">Resultado: ${data.periodo}</h4>
+        <h4 class="titulo-resultado">Resultado: ${escaparHTML(data.periodo)}</h4>
         <div class="tabla-scroll">
             <table class="tabla-caja">
                 <thead>
                     <tr>
                         <th>Técnico</th>
                         <th style="text-align: center;">Trabajos</th>
-                        <th style="text-align: right;">Facturación Total</th>
-                        <th style="text-align: right;">Mano de Obra (Neto)</th>
-                        <th style="text-align: right;">Comisión a Pagar</th>
+                        <th style="text-align: right;">Facturación total</th>
+                        <th style="text-align: right;">Mano de obra (neto)</th>
+                        <th style="text-align: right;">Comisión a pagar</th>
                     </tr>
                 </thead>
                 <tbody>${filas}</tbody>
@@ -2153,7 +2781,7 @@ async function cargarRankingAnual() {
     await esperarModulos();
     if (!moduloActivo('tecnicos')) return;   // el plan no incluye técnicos
 
-    contenedor.innerHTML = `<p style="color: var(--texto-tenue); text-align: center; font-size: 0.9rem; margin: 15px 0;">Cargando posiciones del año...</p>`;
+    contenedor.innerHTML = `<p class="cargando-panel">Cargando posiciones del año…</p>`;
 
     try {
         const response = await fetch('/ranking-anual', {
@@ -2161,7 +2789,7 @@ async function cargarRankingAnual() {
         });
 
         if (!response.ok) {
-            contenedor.innerHTML = `<p style="color: #E0397A; text-align: center; font-size: 0.9rem;">Error al cargar el ranking anual.</p>`;
+            contenedor.innerHTML = `<p class="cargando-panel error">No se pudo cargar el ranking anual. Pulsa Actualizar para reintentar.</p>`;
             return;
         }
 
@@ -2170,50 +2798,54 @@ async function cargarRankingAnual() {
 
     } catch (error) {
         console.error("Error:", error);
-        contenedor.innerHTML = `<p style="color: #E0397A; text-align: center; font-size: 0.9rem;">Error de conexión con el servidor.</p>`;
+        contenedor.innerHTML = `<p class="cargando-panel error">Sin conexión con el servidor. Pulsa Actualizar para reintentar.</p>`;
     }
 }
 
 function renderizarRankingAnual(data) {
     const contenedor = document.getElementById('resultado-ranking-anual');
     if (!contenedor) return;
+    const e = escaparHTML;
+    const lista = data.leaderboard || [];
+    if (!lista.length) {
+        contenedor.innerHTML = `<p class="cargando-panel">Aún no hay órdenes con técnico asignado este año.</p>`;
+        return;
+    }
 
-    let filas = data.leaderboard && data.leaderboard.length > 0
-        ? data.leaderboard.map(t => {
-            const clasePuesto = t.posicion <= 3 ? `puesto-top puesto-${t.posicion}` : '';
-            return `
-                <tr>
-                    <td style="font-weight: bold;"><span class="${clasePuesto}">#${t.posicion}</span></td>
-                    <td>${escaparHTML(t.tecnico)}</td>
-                    <td class="centro">${t.trabajos_totales}</td>
-                    <td class="num">$${t.facturacion_anual.toFixed(2)}</td>
-                    <td class="num">$${t.mano_de_obra_acumulada.toFixed(2)}</td>
-                    <td class="num" style="color: var(--magenta); font-weight: bold;">$${t.comision_acumulada.toFixed(2)}</td>
-                </tr>`;
-        }).join('')
-        : `<tr><td colspan="6" class="vacio">Aún no hay registros de técnicos este año.</td></tr>`;
+    // La barra de cada técnico se mide contra la comisión más alta del año
+    const maxComision = Math.max(...lista.map(t => Number(t.comision_acumulada) || 0), 1);
+    // Color estable por técnico para su inicial
+    const TONOS = ['#8B5CF6', '#34C77B', '#3B82F6', '#F59E0B', '#EC4899', '#14B8A6', '#F97316'];
+    const tono = nombre => TONOS[[...String(nombre)].reduce((a, c) => a + c.charCodeAt(0), 0) % TONOS.length];
+
+    const filas = lista.map((t, i) => {
+        const medalla = t.posicion <= 3 ? `puesto-top puesto-${t.posicion}` : '';
+        const ancho = Math.max(4, Math.round(((Number(t.comision_acumulada) || 0) / maxComision) * 100));
+        const inicial = String(t.tecnico || '?').trim().charAt(0).toUpperCase();
+        return `
+            <li class="fila-tecnico${i >= 5 ? ' fila-extra' : ''}"${i >= 5 ? ' hidden' : ''}>
+                <span class="puesto ${medalla}">${t.posicion}</span>
+                <span class="avatar-tecnico" style="--tono:${tono(t.tecnico)}">${e(inicial)}</span>
+                <div class="datos-tecnico">
+                    <div class="fila-nombre">
+                        <b>${e(t.tecnico)}</b>
+                        <span class="comision">${dinero(t.comision_acumulada)}</span>
+                    </div>
+                    <div class="barra-tecnico"><span style="width:${ancho}%"></span></div>
+                    <div class="fila-meta">
+                        <span>${t.trabajos_totales} trabajos</span>
+                        <span>Facturado ${dinero(t.facturacion_anual)}</span>
+                        <span>Mano de obra ${dinero(t.mano_de_obra_acumulada)}</span>
+                    </div>
+                </div>
+            </li>`;
+    }).join('');
 
     contenedor.innerHTML = `
-        <div class="tabla-scroll">
-            <table class="tabla-caja">
-                <thead>
-                    <tr>
-                        <th>Pos</th>
-                        <th>Técnico</th>
-                        <th style="text-align: center;">Trabajos</th>
-                        <th style="text-align: right;">Facturado (Total)</th>
-                        <th style="text-align: right;">Mano de Obra (Neto)</th>
-                        <th style="text-align: right;">Comisión Acumulada</th>
-                    </tr>
-                </thead>
-                <tbody>${filas}</tbody>
-            </table>
-        </div>
+        <ol class="lista-ranking">${filas}</ol>
+        ${lista.length > 5 ? `<button type="button" class="btn-chico ver-todos" onclick="this.closest('#resultado-ranking-anual').querySelectorAll('.fila-extra').forEach(f => f.hidden = false); this.remove();">Ver los ${lista.length} técnicos</button>` : ''}
     `;
 }
-// ==============================================================================
-// ACTUALIZACIÓN AUTOMÁTICA AL RETOMAR LA PESTAÑA (WAKE UP)
-// ==============================================================================
 document.addEventListener("visibilitychange", function() {
     // Si el usuario vuelve a poner la pestaña en primer plano (estado visible)
     if (document.visibilityState === "visible") {
@@ -2256,14 +2888,19 @@ window.addEventListener("pageshow", function(event) {
 // ==========================================================================
 // NAVEGACIÓN Y MENÚ HAMBURGUESA
 // ==========================================================================
-function toggleMenu() {
+function toggleMenu(forzarAbierto) {
+    // En escritorio la navegación siempre está visible; en el celular es un cajón
     const menu = document.getElementById('menu-lateral');
-    if (menu.style.left === '0px') {
-        menu.style.left = '-250px';
-    } else {
-        menu.style.left = '0px';
-    }
+    const fondo = document.querySelector('.nav-fondo');
+    const abrir = typeof forzarAbierto === 'boolean' ? forzarAbierto : !menu.classList.contains('abierto');
+    menu.classList.toggle('abierto', abrir);
+    if (fondo) fondo.classList.toggle('visible', abrir);
 }
+
+function cerrarMenu() { toggleMenu(false); }
+
+// Cerrar el cajón con Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarMenu(); });
 
 function cambiarVista(idVista, desdeMenu = true) {
     // Ocultar todas las vistas
@@ -2272,9 +2909,17 @@ function cambiarVista(idVista, desdeMenu = true) {
     
     // Mostrar la vista seleccionada
     document.getElementById(idVista).style.display = 'block';
+    document.body.dataset.vista = idVista;
+
+    // Marcar la sección actual en el menú lateral y en la barra inferior
+    document.querySelectorAll('[data-vista]').forEach(b => {
+        if (b.dataset.vista === idVista) b.setAttribute('aria-current', 'page');
+        else b.removeAttribute('aria-current');
+    });
+    window.scrollTo(0, 0);
     
-    // Cerrar el menú lateral (solo si se llegó desde el menú)
-    if (desdeMenu) toggleMenu();
+    // Cerrar el cajón del menú (en el celular)
+    cerrarMenu();
     
     // Si entramos al dashboard, cargamos los gráficos (lo programaremos luego)
     if (idVista === 'vista-dashboard') {
@@ -2364,7 +3009,7 @@ async function cargarDatosDashboard() {
 
 function renderDashboard(d) {
     document.getElementById('dash-periodo-texto').innerHTML =
-        `${escaparHTML(d.periodo.texto)} <span class="dash-sub-tenue">· comparado con ${escaparHTML(d.anterior.texto)}</span>`;
+        `${escaparHTML(d.periodo.texto)} <span class="dash-sub-tenue">comparado con ${escaparHTML(d.anterior.texto)}</span>`;
     renderKpis(d);
     renderTendencia(d);
     renderServiciosDashboard(d.servicios);
@@ -2461,7 +3106,7 @@ function renderTendencia(d) {
     renderTablaTendencia(d);
 
     const series = [
-        { etiqueta: 'Ingresos', color: colorVar('--serie-ingresos'), datos: s.ingresos, ancho: 2 },
+        { etiqueta: 'Ingresos', color: colorVar('--serie-ingresos'), datos: s.ingresos, ancho: 2.5, relleno: true },
         { etiqueta: 'Egresos', color: colorVar('--serie-egresos'), datos: s.egresos, ancho: 2 },
         { etiqueta: etiquetaPeriodoAnterior(d), color: colorVar('--serie-anterior'), datos: s.ingresos_anterior, ancho: 1.5, punteada: true,
           titulo: `Ingresos del ${d.anterior.texto}, día por día, para comparar` }
@@ -2479,7 +3124,17 @@ function renderTendencia(d) {
         data: {
             labels: s.etiquetas,
             datasets: series.map(x => ({
-                label: x.etiqueta, data: x.datos, borderColor: x.color, backgroundColor: x.color,
+                label: x.etiqueta, data: x.datos, borderColor: x.color,
+                // Ingresos: área con degradado del color de la línea hacia transparente
+                backgroundColor: x.relleno ? (ctx => {
+                    const area = ctx.chart.chartArea;
+                    if (!area) return 'transparent';
+                    const g = ctx.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+                    g.addColorStop(0, colorConAlfa(x.color, 0.32));
+                    g.addColorStop(1, colorConAlfa(x.color, 0));
+                    return g;
+                }) : x.color,
+                fill: x.relleno ? 'origin' : false,
                 borderWidth: x.ancho, borderDash: x.punteada ? [5, 4] : [], cubicInterpolationMode: 'monotone',   // curva suave sin pasarse de los valores reales
                 pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12,
                 pointHoverBorderColor: colorVar('--dash-superficie'), pointHoverBorderWidth: 2, spanGaps: false
@@ -2507,6 +3162,19 @@ function renderTendencia(d) {
             }
         }
     });
+}
+
+// "#9BF3C9" o "rgb(…)" -> rgba con la transparencia pedida (para degradados del gráfico)
+function colorConAlfa(color, alfa) {
+    const c = String(color).trim();
+    if (c.startsWith('#') && (c.length === 7 || c.length === 4)) {
+        const h = c.length === 4 ? c.slice(1).split('').map(x => x + x).join('') : c.slice(1);
+        const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
+        return `rgba(${r}, ${g}, ${b}, ${alfa})`;
+    }
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (m) { const [r, g, b] = m[1].split(',').map(v => v.trim()); return `rgba(${r}, ${g}, ${b}, ${alfa})`; }
+    return c;
 }
 
 // Nombre claro de la línea punteada según el filtro elegido:
@@ -2591,8 +3259,8 @@ function renderFugas(f) {
     const g = f.garantias;
     if (g) {
         filas.push(g.reclamos
-            ? filaFuga('aviso', `${g.reclamos} reclamo${g.reclamos > 1 ? 's' : ''} de garantía${g.tasa !== null ? ` · ${g.tasa}% de retorno` : ''}`,
-                `Costo para el taller: <b>${dinero(g.costo)}</b> · ${g.entregadas} trabajos con garantía en el período`)
+            ? filaFuga('aviso', `${g.reclamos} reclamo${g.reclamos > 1 ? 's' : ''} de garantía${g.tasa !== null ? `, ${g.tasa}% de retorno` : ''}`,
+                `Costo para el taller: <b>${dinero(g.costo)}</b>. ${g.entregadas} trabajos con garantía en el período`)
             : filaFuga('bien', 'Ningún reclamo de garantía', `${g.entregadas} trabajos con garantía en el período`));
     }
     document.getElementById('dash-fugas').innerHTML = `<ul class="dash-fugas">${filas.join('')}</ul>`;
@@ -2612,11 +3280,11 @@ function renderInventarioDashboard(inv) {
             lista(inv.agotados, x => `usaste ${x.uso_30} en 30 días`)),
         bloque(inv.por_agotarse_total ? 'aviso' : 'bien',
             inv.por_agotarse_total ? `${inv.por_agotarse_total} por agotarse` : 'Nada por agotarse',
-            lista(inv.por_agotarse, x => `quedan ${x.stock} · usaste ${x.uso_30} en 30 días`)),
+            lista(inv.por_agotarse, x => `quedan ${x.stock}, usaste ${x.uso_30} en 30 días`)),
         bloque(inv.sin_movimiento_total ? 'info' : 'bien',
             inv.sin_movimiento_total ? `${dinero(inv.sin_movimiento_valor)} parados en ${inv.sin_movimiento_total} repuesto${inv.sin_movimiento_total > 1 ? 's' : ''} sin uso en ${inv.dias_sin_movimiento} días`
                                      : `Todo el stock se movió en ${inv.dias_sin_movimiento} días`,
-            lista(inv.sin_movimiento, x => `${x.stock} u. · ${dinero(x.valor)}`))
+            lista(inv.sin_movimiento, x => `${x.stock} u., ${dinero(x.valor)}`))
     ].join('');
 }
 
@@ -2631,19 +3299,154 @@ function fechaCorta(iso) {
     return new Date(iso + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function iniciarVistaVehiculos() {
-    mostrarBusquedaVehiculos();
+// Buscador de placa de la barra superior: lleva a "Vehículos y clientes" con la búsqueda hecha
+function buscarDesdeBarra(evento) {
+    if (evento) evento.preventDefault();
+    const barra = document.getElementById('buscar-barra');
+    const texto = barra.value.trim();
+    cambiarVista('vista-vehiculos', false);
     const input = document.getElementById('buscar-vehiculo');
-    if (!input.value.trim()) {
-        document.getElementById('resultados-vehiculos').innerHTML =
-            '<p class="vacio-vehiculos">Escribe al menos 2 letras o números para buscar.</p>';
-    }
-    setTimeout(() => input.focus(), 50);
+    input.value = texto;
+    // Con la búsqueda hecha, en escritorio se abre el primer resultado en el panel derecho
+    if (texto) buscarVehiculos().then(() => {
+        const primero = listaVisibleVehiculos()[0];
+        if (primero && esEscritorioVeh()) abrirFichaVehiculo(primero.placa);
+    });
+    barra.value = '';
+    barra.blur();
 }
 
+// --- Estado de la vista (se conserva al cambiar de sección dentro de la sesión) ---
+let vehiculosResumen = null;          // { cifras, vehiculos, truncado } de /vehiculos/resumen
+let resultadosBusquedaVeh = null;     // resultados de /vehiculos/buscar mientras hay texto en el buscador
+let filtroVehiculos = 'todos';        // 'todos' | 'en_taller' | 'recientes'
+let placaActivaVehiculos = null;      // vehículo abierto en el panel de detalle
+const DIAS_RECIENTES_VEH = 30;
+
+const esEscritorioVeh = () => window.matchMedia('(min-width: 901px)').matches;
+
+function iniciarVistaVehiculos() {
+    document.getElementById('veh-layout').classList.remove('con-detalle');
+    cargarResumenVehiculos();
+}
+
+// Cifras de cabecera y lista inicial. Si falla (p. ej. backend sin actualizar),
+// la vista sigue funcionando con el buscador.
+async function cargarResumenVehiculos() {
+    pintarCifrasVehiculos(vehiculosResumen?.cifras);
+    if (vehiculosResumen) pintarListaVehiculos();
+    else document.getElementById('resultados-vehiculos').innerHTML = '<p class="vacio-vehiculos">Cargando vehículos...</p>';
+    try {
+        const res = await fetch('/vehiculos/resumen', { headers: cabeceraAuth() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+        vehiculosResumen = data;
+    } catch (err) {
+        console.warn('Resumen de vehículos no disponible:', err.message);
+        if (!vehiculosResumen) vehiculosResumen = { cifras: null, vehiculos: [], truncado: false, sinResumen: true };
+    }
+    pintarCifrasVehiculos(vehiculosResumen.cifras);
+    await cargarManifiestoVehiculos();
+    pintarListaVehiculos();
+    // En escritorio el panel derecho nunca queda vacío: se abre el primero de la lista
+    if (!placaActivaVehiculos && esEscritorioVeh()) {
+        const primero = listaVisibleVehiculos()[0];
+        if (primero) abrirFichaVehiculo(primero.placa);
+        else pintarDetalleVacio();
+    }
+}
+
+function pintarCifrasVehiculos(c) {
+    const n = v => (v === null || v === undefined) ? '—' : Number(v).toLocaleString('es-EC');
+    const cifra = (clase, etiqueta, valor, icono) => `
+        <div class="veh-cifra ${clase}">
+            <span class="veh-cifra-icono" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24">${icono}</svg></span>
+            <div><div class="veh-cifra-etiqueta">${etiqueta}</div><div class="veh-cifra-valor">${valor}</div></div>
+        </div>`;
+    document.getElementById('veh-cifras').innerHTML = [
+        cifra('', 'Vehículos registrados', n(c?.vehiculos), '<path d="M5 16l1.5-5A2 2 0 0 1 8.4 9.5h7.2a2 2 0 0 1 1.9 1.5L19 16"/><rect x="3" y="16" width="18" height="4" rx="1.5"/>'),
+        cifra('ambar', 'En el taller ahora', n(c?.en_taller), '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>'),
+        cifra('menta', 'Garantías activas', n(c?.garantias_activas), '<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="m9 12 2 2 4-4"/>'),
+        cifra('lila', 'Visitas este mes', n(c?.visitas_mes), '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>')
+    ].join('');
+}
+
+// Lista que se ve según el texto buscado y el filtro rápido
+function listaVisibleVehiculos(filtro = filtroVehiculos) {
+    const base = resultadosBusquedaVeh ?? (vehiculosResumen?.vehiculos || []);
+    if (filtro === 'en_taller') return base.filter(v => v.en_taller);
+    if (filtro === 'recientes') {
+        const limite = new Date(); limite.setDate(limite.getDate() - DIAS_RECIENTES_VEH);
+        const corte = limite.toISOString().slice(0, 10);
+        return base.filter(v => v.ultima_visita && v.ultima_visita >= corte);
+    }
+    return base;
+}
+
+function filtrarVehiculos(filtro) {
+    filtroVehiculos = filtro;
+    pintarListaVehiculos();
+}
+
+function filaVehiculoListaHTML(r) {
+    const e = escaparHTML;
+    const img = imagenVehiculo({ modelo: r.modelo, color: r.color });
+    const activo = r.placa === placaActivaVehiculos;
+    return `
+    <button type="button" class="resultado-vehiculo${activo ? ' activo' : ''}" ${activo ? 'aria-current="true"' : ''} data-placa="${e(r.placa)}"
+            onclick='abrirFichaVehiculo(${JSON.stringify(r.placa)})'>
+        <span class="resultado-mini" data-placa="${e(r.placa)}">${img
+            ? `<img src="${e(img)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'placa chica',textContent:this.parentElement.dataset.placa}))">`
+            : `<span class="placa chica">${e(r.placa)}</span>`}</span>
+        <span class="resultado-datos">
+            <b>${e(r.cliente || 'Sin cliente registrado')}</b>
+            <span class="separados">${[img ? r.placa : null, r.modelo, r.telefono].filter(Boolean).map(x => `<span>${e(x)}</span>`).join('') || '&nbsp;'}</span>
+        </span>
+        <span class="resultado-fecha">${r.en_taller
+            ? '<span class="badge-estado estado-pendiente">En taller</span>'
+            : `<b>${fechaCorta(r.ultima_visita)}</b>${r.visitas ? `<span>${r.visitas} ${r.visitas === 1 ? 'visita' : 'visitas'}</span>` : ''}`}</span>
+    </button>`;
+}
+
+function pintarListaVehiculos() {
+    const cont = document.getElementById('resultados-vehiculos');
+    const q = document.getElementById('buscar-vehiculo').value.trim();
+    // Conteos de cada filtro y botón activo
+    ['todos', 'en_taller', 'recientes'].forEach(f => {
+        ponerTexto(`veh-n-${f}`, String(listaVisibleVehiculos(f).length));
+        document.querySelector(`.veh-chip[data-filtro="${f}"]`)?.setAttribute('aria-pressed', String(f === filtroVehiculos));
+    });
+    const lista = listaVisibleVehiculos();
+    if (lista.length) {
+        const nota = !resultadosBusquedaVeh && vehiculosResumen?.truncado && filtroVehiculos === 'todos'
+            ? '<p class="veh-nota-lista">Se muestran los vehículos más recientes. Usa el buscador para encontrar los demás.</p>' : '';
+        cont.innerHTML = lista.map(filaVehiculoListaHTML).join('') + nota;
+        return;
+    }
+    const e = escaparHTML;
+    if (resultadosBusquedaVeh) {
+        cont.innerHTML = `<p class="vacio-vehiculos">No hay vehículos ni clientes que coincidan con "${e(q)}"${filtroVehiculos !== 'todos' ? ' con este filtro' : ''}.</p>`;
+    } else if (vehiculosResumen?.sinResumen) {
+        cont.innerHTML = '<p class="vacio-vehiculos">Escribe al menos 2 letras o números para buscar.</p>';
+    } else {
+        cont.innerHTML = `<p class="vacio-vehiculos">${filtroVehiculos === 'en_taller' ? 'No hay vehículos en el taller ahora.'
+            : filtroVehiculos === 'recientes' ? `Ningún vehículo vino en los últimos ${DIAS_RECIENTES_VEH} días.`
+            : 'Todavía no hay vehículos registrados. Registra el primero escribiéndole a Geor IA.'}</p>`;
+    }
+}
+
+function pintarDetalleVacio() {
+    document.getElementById('ficha-vehiculo').innerHTML = `
+        <div class="veh-detalle-vacio">
+            <span class="placa">ABC1234</span>
+            <p>Selecciona un vehículo de la lista para ver su propietario, su estado y sus servicios.</p>
+        </div>`;
+}
+
+// En el celular: vuelve de la ficha a la lista
 function mostrarBusquedaVehiculos() {
-    document.getElementById('vehiculos-busqueda').hidden = false;
-    document.getElementById('ficha-vehiculo').hidden = true;
+    document.getElementById('veh-layout').classList.remove('con-detalle');
+    document.getElementById('vehiculos-busqueda').scrollIntoView?.({ block: 'start' });
 }
 
 // Busca mientras se escribe, sin disparar una consulta por cada tecla
@@ -2656,7 +3459,8 @@ async function buscarVehiculos() {
     const q = document.getElementById('buscar-vehiculo').value.trim();
     const cont = document.getElementById('resultados-vehiculos');
     if (q.length < 2) {
-        cont.innerHTML = '<p class="vacio-vehiculos">Escribe al menos 2 letras o números para buscar.</p>';
+        resultadosBusquedaVeh = null;
+        pintarListaVehiculos();
         return;
     }
     try {
@@ -2665,89 +3469,173 @@ async function buscarVehiculos() {
         // Si mientras tanto el texto cambió, esta respuesta ya no sirve
         if (document.getElementById('buscar-vehiculo').value.trim() !== q) return;
         if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
-        const e = escaparHTML;
-        cont.innerHTML = data.resultados.length
-            ? data.resultados.map(r => `
-                <button type="button" class="resultado-vehiculo" onclick='abrirFichaVehiculo(${JSON.stringify(r.placa)})'>
-                    <span class="placa-badge">${e(r.placa)}</span>
-                    <span class="resultado-datos">
-                        <b>${e(r.cliente || 'Sin cliente registrado')}</b>
-                        <span>${[r.modelo, r.telefono].filter(Boolean).map(e).join(' · ') || '&nbsp;'}</span>
-                    </span>
-                    <span class="resultado-fecha">${r.en_taller ? '<span class="badge-estado estado-pendiente">En el taller</span>' : `Última visita<br>${fechaCorta(r.ultima_visita)}`}</span>
-                </button>`).join('')
-            : `<p class="vacio-vehiculos">No hay vehículos ni clientes que coincidan con "${e(q)}".</p>`;
+        await cargarManifiestoVehiculos();
+        resultadosBusquedaVeh = data.resultados || [];
+        pintarListaVehiculos();
     } catch (err) {
         cont.innerHTML = `<p class="vacio-vehiculos">No se pudo buscar: ${escaparHTML(err.message)}</p>`;
     }
 }
 
-// Se puede abrir desde la búsqueda, desde una tarjeta de vehículo o desde el dashboard
+// Se puede abrir desde la lista, desde una tarjeta de vehículo o desde el dashboard
 async function abrirFichaVehiculo(placa) {
+    placaActivaVehiculos = placa;
     if (document.getElementById('vista-vehiculos').style.display === 'none') {
         cambiarVista('vista-vehiculos', false);
     }
-    document.getElementById('vehiculos-busqueda').hidden = true;
+    // Marcar la fila activa sin volver a pintar la lista
+    document.querySelectorAll('#resultados-vehiculos .resultado-vehiculo').forEach(b => {
+        const es = b.dataset.placa === placa;
+        b.classList.toggle('activo', es);
+        if (es) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+    });
+    document.getElementById('veh-layout').classList.add('con-detalle');
     const cont = document.getElementById('ficha-vehiculo');
-    cont.hidden = false;
     cont.innerHTML = '<p class="vacio-vehiculos">Cargando ficha...</p>';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!esEscritorioVeh()) window.scrollTo({ top: 0, behavior: 'smooth' });
     try {
         const res = await fetch(`/vehiculos/${encodeURIComponent(placa)}/ficha`, { headers: cabeceraAuth() });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`);
-        renderFichaVehiculo(data);
+        if (placaActivaVehiculos !== placa) return;   // se eligió otro mientras cargaba
+        await renderFichaVehiculo(data);
     } catch (err) {
-        cont.innerHTML = `<button type="button" class="btn-link" onclick="mostrarBusquedaVehiculos()">← Volver a la búsqueda</button>
+        cont.innerHTML = `<button type="button" class="btn-chico volver" onclick="mostrarBusquedaVehiculos()">Volver a la lista</button>
             <p class="vacio-vehiculos">${escaparHTML(err.message)}</p>`;
     }
 }
 
-function renderFichaVehiculo(f) {
+// "Registrar vehículo": los registros entran por Geor IA, así que lleva al chat listo para escribir
+function registrarVehiculoDesdeVista() {
+    cambiarVista('vista-chat');
+    const input = document.getElementById('texto_reporte');
+    if (input) setTimeout(() => input.focus(), 50);
+}
+
+// "Nueva orden" / "Actualizar orden": abre Geor IA con la placa ya puesta como contexto
+function nuevaOrdenVehiculo(placa, modelo, cliente) {
+    cambiarVista('vista-chat');
+    setTimeout(() => usarPlaca(placa, { vehiculo: placa, modelo, cliente }), 50);
+}
+
+// Muestra (u oculta) el historial completo; si se pasa una orden, baja hasta ella
+function verHistorialVehiculo(idOrden = null) {
+    const bloque = document.getElementById('veh-historial-completo');
+    if (!bloque) return;
+    const mostrar = idOrden !== null || bloque.hidden;
+    bloque.hidden = !mostrar;
+    const boton = document.getElementById('veh-btn-historial');
+    if (boton) boton.setAttribute('aria-expanded', String(mostrar));
+    if (mostrar) (document.getElementById(`oh-${idOrden}`) || bloque).scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function renderFichaVehiculo(f) {
     const e = escaparHTML;
     const v = f.vehiculo, d = f.dueno, r = f.resumen;
     ordenesFichaActual = {};
     f.ordenes.forEach(o => { ordenesFichaActual[String(o.id)] = o; });
 
-    const detalles = [v.modelo, v.color, v.anio, v.cilindraje, v.cilindros ? `${v.cilindros} cilindros` : null].filter(Boolean).map(e).join(' · ');
-    const contacto = [
-        d.cedula ? `Cédula ${e(d.cedula)}` : null,
-        d.telefono ? `<a href="tel:${e(d.telefono)}">${e(d.telefono)}</a>` : null,
-        d.whatsapp ? `<a href="https://wa.me/${e(d.whatsapp)}" target="_blank" rel="noopener">WhatsApp</a>` : null
-    ].filter(Boolean).join(' · ');
+    // Datos del vehículo y contacto como piezas separadas (sin puntos medios)
+    const piezas = lista => lista.filter(Boolean).map(x => `<span>${x}</span>`).join('');
+    const colorFicha = colorVehiculo(v.color);
+    const detalles = piezas([colorFicha ? null : v.color, v.cilindraje, v.cilindros ? `${v.cilindros} cilindros` : null].filter(Boolean).map(x => e(x)));
+    const contacto = piezas([d.cedula ? `Cédula ${e(d.cedula)}` : null, d.telefono ? e(d.telefono) : null]);
     const anteriores = d.anteriores.length
         ? `<div class="ficha-nota">También estuvo a nombre de: ${d.anteriores.map(a => `${e(a.nombre)} (hasta ${fechaCorta(a.ultima_vez)})`).join(', ')}</div>` : '';
-    const enTaller = r.orden_abierta
-        ? `<span class="badge-estado estado-pendiente">En el taller ahora · Orden N° ${e(String(r.orden_abierta))}</span>` : '';
+    const estado = r.orden_abierta
+        ? `<span class="badge-estado estado-pendiente">En el taller, orden N° ${e(String(r.orden_abierta))}</span>`
+        : (r.visitas ? `<span class="badge-estado estado-terminado">Entregado</span>` : '');
 
+    // Cifras compactas (la primera holográfica en oscuro)
     const kpi = (etiqueta, valor, extra = '') => `<div class="dash-kpi"><div class="dash-kpi-etiqueta">${etiqueta}</div>
         <div class="dash-kpi-valor">${valor}</div>${extra ? `<div class="dash-kpi-extra">${extra}</div>` : ''}</div>`;
     const kpis = [
-        kpi('Visitas', r.visitas, `Desde ${fechaCorta(r.primera_visita)}`),
-        kpi('Total gastado', dinero(r.total_gastado)),
-        kpi('Promedio por visita', dinero(r.promedio_visita)),
+        kpi('Total gastado', dinero(r.total_gastado), `desde ${fechaCorta(r.primera_visita)}`),
+        kpi('Visitas', r.visitas, r.visitas ? `promedio ${dinero(r.promedio_visita)}` : ''),
         kpi('Kilometraje', r.km_actual ? `${Number(r.km_actual).toLocaleString('es-EC')} km` : '—',
             r.km_por_mes ? `≈ ${Number(r.km_por_mes).toLocaleString('es-EC')} km por mes` : '')
     ].join('');
 
     const garantias = f.garantias.length
         ? `<div class="aviso-garantia vigente"><b>Garantías vigentes</b><ul class="ficha-garantias">${f.garantias.map(g =>
-            `<li>Orden N° ${e(String(g.orden_id))}: ${e(g.trabajo || 'trabajo')} · hasta ${fechaCorta(g.vence)}${g.km_limite ? ` o ${Number(g.km_limite).toLocaleString('es-EC')} km` : ''}</li>`).join('')}</ul></div>`
+            `<li>Orden N° ${e(String(g.orden_id))}: ${e(g.trabajo || 'trabajo')}, hasta ${fechaCorta(g.vence)}${g.km_limite ? ` o ${Number(g.km_limite).toLocaleString('es-EC')} km` : ''}</li>`).join('')}</ul></div>`
         : '';
 
+    // Servicios recientes: las 3 últimas órdenes en filas compactas
+    const resumenOrden = o => {
+        const trabajos = (o._trabajos || []).map(t => t.descripcion).filter(Boolean);
+        if (trabajos.length) return trabajos.slice(0, 2).join(', ') + (trabajos.length > 2 ? ` y ${trabajos.length - 2} más` : '');
+        return o.motivo || (o.estado === 'Cerrado sin cobro' ? (o._motivo_cierre || 'Cerrada sin cobro') : 'Sin trabajos registrados');
+    };
+    const claseEstado = o => o.estado === 'Pendiente' ? 'estado-pendiente' : (o.estado === 'Cerrado sin cobro' ? 'estado-sin-cobro' : 'estado-terminado');
+    const recientes = f.ordenes.slice(0, 3).map(o => {
+        const fecha = o._ingreso ? new Date(o._ingreso + 'T12:00:00') : null;
+        return `
+        <button type="button" class="orden-mini" onclick='verHistorialVehiculo(${JSON.stringify(String(o.id))})'>
+            <span class="om-fecha">${fecha ? `<b>${fecha.getDate()}</b>${fecha.toLocaleDateString('es-EC', { month: 'short' }).replace('.', '')} ${String(fecha.getFullYear()).slice(2)}` : '—'}</span>
+            <span class="om-datos">
+                <span class="om-fila"><b>Orden N° ${e(String(o.id))}</b><span class="badge-estado ${claseEstado(o)}">${e(o.estado)}</span></span>
+                <span class="om-trabajo">${e(resumenOrden(o))}</span>
+            </span>
+            <span class="om-monto">${o.estado === 'Terminado' ? dinero(o.cobro) : ''}</span>
+        </button>`;
+    }).join('');
+
+    // Escenario con la imagen del modelo (o la placa si no hay imagen)
+    await cargarManifiestoVehiculos();
+    const img = imagenVehiculo({ modelo: v.modelo, color: v.color });
+    const tel = String(d.telefono || '').trim();
+    const icono = cuerpo => `<svg class="icono" viewBox="0 0 24 24" aria-hidden="true">${cuerpo}</svg>`;
+    const datos = JSON.stringify([v.placa, v.modelo || '', d.nombre || '']).slice(1, -1);
+
     document.getElementById('ficha-vehiculo').innerHTML = `
-        <button type="button" class="btn-link" onclick="mostrarBusquedaVehiculos()">← Volver a la búsqueda</button>
-        <div class="ficha-cabecera panel-caja">
-            <div class="ficha-placa-fila"><span class="placa-badge ficha-placa">${e(v.placa)}</span>${enTaller}</div>
-            <div class="ficha-detalle">${detalles || 'Sin datos del vehículo'}</div>
-            <div class="ficha-dueno"><b>${e(d.nombre || 'Sin cliente registrado')}</b>${contacto ? ` · ${contacto}` : ''}</div>
-            ${anteriores}
+        <button type="button" class="btn-chico volver" onclick="mostrarBusquedaVehiculos()">
+            ${icono('<path d="M15 6l-6 6 6 6"/>')}Volver a la lista</button>
+        <div class="det-cabecera">
+            <div class="ficha-escena tv-escena ${img ? '' : 'sin-imagen'}" data-placa="${e(v.placa)}">
+                ${img ? `<img src="${e(img)}" alt="${e(v.modelo || 'Vehículo')}" onerror="imagenVehiculoFallo(this)">`
+                      : `<div class="respaldo"><span class="placa">${e(v.placa)}</span></div>`}
+            </div>
+            <div class="det-titulo">
+                <div class="ficha-placa-fila">${img ? `<span class="placa ficha-placa">${e(v.placa)}</span>` : ''}${estado}</div>
+                <h2 class="ficha-modelo">${e(v.modelo || 'Modelo sin registrar')}${v.anio ? ` <span>${e(String(v.anio))}</span>` : ''}</h2>
+                <div class="ficha-detalle separados">${colorFicha ? `<span><span class="color-veh" style="background:${colorFicha.tono}"></span>${e(v.color)}</span>` : ''}${detalles}</div>
+            </div>
         </div>
-        <div class="dash-kpis ficha-kpis">${kpis}</div>
+
+        <div class="det-acciones">
+            <button type="button" class="btn-chico principal" onclick='nuevaOrdenVehiculo(${datos})'>
+                ${icono('<path d="M12 5v14M5 12h14"/>')}${r.orden_abierta ? 'Actualizar orden' : 'Nueva orden'}</button>
+            <button type="button" class="btn-chico" id="veh-btn-historial" aria-expanded="false" onclick="verHistorialVehiculo()">
+                ${icono('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/>')}Ver historial</button>
+            ${d.whatsapp ? `<a class="btn-chico" href="https://wa.me/${e(d.whatsapp)}" target="_blank" rel="noopener">
+                ${icono('<path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/>')}WhatsApp</a>` : ''}
+            ${tel ? `<a class="btn-chico" href="tel:${e(tel)}">${icono('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>')}Llamar</a>` : ''}
+        </div>
+
+        <div class="det-bloque ficha-dueno">
+            <span class="avatar-tecnico" style="--tono:#8B5CF6">${e(String(d.nombre || '?').trim().charAt(0).toUpperCase())}</span>
+            <div>
+                <div class="det-etiqueta">Propietario</div>
+                <b>${e(d.nombre || 'Sin cliente registrado')}</b>
+                ${contacto ? `<div class="separados">${contacto}</div>` : ''}
+            </div>
+        </div>
+        ${anteriores}
+
+        <div class="dash-kpis ficha-kpis det-kpis">${kpis}</div>
         ${garantias}
-        <h3 class="ficha-titulo-historial">Historial (${f.ordenes.length === 1 ? '1 orden' : `${f.ordenes.length} órdenes`})</h3>
-        ${f.truncado ? '<p class="ficha-nota">Se muestran las órdenes más recientes.</p>' : ''}
-        <div class="ficha-historial">${f.ordenes.map(ordenHistorialHTML).join('')}</div>`;
+
+        <div class="det-bloque det-servicios">
+            <h3>Servicios recientes <span>${f.ordenes.length === 1 ? '1 orden' : `${f.ordenes.length} órdenes`}</span></h3>
+            ${recientes || '<p class="vacio-vehiculos">Este vehículo aún no tiene órdenes.</p>'}
+        </div>
+
+        <div id="veh-historial-completo" hidden>
+            <h3 class="ficha-titulo-historial">Historial completo</h3>
+            ${f.truncado ? '<p class="ficha-nota">Se muestran las órdenes más recientes.</p>' : ''}
+            <div class="ficha-historial">${f.ordenes.map(ordenHistorialHTML).join('')}</div>
+        </div>`;
 }
 
 function ordenHistorialHTML(o) {
@@ -2757,8 +3645,8 @@ function ordenHistorialHTML(o) {
     const meta = [
         o.kilometraje ? `${Number(o.kilometraje).toLocaleString('es-EC')} km` : null,
         o.oficial ? `Técnico: ${e(o.oficial)}` : null,
-        o.estado === 'Terminado' && o.metodo_pago ? `Pago: ${e([o.metodo_pago, o.banco].filter(Boolean).join(' · '))}` : null
-    ].filter(Boolean).join(' · ');
+        o.estado === 'Terminado' && o.metodo_pago ? `Pago: ${e([o.metodo_pago, o.banco].filter(Boolean).join(', '))}` : null
+    ].filter(Boolean).map(x => `<span>${x}</span>`).join('');
     const trabajos = (o._trabajos || []).map(t =>
         `<li><span>${e(t.descripcion)}</span>${Number(t.precio) > 0 ? `<span class="num">${dinero(t.precio)}</span>` : ''}</li>`).join('');
     const repuestos = (o.reparacion_detalles || []).map(x => {
@@ -2767,23 +3655,24 @@ function ordenHistorialHTML(o) {
             <span class="num">${x.incluido ? 'incluido' : dinero(Number(x.cantidad) * Number(x.precio_unitario || 0))}</span></li>`;
     }).join('');
     const notas = [];
-    if (o.estado === 'Cerrado sin cobro') notas.push(`Cerrada sin cobro: ${e(o._motivo_cierre || 'sin motivo')}${o.detalle_cierre ? ` — ${e(o.detalle_cierre)}` : ''}`);
+    if (o.estado === 'Cerrado sin cobro') notas.push(`Cerrada sin cobro: ${e(o._motivo_cierre || 'sin motivo')}${o.detalle_cierre ? `. ${e(o.detalle_cierre)}` : ''}`);
     if (o.garantia_orden_origen) notas.push(`Reclamo de garantía de la orden N° ${e(String(o.garantia_orden_origen))}`);
     if (o.estado === 'Terminado' && o.garantia_vence) notas.push(`Garantía hasta ${fechaCorta(String(o.garantia_vence).slice(0, 10))}`);
 
-    return `<article class="orden-historial">
+    return `<article class="orden-historial" id="oh-${e(String(o.id))}">
         <header class="oh-cabecera">
             <b>Orden N° ${e(String(o.id))}</b>
             <span class="badge-estado ${clase}">${e(o.estado)}</span>
             <span class="oh-fecha">${fechas}</span>
             ${o.estado === 'Terminado' ? `<span class="oh-monto">${dinero(o.cobro)}</span>` : ''}
         </header>
-        ${meta ? `<div class="oh-meta">${meta}</div>` : ''}
+        ${meta ? `<div class="oh-meta separados">${meta}</div>` : ''}
         ${o.motivo ? `<div class="oh-motivo"><b>Motivo de ingreso:</b> ${e(o.motivo)}</div>` : ''}
         ${trabajos ? `<ul class="oh-lista">${trabajos}</ul>` : ''}
         ${repuestos ? `<div class="oh-subtitulo">Repuestos y materiales</div><ul class="oh-lista oh-repuestos">${repuestos}</ul>` : ''}
         ${notas.length ? `<div class="oh-notas">${notas.join('<br>')}</div>` : ''}
-        ${o.estado === 'Terminado' ? `<button type="button" class="btn-link" onclick='descargarOrdenFicha(${JSON.stringify(String(o.id))})'>Descargar orden (PNG)</button>` : ''}
+        ${o.estado === 'Terminado' ? `<button type="button" class="btn-chico" onclick='descargarOrdenFicha(${JSON.stringify(String(o.id))})'>
+            <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><polyline points="7 10 12 15 17 10"/><path d="M5 20h14"/></svg>Descargar orden</button>` : ''}
     </article>`;
 }
 
@@ -2908,12 +3797,12 @@ function estadoCotizacionHTML(v) {
     if (!c) return '';
     let texto, clase;
     if (c.estado === 'respondida') {
-        texto = c.n_aprobados ? `Cliente aprobó ${c.n_aprobados} de ${c.n_items} · ${dinero(c.total_aprobado)}` : 'Cliente rechazó la cotización';
+        texto = c.n_aprobados ? `Cliente aprobó ${c.n_aprobados} de ${c.n_items}, ${dinero(c.total_aprobado)}` : 'Cliente rechazó la cotización';
         clase = c.n_aprobados ? 'aprobada' : 'rechazada';
     } else if (c.vencida) {
         texto = 'Cotización vencida sin respuesta'; clase = 'rechazada';
     } else {
-        texto = `Cotización enviada · ${dinero(c.total)} · esperando respuesta`; clase = 'pendiente';
+        texto = `Cotización enviada por ${dinero(c.total)}, esperando respuesta`; clase = 'pendiente';
     }
     return `<button type="button" class="marca-cotizacion ${clase}" title="Ver cotizaciones de esta orden"
         onclick='event.stopPropagation(); verCotizacionesOrden(${JSON.stringify(String(v.id))}, ${JSON.stringify(v.vehiculo || '')})'>${escaparHTML(texto)}</button>`;
@@ -2951,33 +3840,77 @@ async function revisarAvisosCotizacion() {
     }
 }
 
+// Respuesta del cliente a una cotización: cifra de lo aprobado, lo que aprobó,
+// lo que no aprobó (para volver a ofrecerlo), su comentario y si ya se agregó a la orden.
+// Se usa en el aviso automático y en "Cotizaciones" de cada orden.
+function respuestaCotizacionHTML(c) {
+    const e = escaparHTML;
+    const lineas = c.lineas || [];
+    const si = lineas.filter(l => l.decision === 'aprobado');
+    const no = lineas.filter(l => l.decision === 'rechazado');
+    const pendientes = lineas.filter(l => l.decision !== 'aprobado' && l.decision !== 'rechazado');
+    const respondida = c.respondida !== false;
+    const nAprob = c.n_aprobados ?? si.length;
+    const nItems = c.n_items ?? lineas.length;
+    const pct = c.total > 0 ? Math.min(100, (Number(c.total_aprobado || 0) / c.total) * 100) : 0;
+    const icono = cuerpo => `<svg class="icono" viewBox="0 0 24 24" aria-hidden="true">${cuerpo}</svg>`;
+    const fila = l => `<li><span>${e(l.descripcion)}${Number(l.cantidad) !== 1 && l.cantidad ? ` <span class="cot-cant">x${Number(l.cantidad)}</span>` : ''}</span>
+        ${l.subtotal !== undefined ? `<b class="num">${dinero(l.subtotal)}</b>` : ''}</li>`;
+
+    // Estado en una píldora junto al cliente
+    const estado = !respondida
+        ? `<span class="cot-chip">${e(c.estadoTexto || 'Esperando respuesta')}</span>`
+        : (nAprob ? `<span class="cot-chip ok">${nAprob === nItems ? 'Aprobó todo' : 'Aprobó en parte'}</span>`
+                  : '<span class="cot-chip no">No aprobó</span>');
+
+    // Resumen: monto aprobado (o total cotizado si aún no responde) y barra fina
+    const resumen = respondida ? `
+        <div class="cot-resumen">
+            <span class="cot-resumen-etq">Aprobado</span>
+            <b class="num ${nAprob ? 'ok' : ''}">${dinero(c.total_aprobado)}</b>
+            <span class="cot-resumen-sub separados"><span>de ${dinero(c.total)}</span><span>${nAprob} de ${nItems} trabajos</span></span>
+            <div class="cot-barra" aria-hidden="true"><span style="width:${pct}%"></span></div>
+        </div>` : `
+        <div class="cot-resumen">
+            <span class="cot-resumen-etq">Total cotizado</span>
+            <b class="num">${dinero(c.total)}</b>
+            <span class="cot-resumen-sub">${nItems === 1 ? '1 trabajo' : `${nItems} trabajos`}</span>
+        </div>`;
+
+    const grupo = (clase, titulo, filas, pista = '') => filas.length ? `
+        <section class="cot-grupo ${clase}">
+            <h4><span class="cot-punto"></span>${titulo}<span class="cot-cuenta">${filas.length}</span></h4>
+            <ul>${filas.map(fila).join('')}</ul>${pista}
+        </section>` : '';
+
+    let nota = '';
+    if (respondida && nAprob) {
+        nota = c.aplicada_a_orden
+            ? `<p class="cot-nota">${icono('<path d="m5 12 5 5L20 7"/>')}Lo aprobado ya se agregó a la orden.</p>`
+            : `<p class="cot-nota alerta">${icono('<path d="M12 8v5"/><circle cx="12" cy="16.5" r=".8"/><path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0z"/>')}La orden ya estaba cerrada: lo aprobado no se agregó. Regístralo en una orden nueva.</p>`;
+    }
+
+    return `<article class="cot-resp">
+        <header class="cot-resp-cab">
+            ${c.vehiculo ? `<span class="placa chica">${e(c.vehiculo)}</span>` : ''}
+            <div class="cot-quien"><b>${e(c.cliente || `Cotización #${c.id}`)}</b>${c.cliente ? `<span>Cotización #${e(String(c.id))}</span>` : ''}</div>
+            ${estado}
+        </header>
+        ${resumen}
+        ${grupo('si', 'Aprobados', si)}
+        ${grupo('no', 'No aprobados', no, '<p class="cot-pista">Puedes volver a ofrecerlos en su próxima visita.</p>')}
+        ${grupo('', 'Sin respuesta', pendientes)}
+        ${c.comentario ? `<blockquote class="cot-comentario"><span>Comentario del cliente</span>${e(c.comentario)}</blockquote>` : ''}
+        ${nota}
+        ${c.acciones || ''}
+    </article>`;
+}
+
 // Un bloque por cotización respondida (normalmente es una sola)
 function avisoCotizacionHTML(a) {
-    const e = escaparHTML;
-    const cabecera = [a.vehiculo ? `<b>${e(a.vehiculo)}</b>` : '', a.cliente ? e(a.cliente) : '',
-                      `Cotización N° ${e(String(a.id))}`].filter(Boolean).join(' · ');
-    let estado, clase;
-    if (!a.n_aprobados) {
-        estado = 'Rechazó toda la cotización'; clase = 'rechazada';
-    } else if (a.n_aprobados === a.n_items) {
-        estado = `Aprobó todo · ${dinero(a.total_aprobado)}`; clase = 'aprobada';
-    } else {
-        estado = `Aprobó ${a.n_aprobados} de ${a.n_items} · ${dinero(a.total_aprobado)} de ${dinero(a.total)}`; clase = 'aprobada';
-    }
-    const lista = a.aprobados.length ? `<ul class="aviso-cot-lista">${a.aprobados.map(d => `<li>${e(d)}</li>`).join('')}</ul>` : '';
-    let nota = '';
-    if (a.n_aprobados) {
-        nota = a.aplicada_a_orden
-            ? 'Lo aprobado ya se agregó a la orden.'
-            : 'La orden ya estaba cerrada: lo aprobado <b>no</b> se agregó. Regístralo en una orden nueva.';
-    }
-    return `<div class="aviso-cot">
-        <div class="resumen-orden">${cabecera}</div>
-        <div class="marca-cotizacion ${clase} aviso-cot-estado">${estado}</div>
-        ${lista}
-        ${a.comentario ? `<div class="oh-notas">Comentario del cliente: ${e(a.comentario)}</div>` : ''}
-        ${nota ? `<div class="nota-cierre">${nota}</div>` : ''}
-    </div>`;
+    // Con el backend anterior solo llega la lista de aprobados (sin precios)
+    const lineas = a.lineas || (a.aprobados || []).map(d => ({ descripcion: d, decision: 'aprobado' }));
+    return respuestaCotizacionHTML({ ...a, lineas });
 }
 
 function mostrarAvisosCotizacion(avisos) {
@@ -2988,6 +3921,7 @@ function mostrarAvisosCotizacion(avisos) {
         titulo: unaSola ? 'El cliente respondió la cotización' : `${avisos.length} clientes respondieron sus cotizaciones`,
         mensaje: avisos.map(avisoCotizacionHTML).join(''),
     });
+    document.querySelector('#modal-aviso .modal-caja').classList.add('ancho', 'modal-cot');
     // OK = visto: se marca en el servidor para que no vuelva a aparecer
     const btnOk = document.getElementById('modal-btn-ok');
     btnOk.onclick = () => {
@@ -3205,24 +4139,21 @@ async function verCotizacionesOrden(id, placa) {
     }
     const e = escaparHTML;
     window._cotizacionesOrden = data.cotizaciones;
-    const decision = d => d === 'aprobado' ? '<span class="cot-dec aprobado">Aprobado</span>'
-        : d === 'rechazado' ? '<span class="cot-dec rechazado">Rechazado</span>' : '<span class="cot-dec">Sin respuesta</span>';
     const html = data.cotizaciones.map((c, n) => {
-        const estado = c.estado === 'respondida' ? `Respondida · aprobó ${dinero(c.total_aprobado)} de ${dinero(c.total)}`
-            : c.estado === 'anulada' ? 'Anulada' : (c.vencida ? 'Vencida sin respuesta' : `Esperando respuesta · vence ${fechaCorta(c.vence)}`);
-        return `<div class="cot-historial">
-            <div class="cot-historial-cab"><b>N° ${e(String(c.id))}</b> <span>${e(estado)}</span></div>
-            <ul class="oh-lista">${c.items.map(i => `<li><span>${e(i.descripcion)}${i.cantidad !== 1 ? ` (x${i.cantidad})` : ''}</span>
-                <span class="num">${dinero(i.subtotal)} ${decision(i.decision)}</span></li>`).join('')}</ul>
-            ${c.comentario_cliente ? `<div class="oh-notas">Comentario del cliente: ${e(c.comentario_cliente)}</div>` : ''}
-            ${c.estado === 'respondida' && c.n_aprobados && !c.aplicada_a_orden ? '<div class="oh-notas">La orden ya estaba cerrada: lo aprobado no se agregó.</div>' : ''}
-            ${c.estado === 'pendiente' ? `<div class="cot-envio">
-                ${!c.vencida ? `<button type="button" class="dash-chip" onclick="reenviarCotizacion(${n})">Reenviar</button>` : ''}
-                <button type="button" class="dash-chip" onclick='anularCotizacion(${JSON.stringify(String(c.id))}, ${JSON.stringify(id)}, ${JSON.stringify(placa)})'>Anular</button></div>` : ''}
-        </div>`;
+        const estadoTexto = c.estado === 'anulada' ? 'Anulada'
+            : (c.vencida ? 'Vencida sin respuesta' : `Esperando respuesta, vence ${fechaCorta(c.vence)}`);
+        const acciones = c.estado === 'pendiente' ? `<div class="cot-envio">
+                ${!c.vencida ? `<button type="button" class="btn-chico" onclick="reenviarCotizacion(${n})">Reenviar</button>` : ''}
+                <button type="button" class="btn-chico" onclick='anularCotizacion(${JSON.stringify(String(c.id))}, ${JSON.stringify(id)}, ${JSON.stringify(placa)})'>Anular</button></div>` : '';
+        return respuestaCotizacionHTML({
+            id: c.id, total: c.total, total_aprobado: c.total_aprobado, n_items: c.n_items, n_aprobados: c.n_aprobados,
+            respondida: c.estado === 'respondida', estadoTexto,
+            lineas: c.items.map(i => ({ descripcion: i.descripcion, cantidad: i.cantidad, subtotal: i.subtotal, decision: i.decision })),
+            comentario: c.comentario_cliente, aplicada_a_orden: c.aplicada_a_orden, acciones
+        });
     }).join('') || '<p class="vacio-vehiculos">Esta orden no tiene cotizaciones.</p>';
-    mostrarModal({ tipo: 'info', titulo: `Cotizaciones · ${placa}` });
-    document.querySelector('#modal-aviso .modal-caja').classList.add('ancho');
+    mostrarModal({ tipo: 'info', titulo: `Cotizaciones de ${placa}` });
+    document.querySelector('#modal-aviso .modal-caja').classList.add('ancho', 'modal-cot');
     document.getElementById('modal-mensaje').innerHTML = html;
 }
 
@@ -3403,53 +4334,124 @@ function cabeceraAuth(json = false) {
     return h;
 }
 
+let serviciosCatalogo = [];   // última lista recibida de /servicios (se filtra en pantalla)
+
 async function cargarServicios() {
     if (!localStorage.getItem("taller_token")) return;
-    const e = escaparHTML;
     try {
         const res = await fetch("/servicios", { headers: cabeceraAuth() });
         const data = await res.json();
         garantiaTallerActual = data.garantia_defecto || garantiaTallerActual;
+        serviciosCatalogo = data.servicios || [];
 
         // Garantía por defecto del taller (la define el dueño)
         const nota = document.getElementById('nota-garantia-defecto');
         if (nota) {
-            nota.innerHTML = `<b>Garantía por defecto de tu taller: ${textoGarantia(garantiaTallerActual.dias, garantiaTallerActual.km)}</b>
-                <button class="btn-link" onclick="editarGarantiaTaller()">Cambiar</button><br>
-                Se aplica a los servicios que no tienen garantía propia. En cada trabajo también puedes indicarla al cerrar
-                (ej. "...se le dio garantía de 3 meses"), y esa tiene prioridad.`;
+            nota.innerHTML = `
+                <div class="srv-garantia-valor">${textoGarantia(garantiaTallerActual.dias, garantiaTallerActual.km)}</div>
+                <p>Se aplica a los servicios que no tienen garantía propia. En cada trabajo también puedes indicarla al cerrar
+                (ej. "...se le dio garantía de 3 meses"), y esa tiene prioridad.</p>
+                <button type="button" class="btn-chico" onclick="editarGarantiaTaller()">Cambiar garantía</button>`;
         }
-
-        const tbody = document.getElementById('tabla-servicios');
-        const servicios = data.servicios || [];
-        if (!servicios.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="vacio">No hay servicios registrados.</td></tr>';
-            return;
-        }
-        tbody.innerHTML = servicios.map(s => {
-            const propia = s.garantia_dias !== null && s.garantia_dias !== undefined;
-            const dias = propia ? s.garantia_dias : garantiaTallerActual.dias;
-            const km = (s.garantia_km !== null && s.garantia_km !== undefined) ? s.garantia_km : garantiaTallerActual.km;
-            return `
-                <tr>
-                    <td>${e(s.nombre_servicio)}</td>
-                    <td class="num">$${Number(s.precio_base || 0).toFixed(2)}</td>
-                    <td>${e(textoGarantia(dias, km))}${propia ? '' : ' <span class="sub">(del taller)</span>'}
-                        <button class="btn-link" onclick='editarGarantiaServicio(${JSON.stringify(String(s.id))}, ${JSON.stringify(s.nombre_servicio)}, ${JSON.stringify(s.garantia_dias)}, ${JSON.stringify(s.garantia_km)})'>Editar</button>
-                    </td>
-                    <td class="centro" data-modulo="materiales_servicio">
-                        <button class="btn-link" onclick='abrirMaterialesServicio(${JSON.stringify(String(s.id))})'>${s.n_materiales ? `Materiales (${s.n_materiales})` : 'Agregar materiales'}</button>
-                    </td>
-                    <td class="centro">
-                        <button onclick='eliminarServicio(${JSON.stringify(String(s.id))})' class="btn-icono-eliminar" title="Eliminar" aria-label="Eliminar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
-                    </td>
-                </tr>`;
-        }).join('');
-        aplicarModulos();   // oculta la columna de materiales si el plan no la incluye
+        pintarServicios();
     } catch (error) {
         console.error("Error cargando servicios:", error);
     }
 }
+
+// Cifras del catálogo y tabla (filtrada por el buscador de la vista)
+function pintarServicios() {
+    const e = escaparHTML;
+    const servicios = serviciosCatalogo;
+    const conMateriales = servicios.filter(s => s.n_materiales).length;
+    const precios = servicios.map(s => Number(s.precio_base || 0));
+    const propias = servicios.filter(s => s.garantia_dias !== null && s.garantia_dias !== undefined).length;
+    const cifra = (clase, etiqueta, valor, icono, modulo = '') => `
+        <div class="veh-cifra ${clase}" ${modulo ? `data-modulo="${modulo}"` : ''}>
+            <span class="veh-cifra-icono" aria-hidden="true"><svg class="icono" viewBox="0 0 24 24">${icono}</svg></span>
+            <div><div class="veh-cifra-etiqueta">${etiqueta}</div><div class="veh-cifra-valor">${valor}</div></div>
+        </div>`;
+    const cifras = document.getElementById('srv-cifras');
+    if (cifras) cifras.innerHTML = [
+        cifra('', 'Servicios en el catálogo', servicios.length, '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>'),
+        cifra('lila', 'Precio promedio', precios.length ? dinero(precios.reduce((a, b) => a + b, 0) / precios.length) : '—', '<path d="M12 3v18M16.5 7.5C16 6 14.4 5 12 5c-2.8 0-4.5 1.3-4.5 3.2 0 4.6 9 2.5 9 7 0 2-1.8 3.3-4.5 3.3-2.5 0-4.2-1-4.8-2.6"/>'),
+        cifra('menta', 'Con garantía propia', propias, '<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="m9 12 2 2 4-4"/>'),
+        cifra('ambar', 'Con materiales', conMateriales, '<path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>', 'materiales_servicio')
+    ].join('');
+
+    const q = normalizarTexto(document.getElementById('buscar-servicio')?.value || '');
+    const visibles = q ? servicios.filter(s => normalizarTexto(s.nombre_servicio).includes(q)) : servicios;
+    ponerTexto('srv-conteo', servicios.length ? (q ? `${visibles.length} de ${servicios.length}` : `${servicios.length} ${servicios.length === 1 ? 'servicio' : 'servicios'}`) : '');
+
+    const tbody = document.getElementById('tabla-servicios');
+    if (!servicios.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="vacio">Aún no hay servicios. Agrega el primero con el formulario de la derecha.</td></tr>';
+    } else if (!visibles.length) {
+        tbody.innerHTML = `<tr><td colspan="5" class="vacio">Ningún servicio coincide con "${e(document.getElementById('buscar-servicio').value.trim())}".</td></tr>`;
+    } else {
+        const icono = cuerpo => `<svg class="icono" viewBox="0 0 24 24" aria-hidden="true">${cuerpo}</svg>`;
+        tbody.innerHTML = visibles.map(s => {
+            const propia = s.garantia_dias !== null && s.garantia_dias !== undefined;
+            const dias = propia ? s.garantia_dias : garantiaTallerActual.dias;
+            const km = (s.garantia_km !== null && s.garantia_km !== undefined) ? s.garantia_km : garantiaTallerActual.km;
+            const id = JSON.stringify(String(s.id));
+            return `
+                <tr>
+                    <td><div class="srv-nombre">
+                        <span class="srv-inicial" aria-hidden="true">${e(String(s.nombre_servicio || '?').trim().charAt(0).toUpperCase())}</span>
+                        <b>${e(s.nombre_servicio)}</b>
+                    </div></td>
+                    <td class="num srv-precio">${dinero(s.precio_base || 0)}</td>
+                    <td class="srv-garantia-celda">
+                        ${icono('<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/>').replace('class="icono"', 'class="icono srv-garantia-icono"')}
+                        <span class="srv-garantia-texto">${e(textoGarantia(dias, km))}</span>
+                        <span class="srv-origen ${propia ? 'propia' : ''}">${propia ? 'Propia' : 'Del taller'}</span>
+                    </td>
+                    <td data-modulo="materiales_servicio">
+                        <button type="button" class="btn-chico ${s.n_materiales ? 'con-datos' : ''}" onclick='abrirMaterialesServicio(${id})'>
+                            ${icono('<path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/>')}${s.n_materiales ? `${s.n_materiales} ${s.n_materiales === 1 ? 'material' : 'materiales'}` : '<span class="srv-mas" aria-hidden="true">+ </span>Agregar'}</button>
+                    </td>
+                    <td class="centro srv-acciones">
+                        <button type="button" class="btn-icono" title="Editar garantía" aria-label="Editar garantía de ${e(s.nombre_servicio)}"
+                            onclick='editarGarantiaServicio(${id}, ${JSON.stringify(s.nombre_servicio)}, ${JSON.stringify(s.garantia_dias)}, ${JSON.stringify(s.garantia_km)})'>
+                            ${icono('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>')}</button>
+                        <button type="button" class="btn-icono peligro" title="Eliminar" aria-label="Eliminar ${e(s.nombre_servicio)}" onclick='eliminarServicio(${id})'>
+                            ${icono('<path d="M4 7h16"/><path d="M18 7l-1 13a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 7"/><path d="M10 11v6M14 11v6"/><path d="M9 7V4h6v3"/>')}</button>
+                    </td>
+                </tr>`;
+        }).join('');
+    }
+    aplicarModulos();   // oculta la columna y la cifra de materiales si el plan no la incluye
+}
+
+// Botón "Nuevo servicio" de la cabecera: en escritorio lleva al formulario de la derecha;
+// en el celular abre el mismo formulario como hoja inferior
+const esCelularServicios = () => window.matchMedia('(max-width: 767px)').matches;
+
+function enfocarNuevoServicio() {
+    const input = document.getElementById('nuevo-servicio-nombre');
+    if (!input) return;
+    if (esCelularServicios()) { abrirHojaServicio(); return; }
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => input.focus(), 250);
+}
+
+function abrirHojaServicio() {
+    document.getElementById('vista-servicios').classList.add('hoja-abierta');
+    document.body.classList.add('sin-desplazamiento');
+    setTimeout(() => document.getElementById('nuevo-servicio-nombre')?.focus(), 280);
+}
+
+function cerrarHojaServicio() {
+    document.getElementById('vista-servicios')?.classList.remove('hoja-abierta');
+    document.body.classList.remove('sin-desplazamiento');
+}
+
+// Escape cierra la hoja; al pasar a escritorio también se cierra
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('vista-servicios')?.classList.contains('hoja-abierta')) cerrarHojaServicio();
+});
+window.matchMedia('(max-width: 767px)').addEventListener?.('change', ev => { if (!ev.matches) cerrarHojaServicio(); });
 
 // Lee un número entero opcional de un input (vacío -> null)
 function enteroOpcional(id) {
@@ -3482,14 +4484,28 @@ async function guardarServicio() {
         }
         ['nuevo-servicio-nombre', 'nuevo-servicio-precio', 'nuevo-servicio-garantia-dias', 'nuevo-servicio-garantia-km']
             .forEach(id => document.getElementById(id).value = '');
+        cerrarHojaServicio();   // en el celular se cierra la hoja al agregar
         cargarServicios();
     } catch (error) {
         mostrarNotificacion("Error de conexión al guardar el servicio.", "error");
     }
 }
 
-async function eliminarServicio(id) {
-    if (!confirm("¿Estás seguro de eliminar este servicio?")) return;
+// Pide confirmación en el modal (en lugar del confirm() del navegador) y luego elimina
+function eliminarServicio(id) {
+    const sv = serviciosCatalogo.find(x => String(x.id) === String(id));
+    const overlay = document.getElementById('modal-aviso');
+    mostrarModal({ tipo: 'warning', titulo: 'Eliminar servicio',
+        mensaje: `<b>${escaparHTML(sv?.nombre_servicio || 'Este servicio')}</b> saldrá del catálogo y Geor IA dejará de usar su precio. Las órdenes ya registradas no cambian.` });
+    const btnCancelar = document.getElementById('modal-btn-cancelar');
+    btnCancelar.hidden = false;
+    btnCancelar.onclick = () => { overlay.dataset.modo = ''; cerrarModal(); };
+    const btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Eliminar';
+    btnOk.onclick = () => { cerrarModal(); eliminarServicioConfirmado(id); };
+}
+
+async function eliminarServicioConfirmado(id) {
     try {
         const res = await fetch(`/servicios/${encodeURIComponent(id)}`, { method: "DELETE", headers: cabeceraAuth() });
         if (res.ok) cargarServicios();

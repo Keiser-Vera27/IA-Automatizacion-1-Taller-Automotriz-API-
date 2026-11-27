@@ -1,382 +1,800 @@
 /* ==============================================================================
-   Autotronic Solutions — Sistema de diseño (Premium Glassmorphism + Grid)
-   Paleta: #7030EF (morado) · #DB1FFF (magenta) · Cyan/Lima (Filtros)
+   Oficial de Registros — Sistema de diseño "Placa nocturna"
+   - Fondo oscuro con tinte violeta, superficies en capas, hilos finos.
+   - Geor IA es el protagonista; la placa ecuatoriana identifica cada vehículo.
+   - Morado #7030EF para acciones; lima #C6FF3D solo como señal (Geor en línea,
+     selección actual). Plus Jakarta Sans en todo; el tema holográfico nocturno está al final.
    ============================================================================== */
 
-@import url('https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700,400&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-
-:root {
-    --morado: #7030EF;
-    --magenta: #DB1FFF;
-    --tinta: #090820;
-    --gradiente-marca: linear-gradient(135deg, var(--morado), var(--magenta));
-
-    /* Modo claro (por defecto) - Mejorado con mayor contraste y profundidad */
-    --bg: #F4F2F9;
-    --bg-alterno: #EAE6F5;
-    --superficie: rgba(255, 255, 255, 0.92);
-    --superficie-elevada: rgba(255, 255, 255, 1);
-    --bg-panel: #FFFFFF;             /* menú lateral y paneles: fondo sólido */
-    --borde: rgba(112, 48, 239, 0.18);
-    --texto: #14102B;
-    --texto-tenue: #574F7A;
-    --sombra-marca: rgba(112, 48, 239, 0.12);
-    --filtro-cristal: blur(16px);
-
-    /* Estados dinámicos - Modo Claro (Mayor contraste para textos IA / procesando) */
-    --bg-pendiente: rgba(217, 119, 6, 0.15);
-    --text-pendiente: #9A3412; 
-    --bg-terminado: rgba(5, 150, 105, 0.15);
-    --text-terminado: #065F46; 
-    --text-cobro: #047857;
-    --bg-filtros: rgba(112, 48, 239, 0.06);
-
-    /* NUEVO: Color específico y con contraste para el estado de procesamiento de IA en modo claro */
-    --bg-procesando-ia: rgba(112, 48, 239, 0.08);
-    --text-procesando-ia: #5B21B6;
-
-    --fuente-display: 'General Sans', 'Inter', sans-serif;
-    --fuente-datos: 'Inter', sans-serif;
-    color-scheme: light;
+/* ------------------------------------------------------------------
+   Tipografía (autohospedada en /web/fonts, licencia OFL)
+   Un solo archivo variable con ejes de peso (200-900) y ancho (75-125%).
+   ------------------------------------------------------------------ */
+@font-face {
+    font-family: "Plus Jakarta Sans";
+    src: url("fonts/plus-jakarta-sans-latin-wght-normal.woff2") format("woff2");
+    font-weight: 200 800;
+    font-display: swap;
 }
 
+/* ------------------------------------------------------------------
+   Tokens — tema oscuro (por defecto)
+   ------------------------------------------------------------------ */
+:root,
 html[data-theme="dark"] {
-    /* Modo oscuro */
-    --bg: linear-gradient(135deg, #0A0818 0%, #150d30 50%, #0A0818 100%);
-    --bg-alterno: rgba(18, 16, 43, 0.3);
-    --superficie: rgba(20, 17, 46, 0.45);
-    --superficie-elevada: rgba(27, 23, 64, 0.55);
-    --bg-panel: #15112E;
-    --borde: rgba(219, 31, 255, 0.25);
-    --texto: #F3F0FF;
-    --texto-tenue: #A79EC9;
-    --sombra-marca: rgba(219, 31, 255, 0.4);
+    /* Marca */
+    --marca: #7030EF;
+    --marca-fuerte: #B9A2FF;        /* texto de marca sobre fondo oscuro */
+    --marca-suave: rgba(112, 48, 239, 0.16);
+    --marca-tinta: #1A1236;
+    --lima: #C6FF3D;
+    --sobre-marca: #FFFFFF;
+    --sobre-marca-tenue: #ECE6FF;
 
-    /* Estados dinámicos - Modo Oscuro */
-    --bg-pendiente: rgba(245, 158, 11, 0.2);
-    --text-pendiente: #FCD34D; 
-    --bg-terminado: rgba(16, 185, 129, 0.2);
-    --text-terminado: #6EE7B7; 
-    --text-cobro: #A8F5B6;
-    --bg-filtros: rgba(0, 0, 0, 0.3);
+    /* Superficies (de la más profunda a la más elevada) */
+    --fondo: #0A0911;
+    --superficie-1: #100E18;        /* paneles */
+    --superficie-2: #161320;        /* tarjetas y campos */
+    --superficie-3: #1E1A2B;        /* elevados y hover */
+    --superficie-hundida: #0E0C16;
+    --linea: rgba(236, 230, 255, 0.08);
+    --linea-fuerte: rgba(236, 230, 255, 0.14);
+    --linea-intensa: rgba(236, 230, 255, 0.22);
 
-    --bg-procesando-ia: rgba(219, 31, 255, 0.12);
-    --text-procesando-ia: #E879F9;
+    /* Texto */
+    --tinta: #EEEAF7;
+    --tinta-2: #ABA5BF;
+    --tinta-3: #8E88A4;
+
+    /* Estados */
+    --exito: #63D69E;     --exito-fondo: rgba(99, 214, 158, 0.12);
+    --aviso: #F3BC63;     --aviso-fondo: rgba(243, 188, 99, 0.12);
+    --peligro: #FF8A8A;   --peligro-fondo: rgba(255, 138, 138, 0.12);
+    --info: #B9A2FF;      --info-fondo: rgba(185, 162, 255, 0.12);
+
+    /* Placa */
+    --placa-fondo: #F4F3F7;
+    --placa-tinta: #111018;
+    --placa-borde: rgba(0, 0, 0, 0.55);
+    --placa-franja: var(--marca);
+
+    /* Escenario de la imagen del vehículo */
+    --escena-arriba: #2A2440;
+    --escena-1: #1C1829;
+    --escena-2: #14111F;
+    --escena-3: #0F0D18;
+
+    /* Forma y profundidad */
+    --radio-s: 7px;
+    --radio-m: 10px;
+    --radio-l: 16px;
+    --sombra-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --sombra-2: 0 12px 32px rgba(0, 0, 0, 0.42);
+    --foco: 0 0 0 3px rgba(185, 162, 255, 0.35);
 
     color-scheme: dark;
 }
 
+/* Tema claro (opcional) */
+html[data-theme="light"] {
+    --marca-fuerte: #5B1FD6;
+    --marca-suave: #EFE8FE;
+    --marca-tinta: #241052;
+    --fondo: #F4F3F8;
+    --superficie-1: #FFFFFF;
+    --superficie-2: #F8F7FB;
+    --superficie-3: #ECEAF3;
+    --superficie-hundida: #F8F7FB;
+    --linea: #E3E0EC;
+    --linea-fuerte: #D2CDE0;
+    --linea-intensa: #B9B3CC;
+    --tinta: #17142B;
+    --tinta-2: #4E4867;
+    --tinta-3: #6B6585;
+    --exito: #0F7A3D;     --exito-fondo: #E3F4EA;
+    --aviso: #9A4A00;     --aviso-fondo: #FDEFD9;
+    --peligro: #B4232C;   --peligro-fondo: #FCE6E7;
+    --info: #5B1FD6;      --info-fondo: #EFE8FE;
+    --placa-fondo: #FFFFFF;
+    --placa-borde: #2A2733;
+    --escena-arriba: #FFFFFF;
+    --escena-1: #F1EFF6;
+    --escena-2: #E7E4EF;
+    --escena-3: #DEDAE8;
+    --sombra-1: 0 1px 2px rgba(23, 20, 43, 0.06), 0 2px 6px rgba(23, 20, 43, 0.05);
+    --sombra-2: 0 8px 24px rgba(23, 20, 43, 0.12);
+    --foco: 0 0 0 3px rgba(112, 48, 239, 0.3);
+    color-scheme: light;
+}
+
+:root {
+    /* Tipografía (escala 1.2, rem fijos) */
+    --fuente-ui: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --fuente-cifra: var(--fuente-ui);
+    --t-xs: 0.8125rem;
+    --t-s: 0.875rem;
+    --t-m: 0.9375rem;
+    --t-l: 1.125rem;
+    --t-xl: 1.375rem;
+    --t-2xl: 1.875rem;
+
+    /* Espaciado (base 4) */
+    --e-1: 4px; --e-2: 8px; --e-3: 12px; --e-4: 16px; --e-5: 24px; --e-6: 32px; --e-7: 48px;
+
+    /* Estructura */
+    --alto-barra: 60px;
+    --ancho-nav: 220px;
+    --suave: cubic-bezier(0.16, 1, 0.3, 1);
+    --movimiento: 180ms var(--suave);
+
+    /* ---- Puente con nombres anteriores (vistas aún no migradas) ---- */
+    --morado: var(--marca);
+    --magenta: var(--marca);
+    --gradiente-marca: var(--marca);
+    --bg: var(--fondo);
+    --bg-alterno: var(--superficie-2);
+    --superficie: var(--superficie-1);
+    --superficie-elevada: var(--superficie-2);
+    --bg-panel: var(--superficie-1);
+    --borde: var(--linea-fuerte);
+    --texto: var(--tinta);
+    --texto-tenue: var(--tinta-2);
+    --sombra-marca: rgba(0, 0, 0, 0.35);
+    --filtro-cristal: none;
+    --bg-pendiente: var(--aviso-fondo);
+    --text-pendiente: var(--aviso);
+    --bg-terminado: var(--exito-fondo);
+    --text-terminado: var(--exito);
+    --text-cobro: var(--exito);
+    --bg-filtros: var(--superficie-1);
+    --bg-procesando-ia: var(--info-fondo);
+    --text-procesando-ia: var(--info);
+    --fuente-display: var(--fuente-ui);
+    --fuente-datos: var(--fuente-ui);
+}
+
+/* ------------------------------------------------------------------
+   Base
+   ------------------------------------------------------------------ */
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
 
 body {
     margin: 0;
-    background: var(--bg);
-    background-attachment: fixed;
-    color: var(--texto);
-    font-family: var(--fuente-display);
-    transition: background 0.3s ease, color 0.3s ease;
     min-height: 100vh;
-}
-
-body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: -1;
-    background:
-        radial-gradient(ellipse 900px 500px at 15% -10%, var(--sombra-marca), transparent 60%),
-        radial-gradient(ellipse 700px 500px at 110% 10%, rgba(219, 31, 255, 0.08), transparent 55%);
-    pointer-events: none;
+    background: var(--fondo);
+    color: var(--tinta);
+    font-family: var(--fuente-ui);
+    font-size: var(--t-m);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4 {
-    font-family: var(--fuente-display);
+    font-family: var(--fuente-ui);
+    color: var(--tinta);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin: 0 0 var(--e-2);
+    text-wrap: balance;
+}
+h1 { font-size: var(--t-2xl); letter-spacing: -0.03em; }
+h2 { font-size: var(--t-xl); }
+h3 { font-size: var(--t-l); }
+h4 { font-size: var(--t-m); }
+p { margin: 0 0 var(--e-3); }
+a { color: var(--marca-fuerte); text-underline-offset: 3px; }
+
+::selection { background: var(--marca); color: #fff; }
+::placeholder { color: var(--tinta-3); opacity: 1; }
+:focus-visible { outline: none; box-shadow: var(--foco); }
+hr { border: none; border-top: 1px solid var(--linea); margin: var(--e-6) 0; }
+* { scrollbar-color: var(--linea-intensa) transparent; scrollbar-width: thin; }
+
+/* Cifras de dinero y tablas con dígitos alineados */
+td.num, .num, .cifra-dinero { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}
+
+/* ------------------------------------------------------------------
+   Botones
+   ------------------------------------------------------------------ */
+.btn,
+.btn-enviar, .btn-login, .btn-agregar-servicio, .modal-btn-ok,
+.btn-inventario, .btn-cerrar-sesion, .modal-btn-secundario {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--e-2);
+    min-height: 42px;
+    padding: 0 var(--e-4);
+    border-radius: var(--radio-m);
+    border: 1px solid transparent;
+    font-family: var(--fuente-ui);
+    font-size: var(--t-s);
     font-weight: 600;
-    letter-spacing: -0.01em;
-    margin: 0 0 8px 0;
-}
-
-hr {
-    border: none;
-    border-top: 1px solid var(--borde);
-    margin: 28px 0;
-}
-
-/* ==============================================================================
-   ESTILOS COMPARTIDOS GLASSMORPHISM (Sombra mejorada para evitar aspecto plano)
-   ============================================================================== */
-.glass-container, .panel-pendientes, .panel-caja, .login-card, .tarjeta-vehiculo-pendiente {
-    backdrop-filter: var(--filtro-cristal);
-    -webkit-backdrop-filter: var(--filtro-cristal);
-    border: 1px solid var(--borde);
-    box-shadow: 0 10px 30px -5px rgba(112, 48, 239, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
-}
-
-/* ==============================================================================
-   TOGGLE DE TEMA
-   ============================================================================== */
-.theme-toggle {
-    position: fixed;
-    top: 18px;
-    right: 18px;
-    z-index: 50;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--superficie);
-    backdrop-filter: var(--filtro-cristal);
-    -webkit-backdrop-filter: var(--filtro-cristal);
-    border: 1px solid var(--borde);
-    border-radius: 999px;
-    padding: 6px 14px 6px 6px;
+    line-height: 1;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(9, 8, 32, 0.08);
-    color: var(--texto);
-    font-family: var(--fuente-datos);
-    font-size: 12.5px;
-    font-weight: 500;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color var(--movimiento), border-color var(--movimiento), color var(--movimiento), box-shadow var(--movimiento), transform var(--movimiento);
 }
-.theme-toggle:hover { transform: translateY(-1px); box-shadow: 0 6px 18px var(--sombra-marca); }
-.theme-toggle .punto-icono {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    background: var(--gradiente-marca);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
+.btn:disabled, .btn-enviar:disabled, .btn-login:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Primario */
+.btn-primario, .btn-enviar, .btn-login, .btn-agregar-servicio, .modal-btn-ok {
+    background: var(--marca);
     color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 4px 14px rgba(0, 0, 0, 0.3);
 }
-
-/* ==============================================================================
-   LOGIN
-   ============================================================================== */
-#login-container {
-    display: flex;
-    min-height: 100vh;
-    align-items: stretch;
-    justify-content: center;
+.btn-primario:hover, .btn-enviar:hover, .btn-login:hover, .btn-agregar-servicio:hover, .modal-btn-ok:hover {
+    background: #7E43F2;
+    transform: none;
+    filter: none;
 }
+.btn-primario:active, .btn-enviar:active, .btn-login:active { transform: translateY(1px); }
 
-.login-visual {
-    flex: 1.1;
-    position: relative;
-    display: none; 
+/* Secundario */
+.btn-secundario, .btn-inventario, .modal-btn-secundario {
     background: transparent;
+    color: var(--tinta);
+    border-color: var(--linea-fuerte);
+}
+.btn-secundario:hover, .btn-inventario:hover, .modal-btn-secundario:hover {
+    background: var(--superficie-2);
+    border-color: var(--linea-intensa);
+    transform: none;
+    box-shadow: none;
+}
+
+/* Fantasma */
+.btn-fantasma { background: transparent; color: var(--tinta-2); min-height: 36px; padding: 0 var(--e-3); }
+.btn-fantasma:hover { background: var(--superficie-2); color: var(--tinta); }
+
+/* Peligro */
+.btn-peligro, .btn-cerrar-sesion { background: transparent; color: var(--peligro); }
+.btn-peligro:hover, .btn-cerrar-sesion:hover { background: var(--peligro-fondo); color: var(--peligro); box-shadow: none; }
+
+/* Botón chico de borde fino (acciones dentro de tarjetas y respuestas) */
+.btn-chico {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px; padding: 0 11px;
+    border-radius: 8px; border: 1px solid var(--linea-fuerte);
+    background: transparent; color: var(--tinta-2);
+    font-family: var(--fuente-ui); font-size: var(--t-xs); font-weight: 550;
+    cursor: pointer; white-space: nowrap;
+    transition: background-color var(--movimiento), color var(--movimiento), border-color var(--movimiento);
+}
+.btn-chico:hover { color: var(--tinta); background: var(--superficie-3); border-color: var(--linea-intensa); }
+.btn-chico.principal { color: var(--tinta); border-color: rgba(185, 162, 255, 0.4); background: var(--marca-suave); }
+.btn-chico .icono { width: 15px; height: 15px; }
+
+/* ------------------------------------------------------------------
+   Campos
+   ------------------------------------------------------------------ */
+input[type="text"], input[type="email"], input[type="password"], input[type="number"],
+input[type="search"], input[type="date"], input[type="tel"], select, textarea {
+    font-family: var(--fuente-ui);
+    font-size: var(--t-m);
+    color: var(--tinta);
+    background: var(--superficie-2);
+    border: 1px solid var(--linea-fuerte);
+    border-radius: var(--radio-m);
+    min-height: 42px;
+    padding: 0 var(--e-3);
+    transition: border-color var(--movimiento), box-shadow var(--movimiento);
+}
+textarea { padding: var(--e-3); line-height: 1.5; min-height: 96px; resize: vertical; }
+input:hover, select:hover, textarea:hover { border-color: var(--linea-intensa); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: rgba(185, 162, 255, 0.6); box-shadow: var(--foco); }
+input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--peligro); }
+.etiqueta-campo, .campo-login label { display: block; font-size: var(--t-s); font-weight: 550; color: var(--tinta-2); margin-bottom: var(--e-1); }
+.solo-lector { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ------------------------------------------------------------------
+   PLACA — identificador del vehículo (.placa-badge la genera script.js)
+   ------------------------------------------------------------------ */
+.placa, .placa-badge {
+    display: inline-flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    min-width: 5.4em;
+    background: var(--placa-fondo);
+    color: var(--placa-tinta);
+    border-radius: 6px;
     overflow: hidden;
-    align-items: flex-end;
-    padding: 48px;
-}
-
-.login-visual svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-
-.login-visual .marca-visual {
-    position: relative;
-    z-index: 2;
-    color: #fff;
-    backdrop-filter: blur(5px);
-    padding: 20px;
-    border-radius: 16px;
-    background: rgba(0,0,0,0.2);
-}
-.login-visual .marca-visual .eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    font-size: 11px;
-    color: #D9C6FF;
-    font-family: var(--fuente-datos);
-    margin-bottom: 10px;
-}
-.login-visual .marca-visual h2 { font-size: 30px; line-height: 1.15; max-width: 340px; margin-bottom: 10px; }
-.login-visual .marca-visual p { color: #C7B8ED; font-size: 13.5px; max-width: 320px; font-family: var(--fuente-datos); }
-
-.login-form-panel {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 32px 24px;
-    background: transparent;
-}
-
-.login-card {
-    width: 100%;
-    max-width: 360px;
-    background: var(--superficie);
-    padding: 35px 25px;
-    border-radius: 20px;
-}
-.login-card .badge-marca {
-    width: 52px;
-    height: 52px;
-    border-radius: 12px;
-    background: transparent;          /* la baldosa del logo ya trae su propio fondo morado */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-weight: 700;
-    font-size: 18px;
-    margin-bottom: 20px;
-    box-shadow: 0 8px 20px var(--sombra-marca);
-}
-.login-card .badge-marca img { width: 100%; height: 100%; display: block; }
-
-/* Logo horizontal en el panel visual del login */
-.login-visual .marca-visual .logo-login { display: block; height: 40px; width: auto; margin-bottom: 14px; }
-
-/* Logo de la cabecera de la app: una versión por tema (claro = baldosa + texto tinta, oscuro = texto blanco) */
-.cabecera h1.logo-cabecera { background: none; color: inherit; line-height: 0; margin-bottom: 10px; }
-.cabecera h1.logo-cabecera img { height: 44px; width: auto; max-width: 100%; }
-.logo-tema-oscuro { display: none; }
-html[data-theme="dark"] .logo-tema-claro { display: none; }
-html[data-theme="dark"] .logo-tema-oscuro { display: inline-block; }
-
-.login-card h2 { font-size: 24px; color: var(--texto); }
-.login-card > p { color: var(--texto-tenue); font-size: 14px; margin-bottom: 26px; font-family: var(--fuente-datos); }
-
-.campo-login { margin-bottom: 16px; }
-.campo-login label { display: block; font-size: 12.5px; font-weight: 500; color: var(--texto-tenue); margin-bottom: 6px; font-family: var(--fuente-datos); }
-.campo-login input {
-    width: 100%;
-    padding: 12px 14px;
-    border-radius: 10px;
-    border: 1.5px solid var(--borde);
-    background: var(--bg-alterno);
-    color: var(--texto);
-    font-family: var(--fuente-datos);
-    font-size: 14.5px;
-    outline: none;
-    transition: all 0.3s ease;
-}
-.campo-login input::placeholder { color: var(--texto-tenue); opacity: 0.7; }
-.campo-login input:focus { border-color: var(--magenta); box-shadow: 0 0 12px var(--sombra-marca); background: var(--superficie); }
-
-.btn-login {
-    width: 100%;
-    padding: 13px;
-    border-radius: 10px;
-    border: none;
-    background: var(--gradiente-marca);
-    color: #fff;
-    font-family: var(--fuente-display);
-    font-weight: 600;
-    font-size: 14.5px;
-    cursor: pointer;
-    box-shadow: 0 10px 24px var(--sombra-marca);
-    transition: all 0.3s ease;
-    margin-top: 6px;
-}
-.btn-login:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(219, 31, 255, 0.5); filter: brightness(1.1); }
-.btn-login:active { transform: translateY(0); }
-
-#login_error { color: #E0397A; font-size: 13px; margin-top: 14px; font-family: var(--fuente-datos); display: none; }
-@media (min-width: 860px) { .login-visual { display: flex; } }
-
-/* ==============================================================================
-   APP PRINCIPAL & CONTENEDORES
-   ============================================================================== */
-/* Banner de Bienvenida: Estilo corporativo sólido, diferenciado del botón y sin emoji */
-.contenedor {
-    max-width: 1100px;
-    margin: 40px auto;
-    padding: 0 20px;
-    width: 100%;
-    box-sizing: border-box;
-}
-.banner-bienvenida {
-    font-family: var(--fuente-display); 
-    font-weight: 600; 
-    font-size: 16.5px; 
-    padding: 16px 22px; 
-    border-radius: 12px; 
-    margin-bottom: 25px;
-    background: var(--superficie-elevada); 
-    color: var(--texto);
-    border: 1.5px solid var(--borde);
-    border-left: 5px solid var(--morado); 
-    box-shadow: 0 6px 20px rgba(112, 48, 239, 0.08);
-    opacity: 0; 
-    transform: translateY(-6px);
-    animation: aparecer-bienvenida 0.5s ease forwards;
-}
-.banner-bienvenida:empty { display: none; }
-.banner-bienvenida .nombre-taller-destacado { font-weight: 700; color: var(--morado); }
-@keyframes aparecer-bienvenida { to { opacity: 1; transform: translateY(0); } }
-
-.cabecera h1 { font-size: 30px; background: var(--gradiente-marca); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.cabecera p { color: var(--texto-tenue); font-family: var(--fuente-datos); font-size: 14.5px; }
-
-.glass-container { background: var(--superficie); border-radius: 16px; box-shadow: 0 12px 35px rgba(112, 48, 239, 0.08); }
-
-.grupo-formulario textarea {
-    width: 100%; min-height: 96px; padding: 16px; border-radius: 14px;
-    border: 1.5px solid var(--borde); background: var(--bg-alterno); color: var(--texto);
-    font-family: var(--fuente-datos); font-size: 14.5px; resize: vertical;
-    outline: none; transition: all 0.3s ease;
-}
-.grupo-formulario textarea:focus { border-color: var(--magenta); box-shadow: 0 0 12px var(--sombra-marca); background: var(--superficie); }
-
-.btn-enviar {
-    width: 100%; margin-top: 12px; padding: 13px; border-radius: 12px; border: none;
-    background: var(--gradiente-marca); color: #fff; font-family: var(--fuente-display);
-    font-weight: 600; font-size: 14.5px; cursor: pointer; box-shadow: 0 10px 24px var(--sombra-marca); transition: all 0.3s ease;
-}
-.btn-enviar:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(219, 31, 255, 0.5); filter: brightness(1.1); }
-
-/* Estilo para el recuadro de "procesando mensaje con IA" (ajustado para alto contraste en modo claro/oscuro) */
-.mensaje-procesando-ia, .ia-processing, .loading-ia {
-    background: var(--bg-procesando-ia) !important;
-    color: var(--text-procesando-ia) !important;
-    border: 1px solid var(--borde);
-    padding: 12px 16px;
-    border-radius: 10px;
-    font-weight: 500;
-}
-
-.seccion-contabilidad h2 { font-size: 18px; color: var(--texto); }
-
-.grupo-botones-reportes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
-.btn-inventario {
-    flex: 1; min-width: 180px; padding: 11px 16px; border-radius: 10px;
-    font-family: var(--fuente-datos); font-weight: 500; font-size: 13.5px;
-    cursor: pointer; transition: all 0.2s ease; border: 1.5px solid var(--borde);
-}
-.btn-inventario { background: var(--bg-alterno); color: var(--texto); }
-.btn-inventario:hover { border-color: var(--magenta); box-shadow: 0 6px 16px var(--sombra-marca); transform: translateY(-2px); }
-
-.barra-superior-app {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 15px;
-    margin-bottom: 25px;
-    flex-wrap: wrap;
-}
-
-.btn-cerrar-sesion {
-    width: auto !important;
-    background: rgba(224, 57, 122, 0.08);
-    border: 1px solid #E0397A;
-    color: #E0397A;
-    padding: 10px 18px;
-    border-radius: 10px;
-    cursor: pointer;
-    font-size: 13px;
-    font-family: var(--fuente-datos);
-    font-weight: 600;
-    transition: all 0.2s ease-in-out;
+    font-family: var(--fuente-ui);
+    font-size: 1.15rem;
+    font-weight: 720;
+    font-stretch: 80%;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    text-align: center;
+    padding-bottom: 0.26em;
+    box-shadow: 0 0 0 1px var(--placa-borde), 0 4px 12px rgba(0, 0, 0, 0.3);
     white-space: nowrap;
 }
-.btn-cerrar-sesion:hover { 
-    background: #E0397A; 
-    color: #fff; 
-    box-shadow: 0 0 15px rgba(224, 57, 122, 0.4); 
+.placa::before, .placa-badge::before {
+    content: "ECUADOR";
+    display: block;
+    background: var(--placa-franja);
+    color: #fff;
+    font-size: 0.4em;
+    font-weight: 600;
+    font-stretch: 100%;
+    letter-spacing: 0.26em;
+    line-height: 1;
+    padding: 0.34em 0 0.26em;
+    margin-bottom: 0.24em;
 }
+.placa.chica { font-size: 0.85rem; }
+.placa.grande { font-size: 1.9rem; }
+
+/* ------------------------------------------------------------------
+   Estados (en trabajo, entregado...)
+   ------------------------------------------------------------------ */
+.estado, .badge-estado {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: var(--t-xs); font-weight: 600; line-height: 1.4; white-space: nowrap;
+}
+.estado::before, .badge-estado::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.estado-pendiente, .estado-aviso { background: var(--aviso-fondo); color: var(--aviso); }
+.estado-terminado, .estado-exito { background: var(--exito-fondo); color: var(--exito); }
+.estado-peligro, .estado-sin-cobro { background: var(--peligro-fondo); color: var(--peligro); }
+.estado-info { background: var(--info-fondo); color: var(--info); }
+
+/* Íconos de trazo */
+.icono { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Símbolo de Geor (celdas del logo) y su animación de "procesando" */
+.marca-geor, .mini-geor {
+    display: grid; place-items: center; flex-shrink: 0;
+    background: linear-gradient(160deg, #7A3CF5, #4F1BC4);
+}
+.marca-geor { width: 44px; height: 44px; border-radius: 13px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.18); }
+.marca-geor svg { width: 28px; height: 28px; }
+.mini-geor { width: 28px; height: 28px; border-radius: 8px; }
+.mini-geor svg { width: 17px; height: 17px; }
+.celda { fill: #fff; }
+.pensando .celda { animation: celda-geor 1.2s var(--suave) infinite; }
+.pensando .c2 { animation-delay: 0.15s; }
+.pensando .c3 { animation-delay: 0.3s; }
+.pensando .c4 { animation-delay: 0.45s; }
+@keyframes celda-geor { 0%, 100% { opacity: 0.35; } 40% { opacity: 1; } }
+
+/* ------------------------------------------------------------------
+   LOGIN
+   ------------------------------------------------------------------ */
+#login-container { min-height: 100vh; }
+.login-split { display: grid; grid-template-columns: 1fr; min-height: 100vh; }
+@media (min-width: 900px) { .login-split { grid-template-columns: minmax(420px, 1.05fr) 1fr; } }
+
+.login-marca {
+    display: none;
+    position: relative;
+    overflow: hidden;
+    background: #120A2C;
+    color: #fff;
+    padding: var(--e-7) clamp(32px, 5vw, 72px);
+    flex-direction: column;
+    gap: var(--e-7);
+}
+/* Luz morada desde arriba: la misma presencia de Geor en la app */
+.login-marca::before {
+    content: ""; position: absolute; inset: -30% -20% auto -20%; height: 80%;
+    background: radial-gradient(closest-side, rgba(112, 48, 239, 0.55), transparent 75%);
+    pointer-events: none;
+}
+.login-marca > * { position: relative; }
+@media (min-width: 900px) { .login-marca { display: flex; } }
+.login-marca .logo-login { height: 36px; width: auto; display: block; align-self: flex-start; }
+.login-mensaje { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: var(--e-7); }
+.login-marca h2 { color: #fff; font-size: 2.5rem; line-height: 1.08; letter-spacing: -0.035em; max-width: 16ch; margin: 0 0 var(--e-4); }
+.login-marca .bajada { color: #CFC5EE; font-size: var(--t-l); max-width: 38ch; margin: 0; }
+
+.demo-registro { display: grid; gap: var(--e-3); max-width: 470px; }
+.demo-registro .demo-pie { color: #A99FCB; font-size: var(--t-xs); margin: 0; }
+.demo-mensaje {
+    justify-self: end; max-width: 90%;
+    background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #F1EDFF; border-radius: 16px 16px 4px 16px;
+    padding: var(--e-3) var(--e-4); font-size: var(--t-m); line-height: 1.45;
+}
+.demo-flecha { justify-self: center; color: var(--lima); }
+.demo-ficha {
+    background: rgba(10, 6, 26, 0.7); border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--radio-l); padding: var(--e-4);
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--e-1) var(--e-4);
+}
+.demo-ficha .placa { grid-row: span 2; }
+.demo-ficha .demo-vehiculo { font-weight: 600; color: #fff; }
+.demo-ficha .demo-detalle { color: #CFC5EE; font-size: var(--t-s); grid-column: 2; }
+.demo-ficha .demo-monto { grid-row: span 2; font-weight: 700; font-stretch: 85%; font-size: var(--t-xl); color: var(--lima); }
+
+.login-formulario { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: var(--e-6) var(--e-4); background: var(--fondo); }
+.login-card { width: 100%; max-width: 380px; background: none; border: none; box-shadow: none; padding: 0; }
+.login-card .logo-movil { display: block; height: 32px; width: auto; margin-bottom: var(--e-6); }
+.login-card .logo-movil.claro { display: none; }
+html[data-theme="light"] .login-card .logo-movil.claro { display: block; }
+html[data-theme="light"] .login-card .logo-movil.oscuro { display: none; }
+@media (min-width: 900px) { .login-card .logo-movil { display: none !important; } }
+.login-card h1 { margin-bottom: var(--e-2); }
+.login-card > p { color: var(--tinta-2); margin-bottom: var(--e-5); }
+.campo-login { margin-bottom: var(--e-4); }
+.campo-login input { width: 100%; }
+.btn-login { width: 100%; margin-top: var(--e-2); min-height: 46px; font-size: var(--t-m); }
+#login_error { display: none; margin: var(--e-4) 0 0; padding: var(--e-3) var(--e-4); border-radius: var(--radio-m); background: var(--peligro-fondo); color: var(--peligro); font-size: var(--t-s); font-weight: 500; }
+
+/* ------------------------------------------------------------------
+   ESTRUCTURA: barra superior + navegación + área de trabajo
+   ------------------------------------------------------------------ */
+.barra-app {
+    position: sticky; top: 0; z-index: 40;
+    height: var(--alto-barra);
+    display: flex; align-items: center; gap: var(--e-5);
+    padding: 0 var(--e-5);
+    /* El vidrio tiene una razón: el contenido pasa por debajo al desplazarse */
+    background: color-mix(in srgb, var(--fondo) 80%, transparent);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border-bottom: 1px solid var(--linea);
+}
+.barra-app .logo-barra { height: 26px; width: auto; display: block; flex-shrink: 0; }
+.barra-app .logo-barra.compacto, .barra-app .logo-barra.claro { display: none; }
+html[data-theme="light"] .barra-app .logo-barra.completo.oscuro { display: none; }
+html[data-theme="light"] .barra-app .logo-barra.completo.claro { display: block; }
+
+.buscador-placa { flex: 1; max-width: 560px; margin: 0 auto; position: relative; display: flex; align-items: center; }
+.buscador-placa .icono { position: absolute; left: 12px; color: var(--tinta-3); pointer-events: none; }
+.buscador-placa input { width: 100%; min-height: 38px; padding-left: 38px; padding-right: 40px; background: var(--superficie-1); font-size: var(--t-s); }
+.buscador-placa .tecla { position: absolute; right: 8px; }
+.tecla { font-family: var(--fuente-ui); font-size: 11.5px; font-weight: 600; color: var(--tinta-2); border: 1px solid var(--linea-intensa); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; line-height: 1.3; }
+
+.taller-actual { display: flex; align-items: center; gap: var(--e-3); min-width: 0; }
+.banner-bienvenida { font-weight: 600; font-size: var(--t-s); color: var(--tinta); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.banner-bienvenida:empty::before { content: "Cargando taller…"; color: var(--tinta-3); font-weight: 500; }
+.inicial-taller { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--superficie-3); border: 1px solid var(--linea-fuerte); font-weight: 700; font-size: 12px; color: var(--marca-fuerte); flex-shrink: 0; }
+
+/* Navegación lateral */
+.nav-app { background: var(--fondo); border-right: 1px solid var(--linea); display: flex; flex-direction: column; padding: var(--e-4) var(--e-3); gap: 2px; }
+.nav-app .nav-titulo { display: none; }
+.nav-enlace {
+    display: flex; align-items: center; gap: var(--e-3);
+    min-height: 40px; padding: 0 var(--e-3);
+    border-radius: var(--radio-m);
+    color: var(--tinta-2); font-weight: 550; font-size: var(--t-s);
+    text-decoration: none; background: none; border: none; width: 100%; text-align: left;
+    cursor: pointer; font-family: var(--fuente-ui);
+    transition: background-color var(--movimiento), color var(--movimiento);
+}
+.nav-enlace:hover { background: var(--superficie-2); color: var(--tinta); }
+.nav-enlace[aria-current="page"] { background: var(--superficie-3); color: var(--tinta); box-shadow: inset 0 0 0 1px var(--linea-fuerte); }
+.nav-enlace[aria-current="page"] .icono { stroke: var(--lima); }
+html[data-theme="light"] .nav-enlace[aria-current="page"] .icono { stroke: var(--marca); }
+.nav-pie { margin-top: auto; padding-top: var(--e-4); border-top: 1px solid var(--linea); display: grid; gap: 2px; }
+.nav-pie .nav-enlace { font-weight: 500; }
+.nav-pie .btn-cerrar-sesion { justify-content: flex-start; width: 100%; padding: 0 var(--e-3); font-size: var(--t-s); min-height: 40px; }
+.theme-toggle { position: static; box-shadow: none; transform: none; }
+.theme-toggle .punto-icono { display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; background: none; color: inherit; }
+.theme-toggle .punto-icono svg { width: 17px; height: 17px; }
+.theme-toggle .etiqueta::before { content: "Tema: "; }
+
+.nav-inferior { display: none; }
+.marco-app { display: grid; grid-template-columns: minmax(0, 1fr); min-height: calc(100vh - var(--alto-barra)); }
+.contenedor { width: 100%; max-width: 1480px; margin: 0 auto; padding: var(--e-5) var(--e-5) var(--e-7) var(--e-6); }
+
+@media (min-width: 960px) {
+    .marco-app { grid-template-columns: var(--ancho-nav) minmax(0, 1fr); }
+    .nav-app { position: sticky; top: var(--alto-barra); height: calc(100vh - var(--alto-barra)); overflow-y: auto; }
+    .nav-fondo { display: none !important; }
+}
+
+@media (max-width: 959px) {
+    .barra-app { gap: var(--e-3); padding: 0 var(--e-3); }
+    .barra-app .logo-barra.completo { display: none !important; }
+    .barra-app .logo-barra.compacto { display: block; height: 30px; }
+    .buscador-placa .tecla, .banner-bienvenida { display: none; }
+    .nav-app {
+        position: fixed; z-index: 60; top: 0; bottom: 0; left: 0;
+        width: min(300px, 86vw);
+        background: var(--superficie-1);
+        box-shadow: var(--sombra-2);
+        transform: translateX(-102%);
+        transition: transform 220ms var(--suave);
+        padding-top: var(--e-5); overflow-y: auto;
+    }
+    .nav-app.abierto { transform: none; }
+    .nav-app .nav-titulo { display: block; font-size: var(--t-s); font-weight: 600; color: var(--tinta-2); padding: 0 var(--e-3) var(--e-3); }
+    .nav-fondo { position: fixed; inset: 0; z-index: 55; background: rgba(0, 0, 0, 0.55); opacity: 0; visibility: hidden; transition: opacity 200ms ease, visibility 200ms ease; }
+    .nav-fondo.visible { opacity: 1; visibility: visible; }
+    .nav-inferior {
+        display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+        position: fixed; z-index: 45; left: 0; right: 0; bottom: 0;
+        background: color-mix(in srgb, var(--superficie-1) 92%, transparent);
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        border-top: 1px solid var(--linea);
+        padding: 4px 4px calc(6px + env(safe-area-inset-bottom));
+    }
+    .nav-inferior button {
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+        min-height: 52px; border: none; background: none; border-radius: var(--radio-m);
+        color: var(--tinta-3); font-family: var(--fuente-ui); font-size: 11.5px; font-weight: 550; cursor: pointer;
+    }
+    .nav-inferior button[aria-current="page"] { color: var(--tinta); }
+    .nav-inferior button[aria-current="page"] .icono { stroke: var(--lima); }
+    html[data-theme="light"] .nav-inferior button[aria-current="page"] .icono { stroke: var(--marca); }
+    .contenedor { padding: var(--e-4) var(--e-3) calc(92px + env(safe-area-inset-bottom)); }
+}
+
+/* Encabezado de las demás vistas */
+.cabecera-vista { margin-bottom: var(--e-5); }
+.cabecera-vista h1 { margin-bottom: var(--e-1); }
+.cabecera-vista p { color: var(--tinta-2); margin: 0; max-width: 65ch; }
+
+/* ==================================================================
+   PANEL PRINCIPAL: bienvenida + Geor IA + vehículos en el taller
+   ================================================================== */
+.escena {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(340px, 1fr);
+    gap: var(--e-5);
+    align-items: start;
+}
+.escena > * { min-width: 0; }
+
+/* Bienvenida con el pulso del día */
+.saludo { grid-column: 1 / -1; display: flex; align-items: flex-end; justify-content: space-between; gap: var(--e-5); padding: var(--e-1) 2px 0; }
+.saludo h1 { margin: 0; font-size: 1.875rem; line-height: 1.1; }
+.saludo h1 .nombre-taller { color: var(--tinta-2); font-weight: 500; }
+.saludo p { margin: 6px 0 0; color: var(--tinta-2); }
+.cifras { display: flex; margin: 0; border: 1px solid var(--linea); border-radius: 12px; background: var(--superficie-1); }
+.cifra { padding: 10px 18px; min-width: 124px; }
+.cifra + .cifra { border-left: 1px solid var(--linea); }
+.cifra dt { font-size: var(--t-xs); color: var(--tinta-3); }
+.cifra dd { margin: 2px 0 0; font-size: 1.375rem; font-weight: 650; font-stretch: 88%; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.cifra dd small { font-size: var(--t-xs); color: var(--tinta-3); font-weight: 500; font-stretch: 100%; }
+
+/* Geor IA */
+.geor {
+    position: relative; overflow: hidden;
+    display: flex; flex-direction: column;
+    background: var(--superficie-1);
+    border: 1px solid var(--linea-fuerte);
+    border-radius: 18px;
+    height: calc(100vh - 210px);
+    min-height: 560px;
+}
+/* Luz ambiental solo detrás de la cabecera de Geor: marca su presencia */
+.geor::before {
+    content: ""; position: absolute; top: -160px; right: -80px; width: 520px; height: 360px; pointer-events: none;
+    background: radial-gradient(closest-side, rgba(112, 48, 239, 0.3), transparent 70%);
+}
+html[data-theme="light"] .geor::before { background: radial-gradient(closest-side, rgba(112, 48, 239, 0.12), transparent 70%); }
+.geor-cabecera { position: relative; display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--linea); }
+.geor-cabecera h2 { margin: 0; font-size: 1.0625rem; }
+.estado-geor { display: block; font-size: var(--t-xs); color: var(--tinta-2); }
+.estado-geor i { display: inline-block; width: 7px; height: 7px; margin-right: 7px; vertical-align: 1px; border-radius: 50%; background: var(--lima); box-shadow: 0 0 0 3px rgba(198, 255, 61, 0.14); }
+.estado-geor.sin-conexion i { background: var(--peligro); box-shadow: 0 0 0 3px var(--peligro-fondo); }
+.geor-cabecera .acciones { margin-left: auto; display: flex; gap: 6px; }
+
+.conversacion {
+    position: relative; flex: 1; overflow-y: auto;
+    padding: 22px 22px 8px;
+    display: flex; flex-direction: column; gap: 18px;
+    scroll-behavior: smooth;
+}
+.dia-conversacion { align-self: center; font-size: var(--t-xs); color: var(--tinta-3); }
+
+/* Burbujas */
+.msg-usuario {
+    align-self: flex-end; max-width: 72%;
+    background: var(--superficie-3); border: 1px solid var(--linea-fuerte);
+    border-radius: 16px 16px 4px 16px; padding: 11px 15px;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+    animation: entra-msg 260ms var(--suave);
+}
+.msg-usuario .hora { display: block; text-align: right; font-size: 11.5px; color: var(--tinta-3); margin-top: 4px; }
+.msg-geor { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; max-width: 88%; animation: entra-msg 260ms var(--suave); }
+.msg-geor .cuerpo { color: var(--tinta); overflow-wrap: anywhere; padding-top: 3px; }
+.msg-geor .cuerpo > :first-child { margin-top: 0; }
+.msg-geor .cuerpo p { margin: 0 0 10px; }
+.msg-geor .cuerpo ul, .msg-geor .cuerpo ol { margin: 4px 0 10px; padding-left: 20px; }
+.msg-geor .cuerpo li { margin: 2px 0; }
+.msg-geor .cuerpo strong, .msg-geor .cuerpo b { font-weight: 650; }
+.msg-geor .cuerpo { overflow-x: auto; }
+.msg-geor .cuerpo table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 6px 0 10px; font-size: var(--t-s); border: 1px solid var(--linea); border-radius: 12px; overflow: hidden; }
+.msg-geor .cuerpo th { text-align: left; font-weight: 550; color: var(--tinta-3); font-size: var(--t-xs); padding: 8px 12px; border-bottom: 1px solid var(--linea); }
+.msg-geor .cuerpo td { padding: 8px 12px; border-bottom: 1px solid var(--linea); font-variant-numeric: tabular-nums; }
+.msg-geor .cuerpo tr:last-child td { border-bottom: none; }
+.msg-geor.tipo-success .resultado { color: var(--exito); }
+.msg-geor.tipo-warning .cuerpo { color: var(--aviso); }
+.msg-geor.tipo-error .cuerpo {
+    border: 1px solid rgba(255, 138, 138, 0.3); background: var(--peligro-fondo);
+    border-radius: 12px; padding: 10px 14px; color: var(--tinta);
+}
+.msg-geor.tipo-error .mini-geor { background: var(--superficie-3); }
+.resultado { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-xs); font-weight: 600; }
+.respuesta-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--linea); }
+.respuesta-pie .enlace-veh { margin-left: auto; padding-left: 6px; }
+.trabajando { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: center; animation: entra-msg 260ms var(--suave); }
+.trabajando .texto { font-size: var(--t-s); color: var(--tinta-2); }
+.trabajando .sub { font-size: var(--t-xs); color: var(--tinta-3); }
+@keyframes entra-msg { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Compositor */
+.compositor {
+    position: relative; margin: 8px 16px 16px;
+    border: 1px solid var(--linea-intensa); border-radius: 14px;
+    background: var(--superficie-2);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    transition: border-color var(--movimiento), box-shadow var(--movimiento);
+}
+html[data-theme="light"] .compositor { box-shadow: var(--sombra-1); }
+.compositor:focus-within { border-color: rgba(185, 162, 255, 0.55); box-shadow: 0 0 0 4px rgba(112, 48, 239, 0.18), 0 10px 30px rgba(0, 0, 0, 0.3); }
+.contexto-placa { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0; font-size: var(--t-xs); color: var(--tinta-2); }
+.contexto-placa[hidden] { display: none; }
+.contexto-placa button { margin-left: auto; border: 0; background: none; color: var(--tinta-3); font: inherit; cursor: pointer; padding: 4px; }
+.contexto-placa button:hover { color: var(--tinta); }
+.compositor .grupo-formulario textarea {
+    width: 100%; min-height: 64px; max-height: 220px; resize: none;
+    border: 0; outline: 0; box-shadow: none; background: transparent;
+    font-size: var(--t-m); padding: 10px 14px 4px;
+}
+.compositor .grupo-formulario textarea:focus { box-shadow: none; }
+.compositor-pie { display: flex; align-items: center; gap: 8px; padding: 6px 8px 8px 10px; flex-wrap: wrap; }
+.sugerencia {
+    height: 30px; padding: 0 11px; border-radius: 8px;
+    border: 1px solid var(--linea-fuerte); background: transparent; color: var(--tinta-2);
+    font-family: var(--fuente-ui); font-size: var(--t-xs); cursor: pointer; white-space: nowrap;
+    transition: color var(--movimiento), border-color var(--movimiento);
+}
+.sugerencia:hover { color: var(--tinta); border-color: var(--linea-intensa); }
+.compositor-pie .btn-enviar { margin-left: auto; min-height: 36px; padding: 0 14px; }
+#caja-notificacion-ia { display: none !important; }   /* reemplazada por la conversación */
+
+/* ------------------------------------------------------------------
+   EN EL TALLER: vehículos junto a la conversación
+   ------------------------------------------------------------------ */
+.taller-col { display: flex; flex-direction: column; gap: var(--e-3); min-width: 0; }
+.taller-cab { display: flex; align-items: center; justify-content: space-between; gap: var(--e-3); }
+.taller-cab h2 { margin: 0; font-size: 1.0625rem; }
+.taller-cab h2 small { color: var(--tinta-3); font-weight: 500; font-size: var(--t-s); margin-left: 6px; }
+.segmento { display: inline-flex; padding: 3px; border-radius: 9px; background: var(--superficie-1); border: 1px solid var(--linea); }
+.segmento button { height: 28px; padding: 0 11px; border-radius: 7px; border: 0; background: transparent; color: var(--tinta-3); font-family: var(--fuente-ui); font-size: var(--t-xs); font-weight: 550; cursor: pointer; }
+.segmento button[aria-pressed="true"] { background: var(--superficie-3); color: var(--tinta); box-shadow: inset 0 0 0 1px var(--linea-fuerte); }
+
+/* Tarjeta destacada (estilo Uber): escenario con la imagen del modelo + datos */
+.tv { border-radius: 18px; overflow: hidden; background: var(--superficie-1); border: 1px solid var(--linea-fuerte); transition: transform 250ms var(--suave), border-color 250ms var(--suave), box-shadow 250ms var(--suave); }
+.tv:hover { border-color: var(--linea-intensa); box-shadow: var(--sombra-2); }
+.tv-escena {
+    position: relative; aspect-ratio: 16 / 9; overflow: hidden; cursor: pointer;
+    background:
+        radial-gradient(120% 70% at 50% 0%, var(--escena-arriba) 0%, transparent 60%),
+        linear-gradient(180deg, var(--escena-1) 0%, var(--escena-2) 62%, var(--escena-3) 100%);
+}
+.tv-escena::after { /* sombra de contacto bajo el vehículo */
+    content: ""; position: absolute; left: 14%; right: 14%; bottom: 12%; height: 16px; border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(0, 0, 0, 0.6), transparent); pointer-events: none;
+}
+.tv-escena img { position: absolute; left: 50%; bottom: 8%; width: 86%; max-height: 82%; object-fit: contain; transform: translateX(-50%); z-index: 1; transition: transform 350ms var(--suave); }
+.tv:hover .tv-escena img { transform: translateX(-50%) translateY(-3px) scale(1.02); }
+.tv-escena .respaldo { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; }
+.tv-escena .respaldo .placa { font-size: 1.9rem; }
+.tv-escena.sin-imagen::after { left: 30%; right: 30%; bottom: 22%; }
+.tv-escena .flotante-izq { position: absolute; top: 12px; left: 12px; z-index: 2; }
+.tv-escena .flotante-der { position: absolute; top: 15px; right: 14px; z-index: 2; font-size: var(--t-xs); color: var(--tinta-2); }
+.tv-escena .badge-estado { background: color-mix(in srgb, var(--fondo) 72%, transparent); border: 1px solid var(--linea-fuerte); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.tv-datos { padding: 14px 16px 16px; display: grid; gap: 12px; background: var(--superficie-hundida); border-top: 1px solid var(--linea); }
+.tv-fila { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.tv-modelo { font-size: 1.125rem; font-weight: 650; letter-spacing: -0.015em; line-height: 1.2; }
+.tv-modelo .anio { color: var(--tinta-3); font-weight: 500; }
+.tv-sub { font-size: var(--t-xs); color: var(--tinta-2); margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.tv-sub .separado { padding-left: 10px; border-left: 1px solid var(--linea-fuerte); }
+.color-veh { display: inline-block; width: 11px; height: 11px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), 0 0 0 1px rgba(0, 0, 0, 0.25); vertical-align: -1px; margin-right: 6px; }
+.tv-detalle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: var(--t-xs); margin: 0; }
+.tv-detalle dt { color: var(--tinta-3); }
+.tv-detalle dd { margin: 0; color: var(--tinta); font-size: var(--t-s); overflow-wrap: anywhere; }
+.tv-acciones { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 12px; border-top: 1px solid var(--linea); }
+.tv-extra:empty { display: none; }
+
+/* Recorrido de la orden: ingreso, cotización, entrega */
+.recorrido { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; }
+.recorrido span { height: 4px; border-radius: 2px; background: var(--linea-fuerte); }
+.recorrido span.si { background: var(--marca-fuerte); }
+.recorrido.entregado span.si { background: var(--exito); }
+.recorrido-leyenda { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; font-size: 11.5px; color: var(--tinta-3); margin-top: 5px; }
+
+/* Lista compacta (el resto de vehículos) */
+.lista-taller { display: grid; gap: 8px; }
+.tv-fila-lista {
+    display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; align-items: center; gap: 12px;
+    padding: 8px 12px 8px 8px; border-radius: 14px;
+    background: var(--superficie-1); border: 1px solid var(--linea-fuerte);
+    cursor: pointer; text-align: left; width: 100%; color: inherit; font: inherit;
+    transition: border-color var(--movimiento), background-color var(--movimiento), transform var(--movimiento);
+}
+.tv-fila-lista:hover { background: var(--superficie-2); border-color: var(--linea-intensa); transform: translateY(-1px); }
+.tv-fila-lista .mini { position: relative; height: 58px; border-radius: 10px; overflow: hidden; background: linear-gradient(180deg, var(--escena-1), var(--escena-3)); display: grid; place-items: center; }
+.tv-fila-lista .mini img { position: absolute; left: 50%; bottom: 5px; width: 90px; transform: translateX(-50%); }
+.tv-fila-lista .t { font-weight: 600; font-size: var(--t-s); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-fila-lista .s { font-size: var(--t-xs); color: var(--tinta-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-fila-lista .lado { display: grid; justify-items: end; gap: 4px; }
+.tv-fila-lista .lado .hace { font-size: 11.5px; color: var(--tinta-3); }
+
+.vacio-taller { text-align: center; padding: 28px 16px; border: 1px dashed var(--linea-intensa); border-radius: 16px; }
+.vacio-taller .simbolo { width: 52px; height: 52px; margin: 0 auto 12px; border-radius: 14px; display: grid; place-items: center; background: var(--superficie-3); color: var(--tinta-3); }
+.vacio-taller b { display: block; font-size: var(--t-m); margin-bottom: 4px; }
+.vacio-taller p { margin: 0 0 14px; color: var(--tinta-2); font-size: var(--t-s); }
+.pista-taller { text-align: center; font-size: var(--t-xs); color: var(--tinta-3); }
+
+/* En escritorio las tarjetas grandes del resto solo existen para el carrusel del celular */
+.solo-carrusel { display: none; }
+
+/* Elementos que ya genera script.js dentro de la tarjeta destacada */
+.tv .trabajos-tarjeta, .tv .marca-garantia, .tv .marca-cotizacion { margin: 0; }
+
+/* Panel de finanzas debajo de la escena */
+.seccion-contabilidad { margin-top: var(--e-7); }
+
+/* ---------------- Celular y tableta ---------------- */
+@media (max-width: 1100px) {
+    .escena { grid-template-columns: minmax(0, 1fr); }
+    .saludo { order: -2; }
+    .taller-col { order: -1; }
+    .geor { height: auto; min-height: 0; }
+    .conversacion { overflow: visible; max-height: none; }
+    .compositor { position: sticky; bottom: 0; z-index: 5; }
+    /* Vehículos como carrusel horizontal */
+    .carril-taller { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -12px; padding: 0 12px 6px; }
+    .carril-taller > * { flex: 0 0 min(84%, 380px); scroll-snap-align: start; min-width: 0; }
+    .carril-taller .lista-taller { display: none; }
+    .solo-carrusel { display: block !important; }
+    /* En el carrusel se conservan todas las acciones; el botón de cierre no se empuja a la derecha */
+    .carril-taller .tv-acciones .btn-chico { margin-left: 0 !important; }
+    .pista-taller { display: none; }
+}
+@media (max-width: 959px) {
+    .compositor { bottom: calc(66px + env(safe-area-inset-bottom)); margin: 8px 8px 10px; }
+}
+@media (max-width: 700px) {
+    .saludo { flex-direction: column; align-items: stretch; gap: 14px; }
+    .saludo h1 { font-size: 1.5625rem; }
+    .saludo h1 .nombre-taller { display: block; }
+    .cifra { min-width: 0; flex: 1; padding: 9px 12px; }
+    .cifra dd { font-size: 1.1875rem; }
+    .geor-cabecera { padding: 14px 16px; }
+    .estado-geor .largo, .geor-cabecera .acciones .texto-boton { display: none; }
+    .conversacion { padding: 18px 12px 8px; }
+    .msg-usuario { max-width: 88%; }
+    .msg-geor { max-width: 100%; }
+    .compositor-pie .sugerencia:nth-of-type(n+2) { display: none; }
+}
+
+/* ------------------------------------------------------------------
+   Modal de aviso (centrado, con botón OK)
+   ------------------------------------------------------------------ */
+.modal-overlay { background: rgba(4, 3, 10, 0.66); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.modal-caja {
+    background: var(--superficie-1); border: 1px solid var(--linea-fuerte); border-radius: 18px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); backdrop-filter: none; -webkit-backdrop-filter: none;
+    font-family: var(--fuente-ui); padding: var(--e-6) var(--e-5) var(--e-5);
+}
+html[data-theme="dark"] .modal-caja, html[data-theme="light"] .modal-caja { background-color: var(--superficie-1); }
+.modal-icono { width: 48px; height: 48px; font-size: 24px; }
+.modal-icono.error { background: var(--peligro-fondo); color: var(--peligro); }
+.modal-icono.cargando::after { border-color: var(--linea-fuerte); border-top-color: var(--marca-fuerte); }
+.modal-titulo { font-size: var(--t-xl); font-weight: 650; }
+.modal-mensaje { color: var(--tinta-2); font-size: var(--t-m); }
+.modal-detalles { background: var(--superficie-2); border-color: var(--linea); }
+.modal-btn-ok:focus-visible { outline: none; box-shadow: var(--foco); }
+
 /* ==============================================================================
+   VISTAS (estilos anteriores, pendientes de rediseño por módulo)
+   ============================================================================== */
    PANEL DE VEHÍCULOS (GRID RESPONSIVE Y FILTROS COMPLEMENTARIOS)
    ============================================================================== */
 .panel-pendientes {
@@ -420,12 +838,6 @@ html[data-theme="dark"] .logo-tema-oscuro { display: inline-block; }
     font-weight: 600;
     transition: all 0.3s ease;
 }
-.btn-filtro.activo {
-    background: linear-gradient(135deg, #00C9FF, #92FE9D);
-    color: #090820; 
-    box-shadow: 0 4px 15px rgba(0, 201, 255, 0.4);
-    transform: translateY(-1px);
-}
 
 .grid-vehiculos {
     display: grid;
@@ -458,21 +870,6 @@ html[data-theme="dark"] .logo-tema-oscuro { display: inline-block; }
     margin-bottom: 6px;
 }
 
-.placa-badge {
-    font-family: var(--fuente-datos);
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    background: var(--gradiente-marca);
-    color: #fff;
-    padding: 3px 10px;
-    border-radius: 6px;
-    font-size: 12.5px;
-    box-shadow: 0 2px 8px var(--sombra-marca);
-}
-
-.badge-estado { font-size: 11.5px; padding: 4px 10px; border-radius: 6px; font-weight: 700; letter-spacing: 0.02em; }
-.estado-pendiente { background: var(--bg-pendiente); color: var(--text-pendiente); }
-.estado-terminado { background: var(--bg-terminado); color: var(--text-terminado); }
 
 .info-taller-item { font-size: 12.5px; color: var(--texto-tenue); margin-top: 3px; }
 .info-cobro { color: var(--text-cobro); font-size: 13.5px; margin-top: 8px; font-weight: 600; }
@@ -506,9 +903,7 @@ html[data-theme="dark"] .logo-tema-oscuro { display: inline-block; }
    RESPONSIVE
    ============================================================================== */
 @media (max-width: 600px) {
-    .contenedor { padding: 40px 16px 60px; }
     .grupo-botones-reportes { flex-direction: column; }
-    .theme-toggle span.etiqueta { display: none; }
 }
 .badge-orden-esquina {
     font-family: var(--fuente-datos);
@@ -1184,3 +1579,1598 @@ html[data-theme="dark"] .ficha-dueno a { color: #b9a4ff; }
 .od-trabajo { color: var(--texto); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .od-pie { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
 .od-pie b { font-variant-numeric: tabular-nums; }
+
+/* ==============================================================================
+   PUENTE: ajusta al sistema "Placa" las vistas que aún no se rediseñan.
+   Cada módulo siguiente reemplaza su sección de arriba y borra su parte aquí.
+   ============================================================================== */
+.glass-container, .panel-pendientes, .panel-caja, .tarjeta-vehiculo-pendiente {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--superficie-1);
+    border: 1px solid var(--linea);
+    box-shadow: var(--sombra-1);
+}
+.panel-caja[style*="border-left"] { border-left: 1px solid var(--linea) !important; }
+
+/* Control segmentado (filtros) */
+.grupo-filtros { background: var(--superficie-2); border: 1px solid var(--linea); border-radius: var(--radio-m); padding: 3px; gap: 2px; }
+.btn-filtro {
+    min-height: 36px; padding: 0 var(--e-4); border-radius: 7px; border: none;
+    background: transparent; color: var(--tinta-2); font-family: var(--fuente-ui);
+    font-size: var(--t-s); font-weight: 600; cursor: pointer;
+    transition: background-color var(--movimiento), color var(--movimiento);
+}
+.btn-filtro:hover { color: var(--tinta); }
+.btn-filtro.activo {
+    background: var(--superficie-1); color: var(--tinta);
+    box-shadow: var(--sombra-1); transform: none;
+}
+/* Botones de acción que usan .btn-filtro.activo fuera de un grupo de filtros */
+:not(.grupo-filtros) > .btn-filtro.activo { background: var(--marca); color: #fff; min-height: 40px; }
+:not(.grupo-filtros) > .btn-filtro.activo:hover { background: #7E43F2; }
+
+.tarjeta-vehiculo-pendiente:hover { transform: none; border-color: var(--linea-fuerte); box-shadow: var(--sombra-2); }
+.link-telefono { color: var(--marca-fuerte); }
+.monto-positivo { color: var(--exito); }
+.monto-negativo { color: var(--peligro); }
+.monto-neutro { color: var(--marca-fuerte); }
+.tarjeta-resumen-caja .monto { font-family: var(--fuente-cifra); font-size: var(--t-xl); }
+.badge-orden-esquina { background: var(--superficie-2); border-color: var(--linea); color: var(--tinta-2); }
+.seccion-contabilidad h2 { font-size: var(--t-xl); }
+
+/* Botón de texto (dashboard) */
+.btn-link { color: var(--marca-fuerte); }
+
+/* Plantilla de la orden (se convierte en imagen PNG): siempre tinta negra sobre blanco,
+   sin importar el tema de la app */
+#plantilla-orden, #plantilla-orden h1, #plantilla-orden h3, #plantilla-orden p, #plantilla-orden td, #plantilla-orden th { color: #111; }
+
+/* ==================================================================
+   CAJA Y FINANZAS (debajo de Geor IA)
+   Reemplaza el estilo anterior del cuadre, el ranking y la liquidación.
+   ================================================================== */
+.seccion-contabilidad { margin-top: var(--e-7); }
+.cabecera-seccion { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--e-4); flex-wrap: wrap; margin-bottom: var(--e-4); }
+.cabecera-seccion h2 { margin: 0 0 4px; font-size: var(--t-xl); }
+.cabecera-seccion p { margin: 0; color: var(--tinta-2); font-size: var(--t-s); max-width: 60ch; }
+.acciones-inventario { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Panel base de esta sección */
+.seccion-contabilidad .panel-caja, .panel-caja {
+    margin-top: 0;
+    padding: 20px 22px 22px;
+    border-radius: 18px;
+    background: var(--superficie-1);
+    border: 1px solid var(--linea-fuerte) !important;
+    box-shadow: none;
+}
+.panel-caja h3 { font-size: 1.0625rem; margin: 0; }
+.panel-caja h4 { font-size: var(--t-s); font-weight: 600; color: var(--tinta); margin: 26px 0 10px; }
+.cargando-panel { color: var(--tinta-3); text-align: center; font-size: var(--t-s); margin: 18px 0; }
+.cargando-panel.error { color: var(--aviso); }
+.caja-cargando { color: var(--tinta-3); font-size: var(--t-s); }
+
+/* Cabecera del cuadre */
+.cabecera-caja { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--e-3); margin-bottom: var(--e-4); }
+.titulo-caja-wrap { display: grid; gap: 2px; }
+.fecha-cuadre { font-size: var(--t-s); color: var(--tinta-2); }
+.fecha-cuadre::first-letter { text-transform: uppercase; }
+.estado-cuadre { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-size: var(--t-xs); color: var(--tinta-3); }
+.estado-cuadre::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--lima); }
+html[data-theme="light"] .estado-cuadre::before { background: var(--exito); }
+.estado-cuadre.estado-error { color: var(--aviso); }
+.estado-cuadre.estado-error::before { background: var(--aviso); }
+.btn-descargar-cuadre { flex-shrink: 0; }
+
+/* Resumen: una sola franja con divisiones (no cuatro tarjetas iguales) */
+.tarjetas-resumen-caja {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0; margin: 0;
+    border: 1px solid var(--linea); border-radius: 14px; background: var(--superficie-hundida);
+    overflow: hidden;
+}
+.tarjeta-resumen-caja {
+    min-width: 0; text-align: left; padding: 14px 18px;
+    background: none; border: 0; border-radius: 0;
+}
+.tarjeta-resumen-caja + .tarjeta-resumen-caja { border-left: 1px solid var(--linea); }
+.tarjeta-resumen-caja .etiqueta { font-size: var(--t-xs); color: var(--tinta-3); }
+.tarjeta-resumen-caja .monto { font-size: 1.625rem; font-weight: 680; font-stretch: 85%; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tarjeta-efectivo { border: 0; background: var(--marca-suave); }
+.tarjeta-efectivo .etiqueta { color: var(--tinta-2); }
+
+/* Detalle del día: pares dato/valor */
+.linea-detalle {
+    display: flex; flex-wrap: wrap; gap: 8px 22px;
+    margin: 14px 2px 0; padding: 0; font-size: var(--t-xs);
+}
+.linea-detalle div { display: flex; gap: 6px; align-items: baseline; }
+.linea-detalle dt { color: var(--tinta-3); }
+.linea-detalle dd { margin: 0; color: var(--tinta); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Alertas para revisar antes de cerrar caja */
+.alertas-caja {
+    margin-top: 18px; padding: 12px 16px; border-radius: 12px;
+    background: var(--aviso-fondo); border: 1px solid color-mix(in srgb, var(--aviso) 35%, transparent);
+    color: var(--tinta); font-size: var(--t-s);
+}
+.alertas-caja b { color: var(--aviso); }
+.alertas-caja ul { margin: 6px 0 0; padding-left: 18px; }
+
+/* Métodos de pago + cuadre de efectivo */
+.grid-caja { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 22px; margin: 8px 0 0; }
+@media (max-width: 760px) { .grid-caja { grid-template-columns: minmax(0, 1fr); } }
+.barra-metodos { display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 2px; margin-bottom: 10px; background: var(--linea); }
+.barra-metodos span { display: block; height: 100%; }
+.punto-metodo { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+.cuadre-efectivo { background: var(--superficie-hundida); border: 1px solid var(--linea); border-radius: 14px; padding: 4px 16px 14px; align-self: start; }
+.cuadre-efectivo h4 { margin-top: 14px; }
+.linea-cuadre { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--linea); font-size: var(--t-s); font-variant-numeric: tabular-nums; }
+.linea-cuadre.total { border-bottom: 0; padding-top: 12px; font-weight: 650; font-size: var(--t-m); }
+.nota-cuadre { margin: 8px 0 0; font-size: var(--t-xs); color: var(--tinta-3); }
+.monto-positivo { color: var(--exito); }
+.monto-negativo { color: var(--peligro); }
+.monto-neutro { color: var(--tinta); }
+
+/* Tablas de la sección */
+.tabla-scroll { margin-bottom: 0; border: 1px solid var(--linea); border-radius: 12px; }
+.tabla-caja { width: 100%; min-width: 520px; border-collapse: collapse; font-size: var(--t-s); }
+.tabla-caja.tabla-compacta { min-width: 0; }
+.grid-caja .tabla-caja.tabla-compacta { border: 1px solid var(--linea); border-radius: 12px; border-collapse: separate; border-spacing: 0; overflow: hidden; }
+.tabla-caja th { color: var(--tinta-3); font-weight: 550; font-size: var(--t-xs); text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--linea); white-space: nowrap; background: var(--superficie-hundida); }
+.tabla-caja td { padding: 9px 12px; border-bottom: 1px solid var(--linea); color: var(--tinta); vertical-align: top; }
+.tabla-caja tbody tr:last-child td { border-bottom: 0; }
+.tabla-caja tbody tr:not(.fila-total):hover td { background: color-mix(in srgb, var(--superficie-3) 55%, transparent); }
+.tabla-caja td.num, .tabla-caja th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tabla-caja td.centro { text-align: center; }
+.tabla-caja td.vacio { text-align: center; color: var(--tinta-3); padding: 18px; }
+.tabla-caja .sub { font-size: var(--t-xs); color: var(--tinta-3); font-weight: normal; }
+.tabla-caja .comision { color: var(--exito); font-weight: 650; }
+.tabla-caja .fila-total td { font-weight: 650; border-top: 1px solid var(--linea-fuerte); background: var(--superficie-hundida); }
+.tabla-caja .fila-banco td { color: var(--tinta-2); font-size: var(--t-xs); padding-top: 4px; }
+.tabla-caja .fila-banco td:first-child { padding-left: 28px; }
+.chips-responsables .chip { background: var(--superficie-2); border-color: var(--linea-fuerte); color: var(--tinta-2); }
+
+/* Ranking y liquidación lado a lado */
+.grid-finanzas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--e-5); margin-top: var(--e-5); align-items: start; }
+@media (max-width: 1100px) { .grid-finanzas { grid-template-columns: minmax(0, 1fr); } }
+.cabecera-panel { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--e-3); margin-bottom: var(--e-4); }
+.cabecera-panel p { margin: 4px 0 0; color: var(--tinta-2); font-size: var(--t-xs); max-width: 52ch; }
+.filtros-liquidacion { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: var(--e-4); }
+.filtros-liquidacion label { display: grid; gap: 4px; font-size: var(--t-xs); color: var(--tinta-2); }
+.filtros-liquidacion input { min-height: 40px; }
+.filtros-liquidacion .btn { min-height: 40px; }
+.titulo-resultado { margin: 0 0 10px !important; }
+
+/* Puestos del ranking: número en un círculo; los tres primeros con su metal */
+.puesto { display: inline-grid; place-items: center; min-width: 26px; height: 26px; border-radius: 50%; font-weight: 700; font-size: var(--t-xs); color: var(--tinta-2); background: var(--superficie-2); border: 1px solid var(--linea-fuerte); }
+.puesto.puesto-top { color: #1A1236; border: 0; }
+.puesto.puesto-1 { background: #E6C15A; }
+.puesto.puesto-2 { background: #C4C8D0; }
+.puesto.puesto-3 { background: #D29A62; }
+
+@media (max-width: 700px) {
+    .tarjetas-resumen-caja { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tarjeta-resumen-caja:nth-child(3) { border-left: 0; }
+    .tarjeta-resumen-caja:nth-child(n+3) { border-top: 1px solid var(--linea); }
+    .tarjeta-resumen-caja .monto { font-size: 1.3rem; }
+    .seccion-contabilidad .panel-caja { padding: 16px 14px 18px; }
+    .acciones-inventario { width: 100%; }
+}
+/* El botón de descarga del cuadre ahora es un botón chico con texto (antes, un círculo verde) */
+.btn-descargar-cuadre, .btn-descargar-cuadre:hover {
+    width: auto; height: 32px; border-radius: 8px; background: transparent;
+    color: var(--tinta-2); box-shadow: none; transform: none;
+}
+.btn-descargar-cuadre:hover { color: var(--tinta); background: var(--superficie-3); }
+.grid-finanzas { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+@media (max-width: 1100px) { .grid-finanzas { grid-template-columns: minmax(0, 1fr); } }
+/* Placas y métodos de pago sin cortes de línea en las tablas */
+.tabla-caja td b, .tabla-caja .fila-metodo td:first-child { white-space: nowrap; }
+@media (max-width: 700px) { .tabla-caja:not(.tabla-compacta) { min-width: 640px; } }
+
+/* ==================================================================
+   CUADRE SIMPLIFICADO: a la vista solo lo diario; el detalle, a un toque
+   ================================================================== */
+.cuadre .cabecera-caja { align-items: center; }
+.acciones-cuadre { display: flex; align-items: center; gap: 12px; }
+.acciones-cuadre .estado-cuadre { margin: 0; }
+
+/* Resumen: la cifra principal grande y tres cifras de apoyo */
+.cuadre-resumen { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.6fr); gap: 0; border: 1px solid var(--linea); border-radius: 14px; overflow: hidden; }
+.cuadre-principal { display: grid; gap: 2px; padding: 18px 20px; background: var(--marca-suave); }
+.cuadre-principal .etiqueta { font-size: var(--t-xs); color: var(--tinta-2); }
+.cuadre-principal .monto { font-size: 2.25rem; font-weight: 680; font-stretch: 85%; letter-spacing: -0.02em; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--tinta); }
+.cuadre-principal .monto.monto-negativo { color: var(--peligro); }
+.cuadre-principal .explica { font-size: var(--t-xs); color: var(--tinta-3); }
+.cuadre-cifras { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; background: var(--superficie-hundida); }
+.cuadre-cifras div { padding: 18px 18px; display: grid; align-content: center; gap: 2px; }
+.cuadre-cifras div + div { border-left: 1px solid var(--linea); }
+.cuadre-cifras dt { font-size: var(--t-xs); color: var(--tinta-3); }
+.cuadre-cifras dd { margin: 0; font-size: 1.375rem; font-weight: 650; font-stretch: 88%; font-variant-numeric: tabular-nums; }
+
+/* Métodos de pago: barra y leyenda en una línea */
+.cuadre-metodos { margin-top: 16px; }
+.cuadre-metodos .barra-metodos { margin-bottom: 8px; }
+.leyenda-metodos { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: var(--t-xs); color: var(--tinta-2); }
+.leyenda-metodos b { color: var(--tinta); font-weight: 600; }
+
+/* Alertas plegables (una línea cerrada) */
+details.alertas-caja { margin-top: 14px; padding: 0; }
+details.alertas-caja summary { list-style: none; cursor: pointer; padding: 10px 14px; color: var(--aviso); font-weight: 600; font-size: var(--t-s); display: flex; align-items: center; gap: 8px; }
+details.alertas-caja summary::-webkit-details-marker { display: none; }
+details.alertas-caja summary::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--aviso); }
+details.alertas-caja summary::after { content: "Ver"; margin-left: auto; font-weight: 500; color: var(--tinta-2); }
+details.alertas-caja[open] summary::after { content: "Ocultar"; }
+details.alertas-caja ul { margin: 0; padding: 0 14px 12px 32px; color: var(--tinta); }
+
+/* Detalle del día, cerrado por defecto */
+.cuadre-detalle { margin-top: 14px; border-top: 1px solid var(--linea); }
+.cuadre-detalle > summary {
+    list-style: none; cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 2px 2px; font-size: var(--t-s); font-weight: 600; color: var(--tinta);
+}
+.cuadre-detalle > summary::-webkit-details-marker { display: none; }
+.cuadre-detalle > summary::before {
+    content: ""; width: 8px; height: 8px; border-right: 1.8px solid currentColor; border-bottom: 1.8px solid currentColor;
+    transform: rotate(-45deg); transition: transform var(--movimiento); margin: 0 4px 0 2px;
+}
+.cuadre-detalle[open] > summary::before { transform: rotate(45deg); }
+.cuadre-detalle .resumen-detalle { margin-left: auto; font-weight: 500; color: var(--tinta-3); font-size: var(--t-xs); }
+.cuadre-detalle > summary:hover { color: var(--marca-fuerte); }
+
+/* Pestañas (detalle del cuadre y panel de técnicos) */
+.pestanas { display: flex; gap: 4px; margin: 14px 0 12px; border-bottom: 1px solid var(--linea); overflow-x: auto; }
+.pestana {
+    position: relative; height: 38px; padding: 0 12px; border: 0; background: none; cursor: pointer;
+    font-family: var(--fuente-ui); font-size: var(--t-s); font-weight: 550; color: var(--tinta-3); white-space: nowrap;
+}
+.pestana:hover { color: var(--tinta); }
+.pestana[aria-selected="true"] { color: var(--tinta); }
+.pestana[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--marca-fuerte); }
+.pestana .n { font-size: var(--t-xs); color: var(--tinta-3); margin-left: 2px; }
+.panel-pestana[hidden] { display: none; }
+.panel-pestana .linea-detalle { flex-direction: column; gap: 8px; margin: 0; padding: 4px 2px; }
+.panel-pestana .linea-detalle div { justify-content: space-between; border-bottom: 1px solid var(--linea); padding-bottom: 8px; }
+
+/* Panel de técnicos (ranking y liquidación) */
+.grid-finanzas { display: block; }
+.panel-finanzas { margin-top: var(--e-5) !important; }
+.panel-finanzas .cabecera-panel { margin-bottom: 0; }
+.fila-accion { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; font-size: var(--t-xs); color: var(--tinta-3); }
+.ver-todos { margin-top: 10px; }
+
+@media (max-width: 760px) {
+    .cuadre-resumen { grid-template-columns: minmax(0, 1fr); }
+    .cuadre-cifras div { padding: 12px 14px; }
+    .cuadre-cifras dd { font-size: 1.125rem; }
+    .acciones-cuadre .estado-cuadre { display: none; }
+    .cuadre-detalle .resumen-detalle { display: none; }
+}
+
+/* ==================================================================
+   CUADRE CON MÁS PRESENCIA: banda de marca, tendencia, dona y ranking con barras
+   ================================================================== */
+.cuadre { padding: 0 !important; overflow: hidden; }
+.cuadre .cabecera-caja { padding: 18px 22px 0; margin-bottom: 14px; }
+
+/* Banda principal: morado profundo con una luz suave, cifra grande y tendencia */
+.cuadre-banda {
+    position: relative; overflow: hidden;
+    margin: 0 14px; border-radius: 16px;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 24px; align-items: end;
+    padding: 22px 24px 18px;
+    background:
+        radial-gradient(90% 140% at 0% 0%, rgba(139, 92, 246, 0.55) 0%, transparent 55%),
+        radial-gradient(70% 120% at 100% 100%, rgba(198, 255, 61, 0.10) 0%, transparent 60%),
+        linear-gradient(135deg, #2A1361 0%, #1A0E3D 55%, #120A2A 100%);
+    border: 1px solid rgba(185, 162, 255, 0.22);
+    color: #fff;
+}
+.cuadre-banda > * { position: relative; }
+.banda-cifra { display: grid; gap: 4px; }
+.banda-cifra .etiqueta { font-size: var(--t-s); color: #D9CCFF; }
+.banda-cifra .monto { font-size: clamp(2.4rem, 4.2vw, 3.25rem); font-weight: 700; font-stretch: 82%; letter-spacing: -0.03em; line-height: 1; color: #fff; font-variant-numeric: tabular-nums; }
+.banda-cifra .monto.monto-negativo { color: #FFB1B6; }
+.banda-cifra .explica { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: var(--t-xs); color: #CBBEF2; margin-top: 4px; }
+.pastilla { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; background: rgba(198, 255, 61, 0.16); color: var(--lima); font-weight: 600; font-size: 11.5px; }
+
+.banda-tendencia { display: grid; gap: 6px; }
+.banda-tendencia[hidden] { display: none; }
+.tendencia-cab { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--t-xs); color: #CBBEF2; }
+.tendencia-cab b { color: #fff; font-weight: 650; font-variant-numeric: tabular-nums; }
+.banda-tendencia svg { width: 100%; height: 74px; display: block; overflow: visible; }
+.tendencia-dias { display: flex; justify-content: space-between; font-size: 11px; color: #9F92C9; }
+.tendencia-dias .hoy { color: var(--lima); font-weight: 600; }
+
+/* Cuerpo: tres cifras con ícono + dona de métodos */
+.cuadre-cuerpo { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; padding: 14px 14px 0; }
+.cuadre .cuadre-cifras { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; background: none; }
+.cifra-caja {
+    position: relative; display: grid; align-content: start; gap: 2px;
+    padding: 14px 16px; border-radius: 14px;
+    background: var(--superficie-2); border: 1px solid var(--linea);
+}
+.cuadre .cuadre-cifras .cifra-caja + .cifra-caja { border-left: 1px solid var(--linea); }
+.icono-cifra { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; margin-bottom: 8px; }
+.icono-cifra .icono { width: 16px; height: 16px; stroke-width: 2.2; }
+.cifra-caja.ingreso .icono-cifra { background: rgba(52, 199, 123, 0.16); color: #4FE0A0; }
+.cifra-caja.egreso .icono-cifra { background: rgba(255, 122, 133, 0.16); color: #FF8F99; }
+.cifra-caja.neto .icono-cifra { background: rgba(139, 92, 246, 0.2); color: #C2AEFF; }
+.cifra-caja dt { font-size: var(--t-xs); color: var(--tinta-3); }
+.cifra-caja dd { margin: 0; font-size: 1.5rem; font-weight: 680; font-stretch: 85%; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; color: var(--tinta); }
+.cifra-caja.neto dd.monto-positivo { color: var(--tinta); }
+.delta { font-size: 11.5px; font-weight: 600; margin-top: 2px; }
+.delta:empty { display: none; }
+.delta.sube { color: var(--exito); }
+.delta.baja { color: var(--peligro); }
+
+/* Dona de métodos de pago con leyenda */
+.cuadre .cuadre-metodos {
+    margin: 0; display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 16px; align-items: center;
+    padding: 12px 16px; border-radius: 14px; background: var(--superficie-2); border: 1px solid var(--linea);
+}
+.dona { position: relative; width: 112px; height: 112px; }
+.dona svg { width: 100%; height: 100%; display: block; }
+.dona-centro { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.dona-centro span { font-size: 10.5px; color: var(--tinta-3); }
+.dona-centro b { font-size: 0.875rem; font-weight: 680; font-stretch: 85%; font-variant-numeric: tabular-nums; }
+.cuadre .leyenda-metodos { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: var(--t-s); }
+.cuadre .leyenda-metodos li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 4px 10px; }
+.cuadre .leyenda-metodos .punto-metodo { margin: 0; width: 9px; height: 9px; border-radius: 3px; }
+.cuadre .leyenda-metodos .nombre { color: var(--tinta-2); }
+.cuadre .leyenda-metodos .valor { font-weight: 600; font-variant-numeric: tabular-nums; }
+.cuadre .leyenda-metodos .pct { color: var(--tinta-3); font-size: var(--t-xs); min-width: 34px; text-align: right; }
+
+.cuadre details.alertas-caja { margin: 14px 14px 0; }
+.cuadre .cuadre-detalle { margin: 14px 14px 0; padding-bottom: 14px; }
+
+/* Ranking como lista con barras de comisión */
+.lista-ranking { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.fila-tecnico {
+    display: grid; grid-template-columns: 28px 38px minmax(0, 1fr); align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: 14px; background: var(--superficie-2); border: 1px solid var(--linea);
+    transition: border-color var(--movimiento), transform var(--movimiento);
+}
+.fila-tecnico:hover { border-color: var(--linea-intensa); transform: translateY(-1px); }
+.fila-tecnico[hidden] { display: none; }
+.avatar-tecnico {
+    width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center;
+    font-weight: 700; font-size: var(--t-s); color: #fff;
+    background: linear-gradient(150deg, color-mix(in srgb, var(--tono) 85%, #fff), color-mix(in srgb, var(--tono) 70%, #000));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.2);
+}
+.datos-tecnico { min-width: 0; display: grid; gap: 6px; }
+.fila-nombre { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.fila-nombre b { font-weight: 600; }
+.fila-nombre .comision { font-weight: 680; font-stretch: 88%; font-size: 1.0625rem; color: var(--exito); font-variant-numeric: tabular-nums; }
+.barra-tecnico { height: 6px; border-radius: 3px; background: var(--linea); overflow: hidden; }
+.barra-tecnico span { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #7030EF, #B9A2FF); }
+.fila-tecnico:first-child .barra-tecnico span { background: linear-gradient(90deg, #7030EF, var(--lima)); }
+.fila-meta { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: var(--t-xs); color: var(--tinta-3); }
+.fila-meta span + span { padding-left: 14px; border-left: 1px solid var(--linea-fuerte); }
+
+/* Tema claro: la banda conserva su morado; superficies claras en el resto */
+html[data-theme="light"] .cuadre-banda { box-shadow: 0 10px 30px rgba(42, 19, 97, 0.18); }
+
+@media (max-width: 1100px) {
+    .cuadre-cuerpo { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+    .cuadre-banda { grid-template-columns: minmax(0, 1fr); gap: 18px; margin: 0 10px; padding: 18px; }
+    .cuadre .cabecera-caja { padding: 16px 16px 0; }
+    .cuadre-cuerpo { padding: 10px 10px 0; }
+    .cuadre .cuadre-cifras { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .cifra-caja { padding: 12px; }
+    .cifra-caja dd { font-size: 1.125rem; }
+    .icono-cifra { width: 26px; height: 26px; margin-bottom: 6px; }
+    .cuadre .cuadre-metodos { grid-template-columns: 92px minmax(0, 1fr); padding: 12px; }
+    .dona { width: 92px; height: 92px; }
+    .fila-meta span:nth-child(3) { display: none; }
+}
+.cuadre .cuadre-cifras .cifra-caja { align-content: start; padding: 14px 16px; }
+@media (max-width: 760px) { .cuadre .cuadre-cifras .cifra-caja { padding: 12px; } }
+
+/* ==============================================================================
+   TEMA HOLOGRÁFICO NOCTURNO (por defecto)
+   Noche azul-índigo con luces violeta y estrellas, vidrio oscuro translúcido y
+   un degradado holográfico (menta, lima, amarillo, rosa, violeta) reservado para
+   lo que debe destacar: la cifra de caja, la sección actual, la acción principal
+   y el avance de cada vehículo. El lima del degradado es el de la gorra del logo.
+   ============================================================================== */
+:root,
+html[data-theme="dark"] {
+    --fondo: #0A0D26;
+    --superficie-1: rgba(255, 255, 255, 0.055);
+    --superficie-2: rgba(255, 255, 255, 0.075);
+    --superficie-3: rgba(255, 255, 255, 0.11);
+    --superficie-hundida: rgba(8, 10, 32, 0.45);
+    --linea: rgba(255, 255, 255, 0.09);
+    --linea-fuerte: rgba(255, 255, 255, 0.13);
+    --linea-intensa: rgba(255, 255, 255, 0.22);
+    --tinta: #F4F2FF;
+    --tinta-2: #C9C5E8;
+    --tinta-3: #9C98C2;
+    --marca-fuerte: #C7B8FF;
+    --exito: #7CF2B8;   --exito-fondo: rgba(124, 242, 184, 0.13);
+    --aviso: #F6D365;   --aviso-fondo: rgba(246, 211, 101, 0.12);
+    --peligro: #FF8FB1; --peligro-fondo: rgba(255, 143, 177, 0.13);
+    --info: #C7B8FF;    --info-fondo: rgba(199, 184, 255, 0.13);
+    --escena-arriba: rgba(165, 139, 255, 0.35);
+    --escena-1: rgba(255, 255, 255, 0.06);
+    --escena-2: rgba(255, 255, 255, 0.035);
+    --escena-3: rgba(255, 255, 255, 0.02);
+    --holo: linear-gradient(120deg, #9BF3C9 0%, #D6F56A 38%, #F7E58A 55%, #F3A6E3 78%, #A58BFF 100%);
+    --sobre-holo: #10122E;
+    --vidrio-blur: blur(18px) saturate(140%);
+    --sombra-vidrio: 0 16px 40px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+/* Fondo: degradado nocturno con luces en las esquinas y estrellas finas */
+html[data-theme="dark"] body {
+    background:
+        radial-gradient(1.2px 1.2px at 12% 18%, rgba(255,255,255,.8), transparent),
+        radial-gradient(1px 1px at 78% 12%, rgba(255,255,255,.7), transparent),
+        radial-gradient(1.4px 1.4px at 64% 72%, rgba(255,255,255,.7), transparent),
+        radial-gradient(1px 1px at 28% 84%, rgba(255,255,255,.6), transparent),
+        radial-gradient(1.2px 1.2px at 92% 46%, rgba(255,255,255,.7), transparent),
+        radial-gradient(1px 1px at 44% 38%, rgba(255,255,255,.5), transparent),
+        radial-gradient(120% 90% at 0% 0%, #3A1D7A 0%, transparent 45%),
+        radial-gradient(90% 80% at 100% 100%, #1D2F7A 0%, transparent 50%),
+        linear-gradient(160deg, #0A0D26, #121842 60%, #1A1450);
+    background-attachment: fixed;
+}
+
+/* Vidrio en los paneles grandes (el contenido de fondo pasa difuminado) */
+html[data-theme="dark"] :is(.geor, .tv, .tv-fila-lista, .panel-caja, .cifras, .vacio-taller, .modal-caja, .compositor) {
+    backdrop-filter: var(--vidrio-blur);
+    -webkit-backdrop-filter: var(--vidrio-blur);
+}
+html[data-theme="dark"] :is(.geor, .tv, .panel-caja, .cifras) { box-shadow: var(--sombra-vidrio); }
+html[data-theme="dark"] .modal-caja { background: rgba(20, 22, 60, 0.85) !important; }
+
+/* Formas más suaves: contenedores muy redondeados, controles en píldora */
+.geor, .panel-caja, .seccion-contabilidad .panel-caja { border-radius: 28px; }
+.tv { border-radius: 26px; }
+.tv-fila-lista { border-radius: 20px; }
+.cifras { border-radius: 22px; }
+.btn, .btn-enviar, .btn-login, .btn-agregar-servicio, .modal-btn-ok, .btn-inventario, .modal-btn-secundario,
+.btn-chico, .sugerencia, .segmento, .segmento button, .buscador-placa input, .nav-enlace, .pestana { border-radius: 9999px; }
+.compositor { border-radius: 26px; }
+
+/* ---------- Degradado holográfico: solo en lo que debe destacar ---------- */
+html[data-theme="dark"] :is(.btn-primario, .btn-enviar, .btn-login, .btn-agregar-servicio, .modal-btn-ok) {
+    background: var(--holo); color: var(--sobre-holo);
+    box-shadow: 0 8px 22px rgba(214, 245, 106, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+html[data-theme="dark"] :is(.btn-primario, .btn-enviar, .btn-login, .btn-agregar-servicio, .modal-btn-ok):hover {
+    background: var(--holo); filter: brightness(1.06) saturate(1.05);
+}
+html[data-theme="dark"] .btn-chico.principal { background: var(--holo); color: var(--sobre-holo); border-color: transparent; font-weight: 650; }
+html[data-theme="dark"] .btn-chico.principal:hover { filter: brightness(1.06); }
+html[data-theme="dark"] .segmento button[aria-pressed="true"] { background: var(--holo); color: var(--sobre-holo); box-shadow: none; }
+html[data-theme="dark"] .recorrido span.si,
+html[data-theme="dark"] .recorrido.entregado span.si { background: var(--holo); }
+html[data-theme="dark"] .pestana[aria-selected="true"]::after { background: var(--holo); height: 3px; }
+
+/* Navegación: la sección actual es una píldora holográfica */
+html[data-theme="dark"] .nav-app { background: rgba(8, 10, 32, 0.35); backdrop-filter: var(--vidrio-blur); -webkit-backdrop-filter: var(--vidrio-blur); }
+html[data-theme="dark"] .nav-enlace[aria-current="page"] { background: var(--holo); color: var(--sobre-holo); box-shadow: 0 8px 20px rgba(214, 245, 106, 0.18); font-weight: 650; }
+html[data-theme="dark"] .nav-enlace[aria-current="page"] .icono { stroke: var(--sobre-holo); }
+html[data-theme="dark"] .barra-app { background: rgba(10, 13, 38, 0.55); }
+html[data-theme="dark"] .inicial-taller { background: var(--holo); color: var(--sobre-holo); border: 0; border-radius: 50%; }
+
+/* Barra inferior del celular: píldora flotante de vidrio */
+@media (max-width: 959px) {
+    html[data-theme="dark"] .nav-inferior {
+        left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
+        border-radius: 9999px; border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(14, 18, 54, 0.72); padding: 6px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    html[data-theme="dark"] .nav-inferior button { border-radius: 9999px; min-height: 50px; }
+    html[data-theme="dark"] .nav-inferior button[aria-current="page"] { background: var(--holo); color: var(--sobre-holo); }
+    html[data-theme="dark"] .nav-inferior button[aria-current="page"] .icono { stroke: var(--sobre-holo); }
+    html[data-theme="dark"] .compositor { bottom: calc(86px + env(safe-area-inset-bottom)); }
+    html[data-theme="dark"] .contenedor { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
+}
+
+/* ---------- Geor IA ---------- */
+html[data-theme="dark"] .marca-geor {
+    background: #7030EF;
+    box-shadow: 0 0 0 3px #0E1236, 0 0 0 5px #D6F56A, 0 12px 30px rgba(112, 48, 239, 0.55);
+}
+html[data-theme="dark"] .marca-geor.pensando { box-shadow: 0 0 0 3px #0E1236, 0 0 0 5px #F3A6E3, 0 12px 30px rgba(243, 166, 227, 0.45); }
+html[data-theme="dark"] .mini-geor { background: #7030EF; }
+html[data-theme="dark"] .geor::before { background: radial-gradient(closest-side, rgba(155, 91, 255, 0.35), transparent 70%); }
+html[data-theme="dark"] .msg-usuario {
+    background: linear-gradient(135deg, #6B3CF2, #9A6BFF); border: 0; color: #fff;
+    border-radius: 22px 22px 6px 22px; box-shadow: 0 10px 26px rgba(112, 48, 239, 0.35);
+}
+html[data-theme="dark"] .msg-usuario .hora { color: rgba(255, 255, 255, 0.72); }
+html[data-theme="dark"] .msg-geor .cuerpo {
+    background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 22px 22px 22px 6px; padding: 12px 16px; color: var(--tinta-2);
+}
+html[data-theme="dark"] .msg-geor .cuerpo strong, html[data-theme="dark"] .msg-geor .cuerpo b { color: #fff; }
+html[data-theme="dark"] .msg-geor.tipo-error .cuerpo { background: var(--peligro-fondo); border-color: rgba(255, 143, 177, 0.3); }
+html[data-theme="dark"] .resultado { background: var(--exito-fondo); padding: 3px 10px; border-radius: 9999px; }
+html[data-theme="dark"] .dia-conversacion { background: rgba(255, 255, 255, 0.07); padding: 3px 12px; border-radius: 9999px; }
+html[data-theme="dark"] .compositor { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); }
+html[data-theme="dark"] .compositor:focus-within { border-color: rgba(214, 245, 106, 0.55); box-shadow: 0 0 0 4px rgba(214, 245, 106, 0.12); }
+html[data-theme="dark"] .sugerencia { background: rgba(255, 255, 255, 0.05); }
+html[data-theme="dark"] .estado-geor i { background: #7CF2B8; box-shadow: 0 0 0 3px rgba(124, 242, 184, 0.16); }
+
+/* ---------- Cifras del saludo ---------- */
+html[data-theme="dark"] .cifras { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.11); }
+html[data-theme="dark"] .cifra dd { font-weight: 750; }
+
+/* ---------- Tarjeta del vehículo ---------- */
+html[data-theme="dark"] .tv-datos { background: rgba(8, 10, 32, 0.35); }
+html[data-theme="dark"] .tv-escena .badge-estado { background: rgba(10, 13, 38, 0.7); }
+html[data-theme="dark"] .placa::before, html[data-theme="dark"] .placa-badge::before { background: #7030EF; }
+
+/* ---------- Cuadre: la banda principal es la tarjeta holográfica ---------- */
+html[data-theme="dark"] .cuadre-banda {
+    background: var(--holo); color: var(--sobre-holo);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 20px 50px rgba(165, 139, 255, 0.22), inset 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+html[data-theme="dark"] .cuadre-banda::after {
+    content: ""; position: absolute; width: 260px; height: 260px; right: -70px; top: -120px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.22); pointer-events: none;
+}
+html[data-theme="dark"] .banda-cifra .etiqueta,
+html[data-theme="dark"] .banda-cifra .explica,
+html[data-theme="dark"] .tendencia-cab { color: rgba(16, 18, 46, 0.72); }
+html[data-theme="dark"] .banda-cifra .monto,
+html[data-theme="dark"] .tendencia-cab b { color: var(--sobre-holo); }
+html[data-theme="dark"] .banda-cifra .monto.monto-negativo { color: #B0124A; }
+html[data-theme="dark"] .pastilla { background: rgba(16, 18, 46, 0.12); color: var(--sobre-holo); }
+html[data-theme="dark"] .tendencia-dias { color: rgba(16, 18, 46, 0.6); }
+html[data-theme="dark"] .tendencia-dias .hoy { color: var(--sobre-holo); }
+/* Sobre el holograma, la línea de tendencia va en tinta oscura */
+html[data-theme="dark"] .banda-tendencia svg path:nth-of-type(2) { stroke: rgba(16, 18, 46, 0.75); }
+html[data-theme="dark"] .banda-tendencia svg path:nth-of-type(1) { fill: rgba(16, 18, 46, 0.08); }
+html[data-theme="dark"] .banda-tendencia svg circle { fill: var(--sobre-holo); }
+html[data-theme="dark"] .cifra-caja,
+html[data-theme="dark"] .cuadre .cuadre-metodos,
+html[data-theme="dark"] .fila-tecnico { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); border-radius: 20px; }
+html[data-theme="dark"] .cifra-caja dd { color: #fff; font-weight: 750; }
+html[data-theme="dark"] .barra-tecnico span { background: linear-gradient(90deg, #A58BFF, #F3A6E3); }
+html[data-theme="dark"] .fila-tecnico:first-child .barra-tecnico span { background: var(--holo); }
+
+/* Login: el panel de marca con las luces del tema */
+html[data-theme="dark"] .login-marca { background: linear-gradient(160deg, #1A1450, #0A0D26); }
+html[data-theme="dark"] .login-formulario { background: transparent; }
+html[data-theme="dark"] .demo-ficha .demo-monto { background: var(--holo); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* Plus Jakarta no tiene ancho condensado: la placa gana aire a los lados */
+.placa, .placa-badge { letter-spacing: 0.02em; padding-left: 0.4em; padding-right: 0.4em; font-weight: 800; }
+.placa::before, .placa-badge::before { margin-left: -0.4em; margin-right: -0.4em; }
+.tv-fila-lista .mini .placa.chica { font-size: 0.72rem; }
+
+/* ==================================================================
+   DASHBOARD con el tema holográfico
+   ================================================================== */
+html[data-theme="dark"] {
+    --serie-ingresos: #9BF3C9;      /* menta */
+    --serie-egresos: #F3A6E3;       /* rosa */
+    --serie-anterior: #A58BFF;      /* violeta, punteada */
+    --dash-rejilla: rgba(255, 255, 255, 0.07);
+    --dash-superficie: #121842;
+    --dash-tooltip: rgba(18, 24, 66, 0.95);
+    --estado-bien: #7CF2B8;
+    --estado-aviso: #F6D365;
+    --estado-serio: #FFB38A;
+    --estado-critico: #FF8FB1;
+    --estado-info: #C7B8FF;
+}
+.dash { padding: 0; }
+.dash-cabecera { align-items: flex-end; margin-bottom: 4px; }
+.dash-cabecera h1 { margin: 0; font-size: 1.875rem; }
+.dash-sub { color: var(--tinta); font-weight: 600; }
+.dash-sub-tenue { color: var(--tinta-3); font-weight: 500; margin-left: 6px; }
+
+/* Filtro de período: control segmentado en píldora */
+.dash-filtros { gap: 4px; padding: 4px; border-radius: 9999px; background: var(--superficie-1); border: 1px solid var(--linea-fuerte); }
+.dash-chip { height: 34px; padding: 0 14px; border-radius: 9999px; border: 0; background: transparent; color: var(--tinta-2); font: 600 var(--t-xs) var(--fuente-ui); cursor: pointer; white-space: nowrap; }
+.dash-chip:hover { color: var(--tinta); background: var(--superficie-2); border: 0; }
+.dash-chip.activo { background: var(--marca); color: #fff; border: 0; }
+html[data-theme="dark"] .dash-chip.activo { background: var(--holo); color: var(--sobre-holo); }
+.dash-rango-propio { padding: 0 6px; }
+.dash-rango-propio input { min-height: 32px; border-radius: 9999px; }
+/* Botones .dash-chip usados fuera del filtro (fichas, cotizaciones) */
+:not(.dash-filtros) > .dash-chip { border: 1px solid var(--linea-fuerte); background: transparent; }
+
+/* Indicadores: el primero (Facturado) es la tarjeta holográfica */
+.dash-kpis { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 22px; }
+.dash-kpi { position: relative; overflow: hidden; border-radius: 22px; padding: 18px 20px; background: var(--superficie-1); border: 1px solid var(--linea-fuerte); }
+html[data-theme="dark"] .dash-kpi { backdrop-filter: var(--vidrio-blur); -webkit-backdrop-filter: var(--vidrio-blur); box-shadow: var(--sombra-vidrio); }
+.dash-kpi-etiqueta { font-size: var(--t-xs); color: var(--tinta-3); font-weight: 550; }
+.dash-kpi-valor { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.02em; color: var(--tinta); margin: 6px 0 8px; }
+html[data-theme="dark"] :is(#dash-kpis, .ficha-kpis) > .dash-kpi:first-child {
+    background: var(--holo); border-color: rgba(255, 255, 255, 0.5);
+    box-shadow: 0 20px 50px rgba(165, 139, 255, 0.22), inset 0 1px 1px rgba(255, 255, 255, 0.6);
+}
+html[data-theme="dark"] :is(#dash-kpis, .ficha-kpis) > .dash-kpi:first-child::after {
+    content: ""; position: absolute; width: 180px; height: 180px; right: -60px; top: -80px; border-radius: 50%; background: rgba(255, 255, 255, 0.22);
+}
+html[data-theme="dark"] :is(#dash-kpis, .ficha-kpis) > .dash-kpi:first-child :is(.dash-kpi-etiqueta, .dash-kpi-extra, .dash-delta, .dash-delta-texto, .dash-ayuda) { color: rgba(16, 18, 46, 0.72); }
+html[data-theme="dark"] :is(#dash-kpis, .ficha-kpis) > .dash-kpi:first-child :is(.dash-kpi-valor, .dash-delta-texto b) { color: var(--sobre-holo); }
+html[data-theme="dark"] :is(#dash-kpis, .ficha-kpis) > .dash-kpi:first-child .dash-delta-flecha { background: rgba(16, 18, 46, 0.12); color: var(--sobre-holo); }
+
+/* Paneles */
+.dash-grid { gap: 18px; margin-top: 18px; }
+.dash-grid .dash-panel { margin: 0 !important; padding: 22px 24px; border-radius: 28px; }
+.dash-panel h3 { margin: 0; font-size: 1.0625rem; }
+.dash-panel-cabecera { margin-bottom: 14px; align-items: center; }
+.dash-leyenda { gap: 18px; margin-bottom: 12px; font-size: var(--t-xs); color: var(--tinta-2); }
+.dash-muestra { width: 22px; border-top-width: 3px; border-radius: 2px; }
+.dash-lienzo { height: 300px; }
+html[data-theme="dark"] .dash-lienzo canvas { filter: drop-shadow(0 0 10px rgba(155, 243, 201, 0.18)); }
+
+/* Servicios: barras en píldora con el degradado */
+.dash-barras { gap: 14px; }
+.dash-barra-texto { font-size: var(--t-s); }
+.dash-barra-pista { height: 10px; border-radius: 9999px; background: var(--linea); overflow: hidden; }
+.dash-barra { height: 10px; border-radius: 9999px; background: linear-gradient(90deg, var(--marca), var(--marca-fuerte)); }
+html[data-theme="dark"] .dash-barra { background: linear-gradient(90deg, #A58BFF, #F3A6E3); }
+html[data-theme="dark"] .dash-barras li:first-child .dash-barra { background: var(--holo); box-shadow: 0 0 14px rgba(214, 245, 106, 0.25); }
+.dash-barra.otros, html[data-theme="dark"] .dash-barra.otros { background: var(--linea-intensa); box-shadow: none; }
+
+/* Lo que se puede escapar: filas de vidrio con su ícono */
+.dash-fugas { gap: 8px; }
+.dash-fuga { padding: 12px 14px; border-radius: 18px; background: var(--superficie-1); border: 1px solid var(--linea); gap: 12px; }
+.dash-icono { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; margin: 0; background: color-mix(in srgb, currentColor 14%, transparent); }
+.dash-fuga-detalle { color: var(--tinta-3); }
+.dash-mini-tabla td { color: var(--tinta-2); }
+
+/* Inventario */
+.dash-inventario { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.dash-inv-bloque { padding: 12px 14px; border-radius: 18px; background: var(--superficie-1); border: 1px solid var(--linea); }
+.dash-inv-bloque .dash-fuga { padding: 0; background: none; border: 0; border-radius: 0; }
+.dash-lista { list-style: none; margin: 10px 0 0 42px; padding: 0; display: grid; gap: 6px; font-size: var(--t-xs); }
+.dash-lista li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; color: var(--tinta-2); }
+.dash-lista li .sub { color: var(--tinta-3); white-space: nowrap; }
+
+@media (max-width: 900px) {
+    .dash-filtros { border-radius: 22px; overflow-x: auto; flex-wrap: nowrap; max-width: 100%; }
+    .dash-grid { grid-template-columns: minmax(0, 1fr); }
+    .dash-grid .dash-panel { padding: 18px 16px; }
+}
+.dash-inventario { margin-top: 14px; }
+.dash-panel > h3 + .dash-nota { margin-top: 4px; }
+@media (max-width: 700px) {
+    .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    #dash-kpis > .dash-kpi:first-child { grid-column: 1 / -1; }
+    .dash-kpi { padding: 14px; border-radius: 20px; }
+    .dash-kpi-valor { font-size: 1.3rem; }
+    .dash-delta-texto { font-size: 11.5px; }
+    .dash-cabecera h1 { font-size: 1.5625rem; }
+}
+
+/* ==========================================================================
+   VEHÍCULOS Y CLIENTES — búsqueda y ficha con el tema holográfico
+   (las reglas antiguas de .resultado-vehiculo / .ficha-* / .oh-* quedan arriba;
+   aquí se sobrescriben sin tocar la lógica de script.js)
+   ========================================================================== */
+#vista-vehiculos { padding: var(--e-5) var(--e-6) var(--e-6); }
+
+/* Lista de datos sin puntos medios: cada dato es un <span> separado por un punto pequeño */
+.separados { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0; row-gap: 2px; }
+.separados > span + span::before {
+    content: ""; display: inline-block; width: 4px; height: 4px; border-radius: 50%;
+    background: currentColor; opacity: 0.45; margin: 0 9px; vertical-align: middle;
+}
+
+/* Buscador en forma de píldora con icono */
+.buscador-grande { position: relative; max-width: 620px; }
+.buscador-grande .icono {
+    position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px;
+    fill: none; stroke: var(--tinta-3); stroke-width: 2; stroke-linecap: round; pointer-events: none; z-index: 1;
+}
+.buscador-grande .buscador-vehiculos {
+    max-width: none; height: 54px; padding: 0 20px 0 50px; border-radius: 999px; font-size: var(--t-m);
+    background: var(--superficie-1); border: 1px solid var(--linea-fuerte); color: var(--tinta); font-family: inherit;
+}
+html[data-theme="dark"] .buscador-grande .buscador-vehiculos { backdrop-filter: var(--vidrio-blur); -webkit-backdrop-filter: var(--vidrio-blur); }
+.buscador-grande .buscador-vehiculos:focus { border-color: #A58BFF; box-shadow: 0 0 0 4px rgba(165, 139, 255, 0.22); }
+
+/* Resultados: filas de vidrio con miniatura del modelo */
+.resultados-vehiculos { max-width: 820px; gap: 10px; margin-top: var(--e-5); }
+.resultado-vehiculo {
+    grid-template-columns: 92px minmax(0, 1fr) auto; gap: 16px; padding: 10px 18px 10px 10px; border-radius: 22px;
+    background: var(--superficie-1); border: 1px solid var(--linea); font-family: inherit; color: var(--tinta);
+    transition: border-color 160ms var(--suave), background 160ms var(--suave), transform 160ms var(--suave);
+}
+html[data-theme="dark"] .resultado-vehiculo { backdrop-filter: var(--vidrio-blur); -webkit-backdrop-filter: var(--vidrio-blur); }
+.resultado-vehiculo:hover, .resultado-vehiculo:focus-visible { border-color: #A58BFF; background: var(--superficie-2); transform: translateY(-1px); }
+.resultado-mini {
+    width: 92px; height: 60px; border-radius: 16px; display: grid; place-items: center; overflow: hidden;
+    background: radial-gradient(120% 80% at 50% 0%, var(--escena-arriba) 0%, transparent 60%), linear-gradient(180deg, var(--escena-1), var(--escena-3));
+}
+.resultado-mini img { width: 90%; height: 86%; object-fit: contain; }
+.resultado-mini .placa.chica { font-size: 0.7rem; }
+.resultado-datos b { font-weight: 700; font-size: var(--t-m); }
+.resultado-datos .separados { color: var(--tinta-3); font-size: var(--t-s); white-space: normal; }
+.resultado-datos .separados span { overflow: visible; white-space: nowrap; color: inherit; font-size: inherit; }
+.resultado-fecha { color: var(--tinta-3); font-size: var(--t-xs); line-height: 1.4; }
+.resultado-fecha b { color: var(--tinta); font-weight: 600; font-size: var(--t-s); }
+.vacio-vehiculos { color: var(--tinta-3); }
+
+/* Ficha: escenario del vehículo + datos del dueño */
+#ficha-vehiculo .volver { margin-bottom: var(--e-4); }
+#ficha-vehiculo .volver .icono { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.ficha-cabecera {
+    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: var(--e-5); align-items: center;
+    padding: 14px; border-radius: 30px; background: var(--superficie-1); border: 1px solid var(--linea-fuerte);
+}
+html[data-theme="dark"] .ficha-cabecera { backdrop-filter: var(--vidrio-blur); -webkit-backdrop-filter: var(--vidrio-blur); box-shadow: var(--sombra-vidrio); }
+.ficha-escena { border-radius: 22px; cursor: default; }
+.ficha-escena .respaldo .placa { font-size: 2.2rem; }
+.ficha-info { padding: 6px 10px 6px 0; min-width: 0; }
+.ficha-placa { font-size: 1.05rem; }
+.ficha-modelo { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 800; letter-spacing: -0.025em; margin: 14px 0 6px; line-height: 1.1; color: var(--tinta); }
+.ficha-modelo span { color: var(--tinta-3); font-weight: 600; }
+.ficha-detalle { margin-top: 0; color: var(--tinta-2); font-size: var(--t-s); }
+.ficha-dueno {
+    display: flex; align-items: center; gap: 12px; margin-top: var(--e-4); padding: 12px 14px;
+    border-radius: 18px; background: var(--superficie-2); border: 1px solid var(--linea);
+}
+.ficha-dueno b { font-weight: 700; color: var(--tinta); }
+.ficha-dueno .separados { color: var(--tinta-3); font-size: var(--t-xs); margin-top: 3px; }
+.ficha-dueno a { color: #A58BFF; font-weight: 600; text-decoration: none; }
+html[data-theme="dark"] .ficha-dueno a { color: #C9B8FF; }
+.ficha-dueno a:hover { text-decoration: underline; }
+.ficha-nota { color: var(--tinta-3); font-size: var(--t-xs); }
+
+/* Cifras de la ficha: misma cuadrícula del dashboard (la primera es holográfica en oscuro) */
+.ficha-kpis { margin-top: var(--e-4); }
+
+/* Garantías vigentes como aviso de vidrio verde menta */
+#ficha-vehiculo .aviso-garantia.vigente {
+    margin-top: var(--e-4); padding: 14px 18px; border-radius: 20px; font-size: var(--t-s);
+    background: rgba(155, 243, 201, 0.10); border: 1px solid rgba(155, 243, 201, 0.35); color: var(--tinta);
+}
+#ficha-vehiculo .aviso-garantia.vigente b { color: #2E9E6B; }
+html[data-theme="dark"] #ficha-vehiculo .aviso-garantia.vigente b { color: #9BF3C9; }
+
+/* Historial como línea de tiempo de tarjetas de vidrio */
+.ficha-titulo-historial { display: flex; align-items: baseline; gap: 10px; margin: var(--e-6) 0 var(--e-3); font-size: var(--t-l); font-weight: 750; color: var(--tinta); }
+.ficha-titulo-historial span { font-size: var(--t-s); font-weight: 500; color: var(--tinta-3); }
+.ficha-historial { position: relative; gap: 14px; padding-left: 26px; }
+.ficha-historial::before { /* riel de la línea de tiempo */
+    content: ""; position: absolute; left: 8px; top: 10px; bottom: 10px; width: 2px; border-radius: 2px;
+    background: linear-gradient(180deg, #A58BFF, rgba(165, 139, 255, 0.08));
+}
+.orden-historial {
+    position: relative; border-radius: 22px; padding: 16px 20px; font-family: inherit;
+    background: var(--superficie-1); border: 1px solid var(--linea); color: var(--tinta); font-size: var(--t-s);
+}
+html[data-theme="dark"] .orden-historial { backdrop-filter: var(--vidrio-blur); -webkit-backdrop-filter: var(--vidrio-blur); }
+.orden-historial::before { /* punto de la línea de tiempo */
+    content: ""; position: absolute; left: -24px; top: 20px; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--fondo); border: 2px solid #A58BFF;
+}
+.orden-historial:first-child::before { background: var(--holo); border-color: rgba(255, 255, 255, 0.6); }
+.oh-fecha { color: var(--tinta-3); font-size: var(--t-xs); }
+.oh-monto { font-size: var(--t-m); font-weight: 800; color: var(--tinta); }
+.oh-meta { color: var(--tinta-3); font-size: var(--t-xs); margin-top: 8px; }
+.oh-motivo { margin-top: 10px; color: var(--tinta); }
+.oh-subtitulo { color: var(--tinta-3); }
+.oh-lista li { border-bottom: 1px solid var(--linea); padding: 6px 0; }
+.oh-lista .num { color: var(--tinta-2); }
+.oh-notas { color: var(--tinta-3); }
+.orden-historial .btn-chico { margin-top: 12px; }
+.orden-historial .btn-chico .icono { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (max-width: 760px) {
+    #vista-vehiculos { padding: var(--e-4) var(--e-3) var(--e-6); }
+    .ficha-cabecera { grid-template-columns: minmax(0, 1fr); gap: var(--e-3); padding: 10px; border-radius: 26px; }
+    .ficha-info { padding: 0 6px 6px; }
+    #ficha-vehiculo .ficha-escena.sin-imagen { aspect-ratio: 5 / 2; } /* sin foto del modelo la escena ocupa menos */
+    .resultado-vehiculo { grid-template-columns: 72px minmax(0, 1fr); padding-right: 14px; }
+    .resultado-mini { width: 72px; height: 50px; border-radius: 13px; }
+    .resultado-fecha { grid-column: 2; text-align: left; }
+    .resultado-fecha br { display: none; }
+    .ficha-historial { padding-left: 20px; }
+    .orden-historial { padding: 14px 16px; }
+    .orden-historial::before { left: -19px; }
+    .ficha-historial::before { left: 5px; }
+}
+
+/* ==========================================================================
+   VEHÍCULOS Y CLIENTES — maestro-detalle de alta densidad
+   Cabecera con acción, 4 cifras, lista (42%) y detalle (58%).
+   ========================================================================== */
+/* El buscador de la barra superior se oculta aquí: la vista tiene el suyo */
+body[data-vista="vista-vehiculos"] .buscador-placa { visibility: hidden; }
+
+.veh-cabecera { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--e-4); margin-bottom: var(--e-5); }
+.veh-cabecera h1 { margin: 0 0 4px; }
+.veh-cabecera p { margin: 0; color: var(--tinta-3); font-size: var(--t-s); }
+.veh-cabecera .btn { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.veh-cabecera .btn .icono { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+
+/* Cifras compactas: vidrio sutil, borde de 1px y números tabulares */
+.veh-cifras { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: var(--e-5); }
+.veh-cifra {
+    display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 18px;
+    background: var(--superficie-1); border: 1px solid var(--linea);
+    --acento: #A58BFF;
+}
+html[data-theme="dark"] .veh-cifra { background: rgba(255, 255, 255, 0.045); border-color: rgba(255, 255, 255, 0.08); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.veh-cifra.ambar { --acento: #F7C56A; }
+.veh-cifra.menta { --acento: #9BF3C9; }
+.veh-cifra.lila { --acento: #F3A6E3; }
+.veh-cifra-icono {
+    flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--acento) 16%, transparent); color: var(--acento);
+}
+html[data-theme="light"] .veh-cifra-icono { color: color-mix(in srgb, var(--acento) 60%, #1E1B4B); }
+.veh-cifra-icono .icono { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.veh-cifra-etiqueta { font-size: var(--t-xs); color: var(--tinta-3); font-weight: 550; }
+.veh-cifra-valor { font-size: 1.45rem; font-weight: 800; letter-spacing: -0.02em; color: var(--tinta); font-variant-numeric: tabular-nums; line-height: 1.2; }
+
+/* Maestro-detalle: ambas columnas desplazan por dentro y ocupan el alto disponible */
+.veh-layout {
+    display: grid; grid-template-columns: minmax(0, 42fr) minmax(0, 58fr); gap: 16px; align-items: start;
+}
+.veh-col-lista, .veh-col-detalle {
+    border-radius: 24px; background: var(--superficie-1); border: 1px solid var(--linea);
+    height: calc(100dvh - 300px); min-height: 520px; overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-width: thin; scrollbar-color: rgba(165, 139, 255, 0.35) transparent;
+}
+html[data-theme="dark"] :is(.veh-col-lista, .veh-col-detalle) {
+    background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+}
+.veh-col-lista { padding: 14px 12px 14px 14px; display: flex; flex-direction: column; }
+.veh-col-detalle { padding: 18px 20px 22px; }
+
+/* Buscador y filtros fijos arriba de la lista */
+.veh-col-lista .buscador-grande, .veh-filtros { flex: none; }
+.veh-col-lista .buscador-grande { max-width: none; }
+.veh-col-lista .buscador-grande .buscador-vehiculos { height: 46px; font-size: var(--t-s); }
+.veh-filtros { display: flex; gap: 6px; margin: 12px 0 10px; flex-wrap: wrap; }
+.veh-chip {
+    display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 999px;
+    border: 1px solid var(--linea-fuerte); background: transparent; color: var(--tinta-2);
+    font: 550 var(--t-xs) var(--fuente-ui); cursor: pointer; transition: background 150ms, color 150ms, border-color 150ms;
+}
+.veh-chip span { font-variant-numeric: tabular-nums; color: var(--tinta-3); font-weight: 600; }
+.veh-chip:hover { color: var(--tinta); border-color: rgba(165, 139, 255, 0.5); }
+.veh-chip[aria-pressed="true"] { background: rgba(165, 139, 255, 0.18); border-color: rgba(165, 139, 255, 0.55); color: var(--tinta); }
+.veh-chip[aria-pressed="true"] span { color: inherit; }
+html[data-theme="dark"] .veh-chip[aria-pressed="true"] { background: var(--holo); color: var(--sobre-holo); border-color: transparent; }
+
+/* Filas de la lista: compactas, la activa resaltada en violeta */
+.veh-col-lista .resultados-vehiculos { max-width: none; margin-top: 0; gap: 4px; }
+.veh-col-lista .resultado-vehiculo {
+    grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; padding: 8px 12px 8px 8px; border-radius: 16px;
+    background: transparent; border: 1px solid transparent; backdrop-filter: none; -webkit-backdrop-filter: none; transform: none;
+}
+.veh-col-lista .resultado-vehiculo:hover { background: var(--superficie-2); border-color: var(--linea); transform: none; }
+.veh-col-lista .resultado-vehiculo.activo {
+    background: rgba(165, 139, 255, 0.14); border-color: rgba(165, 139, 255, 0.55);
+    box-shadow: inset 3px 0 0 #A58BFF;
+}
+.veh-col-lista .resultado-mini { width: 64px; height: 44px; border-radius: 12px; }
+.veh-col-lista .resultado-mini .placa.chica { font-size: 0.58rem; }
+.veh-col-lista .resultado-datos b { font-size: var(--t-s); }
+.veh-col-lista .resultado-datos .separados { font-size: var(--t-xs); }
+.veh-col-lista .resultado-fecha { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-variant-numeric: tabular-nums; }
+.veh-col-lista .resultado-fecha b { font-size: var(--t-xs); }
+.veh-col-lista .resultado-fecha span:not(.badge-estado) { font-size: 0.72rem; color: var(--tinta-3); }
+.veh-nota-lista { color: var(--tinta-3); font-size: var(--t-xs); text-align: center; margin: 10px 0 2px; }
+
+/* Panel de detalle */
+.veh-col-detalle .volver { display: none; }
+.veh-detalle-vacio { height: 100%; display: grid; place-content: center; justify-items: center; gap: 14px; text-align: center; color: var(--tinta-3); }
+.veh-detalle-vacio .placa { opacity: 0.35; font-size: 1.4rem; }
+.veh-detalle-vacio p { max-width: 34ch; margin: 0; }
+
+.det-cabecera { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 18px; align-items: center; }
+.det-cabecera .ficha-escena { aspect-ratio: 16 / 10; border-radius: 18px; }
+.det-cabecera .ficha-escena .respaldo .placa { font-size: 1.35rem; }
+.det-titulo { min-width: 0; }
+.det-titulo .ficha-placa-fila { gap: 8px; }
+.det-titulo .ficha-modelo { font-size: clamp(1.35rem, 2.1vw, 1.75rem); margin: 10px 0 4px; }
+
+.det-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.det-acciones .btn-chico { height: 36px; padding: 0 14px; border-radius: 999px; text-decoration: none; }
+.det-acciones .icono { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.det-bloque { border-radius: 18px; padding: 12px 14px; background: var(--superficie-2); border: 1px solid var(--linea); }
+.veh-col-detalle .ficha-dueno { margin-top: 0; }
+.det-etiqueta { font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta-3); font-weight: 650; margin-bottom: 2px; }
+.veh-col-detalle .ficha-nota { margin: 6px 4px 0; }
+
+.det-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 10px; margin-top: 12px; }
+.det-kpis .dash-kpi { padding: 12px 14px; border-radius: 18px; }
+.det-kpis .dash-kpi:first-child { grid-column: auto; }
+.det-kpis .dash-kpi-valor { font-size: 1.25rem; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.det-kpis .dash-kpi-extra { font-size: 0.72rem; }
+.veh-col-detalle .aviso-garantia.vigente { margin-top: 12px; padding: 10px 14px; border-radius: 16px; }
+
+.det-servicios { margin-top: 12px; padding: 12px 8px 8px; }
+.det-servicios h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 6px 6px; font-size: var(--t-s); font-weight: 700; color: var(--tinta); }
+.det-servicios h3 span { font-weight: 500; color: var(--tinta-3); font-size: var(--t-xs); }
+.orden-mini {
+    width: 100%; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+    padding: 8px 6px; border: 0; border-radius: 12px; background: transparent; color: var(--tinta);
+    font-family: var(--fuente-ui); text-align: left; cursor: pointer;
+}
+.orden-mini + .orden-mini { border-top: 1px solid var(--linea); border-radius: 0 0 12px 12px; }
+.orden-mini:hover { background: var(--superficie-3); }
+.om-fecha { display: grid; justify-items: center; font-size: 0.68rem; color: var(--tinta-3); text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.1; }
+.om-fecha b { font-size: 1.1rem; color: var(--tinta); letter-spacing: 0; }
+.om-datos { min-width: 0; display: grid; gap: 3px; }
+.om-fila { display: flex; align-items: center; gap: 8px; font-size: var(--t-s); }
+.om-trabajo { font-size: var(--t-xs); color: var(--tinta-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.om-monto { font-weight: 750; font-variant-numeric: tabular-nums; font-size: var(--t-s); }
+.orden-mini .badge-estado { font-size: 0.68rem; }
+
+#veh-historial-completo .ficha-titulo-historial { margin-top: var(--e-5); }
+.veh-col-detalle .orden-historial { padding: 14px 16px; }
+
+/* Pantallas medianas: cifras en 2 x 2 */
+@media (max-width: 1180px) {
+    .veh-cifras { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .veh-col-lista, .veh-col-detalle { height: calc(100dvh - 380px); }
+    .det-cabecera { grid-template-columns: 170px minmax(0, 1fr); }
+}
+/* Celular y tableta: lista y detalle se alternan */
+@media (max-width: 900px) {
+    #vista-vehiculos { padding: var(--e-4) var(--e-3) calc(var(--e-7) + 60px); }
+    .veh-cabecera { align-items: center; }
+    .veh-cabecera p { display: none; }
+    .veh-cifras { gap: 8px; }
+    .veh-cifra { padding: 10px 12px; gap: 10px; }
+    .veh-cifra-icono { width: 34px; height: 34px; border-radius: 10px; }
+    .veh-cifra-valor { font-size: 1.2rem; }
+    .veh-layout { grid-template-columns: minmax(0, 1fr); }
+    .veh-col-lista, .veh-col-detalle { height: auto; min-height: 0; overflow: visible; }
+    .veh-col-detalle { display: none; }
+    .veh-layout.con-detalle .veh-col-detalle { display: block; }
+    .veh-layout.con-detalle .veh-col-lista { display: none; }
+    .veh-layout.con-detalle ~ * { display: none; }
+    #vista-vehiculos:has(.veh-layout.con-detalle) :is(.veh-cifras, .veh-cabecera) { display: none; }
+    .veh-col-detalle .volver { display: inline-flex; margin-bottom: 12px; }
+    .det-cabecera { grid-template-columns: minmax(0, 1fr); }
+    .det-cabecera .ficha-escena { aspect-ratio: 5 / 2; }
+    .det-kpis .dash-kpi-valor { font-size: 1.05rem; }
+}
+@media (max-width: 520px) {
+    .veh-cabecera .btn { padding: 0 14px; height: 40px; font-size: var(--t-s); }
+    .det-kpis { gap: 6px; }
+    .det-kpis .dash-kpi { padding: 10px; }
+}
+/* Ajustes: la línea de datos de cada fila no se parte; en el celular las cifras de la ficha en 1 + 2 */
+.veh-col-lista .resultado-datos .separados { flex-wrap: nowrap; overflow: hidden; }
+.veh-col-lista .resultado-datos .separados > span { flex: none; }
+.veh-col-lista .resultado-datos .separados > span:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 520px) {
+    .det-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    .det-kpis .dash-kpi:first-child { grid-column: 1 / -1; }
+}
+
+/* ==========================================================================
+   SERVICIOS Y PRECIOS — catálogo (65%) + formulario y garantía (35%)
+   Reutiliza la cabecera y las cifras de Vehículos (.veh-cabecera, .veh-cifra)
+   ========================================================================== */
+.solo-lectores { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#vista-servicios { padding: var(--e-5) var(--e-6) var(--e-6); }
+
+.srv-layout { display: grid; grid-template-columns: minmax(0, 65fr) minmax(300px, 35fr); gap: 16px; align-items: start; }
+.srv-catalogo, .srv-tarjeta { border-radius: 24px; background: var(--superficie-1); border: 1px solid var(--linea); }
+html[data-theme="dark"] :is(.srv-catalogo, .srv-tarjeta) {
+    background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+}
+.srv-catalogo { padding: 14px 14px 6px; min-width: 0; }
+.srv-catalogo-barra { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.srv-catalogo-barra .buscador-grande { flex: 1; max-width: 420px; }
+.srv-catalogo-barra .buscador-vehiculos { height: 44px; font-size: var(--t-s); }
+.srv-conteo { margin-left: auto; color: var(--tinta-3); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+
+/* Tabla del catálogo: sin fondo propio, filas con separador fino */
+.srv-catalogo .tabla-scroll { max-width: none; border: 0; border-radius: 0; }
+.srv-catalogo .tabla-servicios-catalogo { background: transparent; font-family: var(--fuente-ui); font-size: var(--t-s); }
+.srv-catalogo .tabla-servicios-catalogo th {
+    background: transparent; border-bottom: 1px solid var(--linea); padding: 10px 9px; text-align: left;
+    font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta-3); font-weight: 650;
+}
+.srv-catalogo .tabla-servicios-catalogo th.num { text-align: right; }
+.srv-catalogo .tabla-servicios-catalogo td { padding: 10px 9px; border-bottom: 1px solid var(--linea); color: var(--tinta); vertical-align: middle; }
+.srv-catalogo .tabla-servicios-catalogo tbody tr:last-child td { border-bottom: 0; }
+.srv-catalogo .tabla-servicios-catalogo tbody tr { transition: background 140ms; }
+.srv-catalogo .tabla-servicios-catalogo tbody tr:hover td { background: rgba(165, 139, 255, 0.07); }
+.srv-catalogo .tabla-servicios-catalogo .vacio { padding: 28px 12px; color: var(--tinta-3); text-align: center; }
+.srv-nombre { display: flex; align-items: center; gap: 10px; min-width: 150px; }
+.srv-nombre b { font-weight: 650; }
+.srv-inicial {
+    flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+    font-size: var(--t-xs); font-weight: 750; color: #C9B8FF; background: rgba(165, 139, 255, 0.16);
+}
+html[data-theme="light"] .srv-inicial { color: #5B3DF5; }
+.srv-precio { font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.srv-garantia-texto { display: block; white-space: nowrap; }
+.srv-acciones, .srv-catalogo td[data-modulo] { width: 1%; }
+.srv-origen { display: inline-block; margin-top: 3px; font-size: 0.68rem; font-weight: 600; color: var(--tinta-3); }
+.srv-origen.propia { color: #2E9E6B; }
+html[data-theme="dark"] .srv-origen.propia { color: #9BF3C9; }
+.srv-catalogo .btn-chico { border-radius: 999px; }
+.srv-catalogo .btn-chico .icono, .btn-icono .icono { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.srv-catalogo .btn-chico.con-datos { color: var(--tinta); border-color: rgba(165, 139, 255, 0.45); background: rgba(165, 139, 255, 0.10); }
+.srv-acciones { white-space: nowrap; }
+.srv-acciones .btn-icono { width: 30px; height: 30px; }
+
+/* Botón solo icono (editar, eliminar) */
+.btn-icono {
+    width: 34px; height: 34px; display: inline-grid; place-items: center; border-radius: 10px;
+    border: 1px solid transparent; background: transparent; color: var(--tinta-3); cursor: pointer;
+    transition: background 140ms, color 140ms, border-color 140ms;
+}
+.btn-icono:hover { color: var(--tinta); background: var(--superficie-3); border-color: var(--linea); }
+.btn-icono.peligro:hover { color: #FF8A9A; background: rgba(255, 99, 120, 0.12); border-color: rgba(255, 99, 120, 0.3); }
+html[data-theme="light"] .btn-icono.peligro:hover { color: #C81E3A; }
+
+/* Columna derecha: tarjetas con formulario y garantía del taller */
+.srv-lateral { display: grid; gap: 16px; position: sticky; top: 84px; }
+.srv-tarjeta { padding: 18px 18px 20px; }
+.srv-tarjeta h2 { font-size: var(--t-m); font-weight: 750; margin: 0 0 14px; color: var(--tinta); }
+.srv-tarjeta .form-servicio { display: grid; gap: 12px; max-width: none; margin: 0; }
+.srv-campo { display: grid; gap: 6px; }
+.srv-campo > span { font-size: var(--t-xs); font-weight: 600; color: var(--tinta-2); }
+.srv-tarjeta .campo-servicio {
+    width: 100%; box-sizing: border-box; min-width: 0; height: 44px; padding: 0 14px; border-radius: 14px;
+    border: 1px solid var(--linea-fuerte); background: var(--superficie-2); color: var(--tinta); font: inherit; font-size: var(--t-s);
+}
+html[data-theme="dark"] .srv-tarjeta .campo-servicio { background: rgba(255, 255, 255, 0.05); }
+.srv-tarjeta .campo-servicio:focus { outline: none; border-color: #A58BFF; box-shadow: 0 0 0 4px rgba(165, 139, 255, 0.2); }
+.srv-campos-dobles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.srv-ayuda { margin: 0; font-size: var(--t-xs); color: var(--tinta-3); line-height: 1.5; }
+.srv-tarjeta .btn-agregar-servicio { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 46px; border-radius: 999px; }
+.srv-tarjeta .btn-agregar-servicio .icono, .veh-cabecera .btn .icono { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.srv-garantia .nota-servicios { margin: 0; max-width: none; font-size: var(--t-xs); color: var(--tinta-3); line-height: 1.55; }
+.srv-garantia .nota-servicios p { margin: 6px 0 12px; }
+.srv-garantia-valor { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; color: var(--tinta); }
+.srv-garantia .btn-chico { border-radius: 999px; }
+
+@media (max-width: 1360px) {
+    .srv-inicial { display: none; }
+    .srv-layout { grid-template-columns: minmax(0, 1fr) 290px; }
+    .srv-garantia-texto { white-space: normal; min-width: 92px; }
+}
+@media (max-width: 1200px) {
+    .srv-layout { grid-template-columns: minmax(0, 1fr); }
+    .srv-lateral { position: static; grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 900px) {
+    #vista-servicios { padding: var(--e-4) var(--e-3) calc(var(--e-7) + 60px); }
+    .srv-lateral { grid-template-columns: minmax(0, 1fr); }
+    .srv-layout { display: flex; flex-direction: column; }
+    .srv-conteo { display: none; }
+    /* En el celular cada servicio es una tarjeta: nombre y precio arriba, garantía, y botones abajo */
+    .srv-catalogo .tabla-servicios-catalogo, .srv-catalogo .tabla-servicios-catalogo tbody { display: block; }
+    .srv-catalogo .tabla-servicios-catalogo thead { display: none; }
+    .srv-catalogo .tabla-servicios-catalogo tbody tr {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center;
+        padding: 12px 4px; border-bottom: 1px solid var(--linea);
+    }
+    .srv-catalogo .tabla-servicios-catalogo tbody tr:last-child { border-bottom: 0; }
+    .srv-catalogo .tabla-servicios-catalogo td { display: block; padding: 0; border: 0; background: none !important; }
+    .srv-catalogo .tabla-servicios-catalogo td.vacio { grid-column: 1 / -1; padding: 20px 0; }
+    .srv-catalogo .tabla-servicios-catalogo td:nth-child(3) { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 8px; color: var(--tinta-2); }
+    .srv-catalogo .tabla-servicios-catalogo td.modulo-oculto { display: none; }
+    .srv-garantia-texto { display: inline; }
+    .srv-nombre { min-width: 0; }
+    .srv-nombre b { overflow-wrap: anywhere; }
+    .srv-acciones { text-align: right; }
+}
+
+/* ==========================================================================
+   SERVICIOS Y PRECIOS — CELULAR (< 768 px)
+   Tarjetas por servicio, formulario como hoja inferior y espacio para la barra
+   de navegación. En escritorio estas piezas extra quedan ocultas.
+   ========================================================================== */
+.srv-hoja-asa, .srv-hoja-cerrar, .srv-hoja-fondo, .srv-garantia-icono, .srv-mas { display: none; }
+.srv-hoja-cabecera h2 { margin: 0 0 14px; }
+body.sin-desplazamiento { overflow: hidden; }
+
+@media (max-width: 767px) {
+    /* 1. Ancho completo con 16 px simétricos (el contenedor ya pone 12 px) y sin desborde */
+    #vista-servicios { padding: 4px 4px 100px; overflow-x: hidden; }
+    #vista-servicios .srv-layout { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
+    #vista-servicios .srv-catalogo, #vista-servicios .srv-lateral { width: 100%; min-width: 0; box-sizing: border-box; }
+
+    /* Cabecera: título y botón en una fila */
+    #vista-servicios .veh-cabecera { align-items: center; margin-bottom: 16px; }
+    #vista-servicios .veh-cabecera h1 { font-size: 1.6rem; line-height: 1.15; }
+    #vista-servicios .veh-cabecera .btn { height: 42px; padding: 0 16px; border-radius: 999px; font-size: var(--t-s); flex: none; }
+    #vista-servicios .veh-cifras { margin-bottom: 16px; }
+    #vista-servicios .veh-cifra-etiqueta { line-height: 1.25; }
+
+    /* El catálogo deja de ser una caja: cada servicio es su propia tarjeta */
+    #vista-servicios .srv-catalogo { padding: 0; background: none !important; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+    #vista-servicios .srv-catalogo-barra { margin-bottom: 12px; }
+    #vista-servicios .srv-catalogo-barra .buscador-grande { max-width: none; }
+    #vista-servicios .srv-catalogo .tabla-scroll { overflow: visible; }
+    #vista-servicios .tabla-servicios-catalogo tbody { display: flex; flex-direction: column; gap: 12px; }
+
+    /* 2. Tarjeta de vidrio */
+    #vista-servicios .tabla-servicios-catalogo tbody tr {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 0; row-gap: 10px;
+        padding: 16px; border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    }
+    html[data-theme="light"] #vista-servicios .tabla-servicios-catalogo tbody tr { background: #fff; border-color: var(--linea); }
+    #vista-servicios .tabla-servicios-catalogo tbody tr:last-child { border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+    html[data-theme="light"] #vista-servicios .tabla-servicios-catalogo tbody tr:last-child { border-bottom-color: var(--linea); }
+    #vista-servicios .tabla-servicios-catalogo tbody tr:hover td { background: none; }
+    #vista-servicios .tabla-servicios-catalogo td.vacio { grid-column: 1 / -1; padding: 12px 0; }
+
+    /* 3a. Arriba: nombre a la izquierda, precio tabular a la derecha */
+    #vista-servicios .srv-nombre { min-width: 0; padding-right: 12px; }
+    #vista-servicios .srv-inicial { display: none; }
+    #vista-servicios .srv-nombre b { font-size: var(--t-m); font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+    #vista-servicios .srv-precio { font-size: 1.15rem; font-weight: 800; letter-spacing: -0.01em; text-align: right; align-self: start; }
+
+    /* 3b. Medio: garantía con ícono y badge */
+    #vista-servicios td.srv-garantia-celda { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; color: var(--tinta-2); font-size: var(--t-s); }
+    #vista-servicios .srv-garantia-icono { display: block; width: 16px; height: 16px; flex: none; fill: none; stroke: var(--tinta-3); stroke-width: 1.9; stroke-linejoin: round; }
+    #vista-servicios .srv-garantia-texto { display: inline; white-space: nowrap; min-width: 0; }
+    #vista-servicios .srv-origen {
+        margin: 0 0 0 auto; padding: 3px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 650;
+        color: var(--tinta-2); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #vista-servicios .srv-origen.propia { color: #9BF3C9; background: rgba(155, 243, 201, 0.10); border-color: rgba(155, 243, 201, 0.28); }
+    html[data-theme="light"] #vista-servicios .srv-origen { background: var(--superficie-2); border-color: var(--linea); }
+    html[data-theme="light"] #vista-servicios .srv-origen.propia { color: #1F7A52; background: rgba(46, 158, 107, 0.10); border-color: rgba(46, 158, 107, 0.3); }
+
+    /* 3c. Abajo: separador y barra de acciones */
+    /* Filas fijas: 1 nombre y precio, 2 garantía, 3 separador continuo, 4 acciones */
+    #vista-servicios .tabla-servicios-catalogo tbody tr::after {
+        content: ""; grid-column: 1 / -1; grid-row: 3; height: 1px; margin-top: 2px; background: rgba(255, 255, 255, 0.07);
+    }
+    html[data-theme="light"] #vista-servicios .tabla-servicios-catalogo tbody tr::after { background: var(--linea); }
+    #vista-servicios .tabla-servicios-catalogo tbody tr:has(td.vacio)::after { display: none; }
+    #vista-servicios .tabla-servicios-catalogo td:first-child:not(.vacio), #vista-servicios td.srv-precio { grid-row: 1; }
+    #vista-servicios td.srv-garantia-celda { grid-row: 2; }
+    #vista-servicios td[data-modulo], #vista-servicios td.srv-acciones { grid-row: 4; width: auto; }
+    #vista-servicios td[data-modulo] { grid-column: 1; display: flex; align-items: center; }
+    #vista-servicios td.srv-acciones { grid-column: 2; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+    /* Si el plan no tiene materiales, las acciones ocupan toda la fila */
+    #vista-servicios td.modulo-oculto + td.srv-acciones { grid-column: 1 / -1; }
+    #vista-servicios td[data-modulo] .btn-chico { height: 36px; padding: 0 14px; font-size: var(--t-xs); }
+    #vista-servicios td[data-modulo] .btn-chico:not(.con-datos) .icono { display: none; }
+    #vista-servicios .srv-mas { display: inline; }
+    #vista-servicios .srv-acciones .btn-icono {
+        width: 40px; height: 40px; border-radius: 12px;
+        background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); color: var(--tinta-2);
+    }
+    html[data-theme="light"] #vista-servicios .srv-acciones .btn-icono { background: var(--superficie-2); border-color: var(--linea); }
+    #vista-servicios .srv-acciones .btn-icono .icono { width: 17px; height: 17px; }
+
+    /* 4. Formulario como hoja inferior (se abre con "Nuevo servicio") */
+    #vista-servicios .srv-lateral { position: static; display: block; }
+    #vista-servicios .srv-garantia { margin-top: 0; }
+    #vista-servicios .srv-hoja {
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 1001; margin: 0;
+        max-height: 88dvh; overflow-y: auto; padding: 10px 16px calc(20px + env(safe-area-inset-bottom));
+        border-radius: 24px 24px 0 0; border: 1px solid rgba(255, 255, 255, 0.1); border-bottom: 0;
+        background: #141634; box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.45);
+        transform: translateY(105%); visibility: hidden;
+        transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 280ms;
+    }
+    html[data-theme="light"] #vista-servicios .srv-hoja { background: #fff; border-color: var(--linea); }
+    #vista-servicios.hoja-abierta .srv-hoja { transform: translateY(0); visibility: visible; transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1); }
+    #vista-servicios .srv-hoja-asa { display: block; width: 40px; height: 4px; border-radius: 4px; margin: 0 auto 12px; background: rgba(255, 255, 255, 0.22); }
+    html[data-theme="light"] #vista-servicios .srv-hoja-asa { background: var(--linea-fuerte); }
+    #vista-servicios .srv-hoja-cabecera { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    #vista-servicios .srv-hoja-cabecera h2 { margin: 0; font-size: 1.15rem; }
+    #vista-servicios .srv-hoja-cerrar { display: inline-grid; width: 40px; height: 40px; }
+    #vista-servicios .srv-hoja .campo-servicio { height: 48px; font-size: 16px; }   /* 16 px evita el zoom de iOS */
+    #vista-servicios .srv-hoja-fondo {
+        display: block; position: fixed; inset: 0; z-index: 1000; background: rgba(5, 6, 20, 0.6);
+        backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity 220ms;
+    }
+    #vista-servicios.hoja-abierta .srv-hoja-fondo { opacity: 1; pointer-events: auto; }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+    #vista-servicios .srv-hoja, #vista-servicios.hoja-abierta .srv-hoja { transition: none; }
+}
+
+/* ==========================================================================
+   GARANTÍAS — período, cifras, técnicos y causas, proveedores y detalle
+   Reutiliza .veh-cabecera, .veh-cifra y .veh-chip de Vehículos y Servicios
+   ========================================================================== */
+#vista-garantias { padding: var(--e-5) var(--e-6) var(--e-6); }
+.gar-cabecera { align-items: flex-start; flex-wrap: wrap; }
+.gar-cabecera > div:first-child { flex: 1 1 420px; }
+.gar-cabecera p { max-width: 62ch; }
+.gar-periodo { display: grid; justify-items: end; gap: 10px; }
+.gar-chips { margin: 0; }
+.gar-fechas { display: flex; align-items: flex-end; gap: 8px; margin: 0; flex-wrap: wrap; }
+.gar-fechas[hidden] { display: none; }
+.gar-fechas label { display: grid; gap: 4px; font-size: var(--t-xs); color: var(--tinta-3); font-weight: 600; }
+.gar-fechas input { height: 36px; padding: 0 10px; border-radius: 10px; font-size: var(--t-s); }
+.gar-fechas .btn-chico { height: 36px; border-radius: 999px; }
+
+.veh-cifra.rojo { --acento: #FF8A9A; }
+.gar-cifra-extra { font-size: 0.72rem; color: var(--tinta-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* Aviso de reclamos pendientes con proveedores */
+.gar-aviso {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 14px 12px 16px; border-radius: 18px;
+    background: rgba(247, 197, 106, 0.10); border: 1px solid rgba(247, 197, 106, 0.32); color: var(--tinta); font-size: var(--t-s);
+}
+.gar-aviso > .icono { flex: none; width: 20px; height: 20px; fill: none; stroke: #F7C56A; stroke-width: 2; stroke-linecap: round; }
+html[data-theme="light"] .gar-aviso > .icono { stroke: #B7791F; }
+.gar-aviso span { flex: 1; }
+.gar-aviso .btn-chico { border-radius: 999px; flex: none; }
+
+/* Tarjetas de sección */
+.gar-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; align-items: start; }
+.gar-columna { display: grid; gap: 16px; }
+.gar-tarjeta { border-radius: 24px; padding: 18px 20px; background: var(--superficie-1); border: 1px solid var(--linea); min-width: 0; }
+.gar-tarjeta + .gar-tarjeta { margin-top: 16px; }
+.gar-grid .gar-tarjeta + .gar-tarjeta, .gar-columna .gar-tarjeta + .gar-tarjeta { margin-top: 0; }
+html[data-theme="dark"] .gar-tarjeta {
+    background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+}
+.gar-tarjeta-titulo { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.gar-tarjeta-titulo h2 { margin: 0; font-size: var(--t-m); font-weight: 750; color: var(--tinta); display: flex; align-items: center; gap: 8px; }
+.gar-nota { font-size: var(--t-xs); color: var(--tinta-3); }
+.gar-conteo { font-size: var(--t-xs); font-weight: 650; padding: 2px 9px; border-radius: 999px; background: rgba(165, 139, 255, 0.16); color: var(--tinta-2); font-variant-numeric: tabular-nums; }
+.gar-vacio { margin: 4px 0; color: var(--tinta-3); font-size: var(--t-s); }
+
+/* Listas con barras (técnicos y causas) */
+.gar-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.gar-tec { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; align-items: center; }
+.gar-tec-datos { min-width: 0; display: grid; gap: 6px; }
+.gar-tec-fila { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: var(--t-s); color: var(--tinta); }
+.gar-tec-fila b { font-weight: 650; }
+.gar-tasa { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--tinta); }
+.gar-tec.alta .gar-tasa, .gar-tasa.alta { color: #FF8A9A; }
+html[data-theme="light"] :is(.gar-tec.alta .gar-tasa, .gar-tasa.alta) { color: #C81E3A; }
+.gar-barra { height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+html[data-theme="light"] .gar-barra { background: var(--superficie-3); }
+.gar-barra span { display: block; height: 100%; border-radius: inherit; background: #9BF3C9; min-width: 4px; }
+.gar-tec.alta .gar-barra span { background: linear-gradient(90deg, #F7C56A, #FF8A9A); }
+.gar-barra.lila span { background: linear-gradient(90deg, #A58BFF, #F3A6E3); }
+.gar-tec-meta { font-size: var(--t-xs); color: var(--tinta-3); font-variant-numeric: tabular-nums; }
+.gar-causa { display: grid; gap: 6px; }
+
+.gar-servicio { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--linea); }
+.gar-servicio:last-child { border-bottom: 0; padding-bottom: 0; }
+.gar-servicio-nombre { min-width: 0; display: grid; gap: 3px; font-size: var(--t-s); color: var(--tinta); }
+.gar-servicio-nombre .separados { font-size: var(--t-xs); color: var(--tinta-3); }
+
+/* Reclamos a proveedores: tarjetas en cuadrícula */
+.gar-provs { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.gar-prov { padding: 14px 16px; border-radius: 18px; background: var(--superficie-2); border: 1px solid var(--linea); display: grid; gap: 8px; }
+html[data-theme="dark"] .gar-prov { background: rgba(255, 255, 255, 0.035); }
+.gar-prov.pendiente { border-color: rgba(247, 197, 106, 0.4); }
+.gar-prov-cabecera { display: flex; align-items: center; gap: 8px; }
+.gar-prov-monto { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--tinta); }
+.gar-prov-proveedor { font-size: var(--t-s); color: var(--tinta); }
+.gar-prov-meta + .gar-prov-meta { margin-top: -4px; }
+.gar-prov-meta { font-size: var(--t-xs); color: var(--tinta-3); }
+.gar-prov-recuperado { font-size: var(--t-xs); font-weight: 650; color: #2E9E6B; }
+html[data-theme="dark"] .gar-prov-recuperado { color: #9BF3C9; }
+.gar-prov-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.gar-prov-acciones .btn-chico { border-radius: 999px; height: 34px; }
+.gar-prov-acciones .icono, .gar-aviso .btn-chico .icono { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Tablas de repuestos y detalle */
+.gar-tarjeta .tabla-scroll { border: 0; border-radius: 0; }
+.gar-tabla { width: 100%; border-collapse: collapse; font-size: var(--t-s); }
+.gar-tabla th {
+    text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--linea);
+    font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta-3); font-weight: 650; white-space: nowrap;
+}
+.gar-tabla td { padding: 10px; border-bottom: 1px solid var(--linea); color: var(--tinta); vertical-align: top; }
+.gar-tabla tbody tr:last-child td { border-bottom: 0; }
+.gar-tabla tbody tr:hover td { background: rgba(165, 139, 255, 0.06); }
+.gar-tabla .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gar-tabla .sub { font-size: var(--t-xs); color: var(--tinta-3); margin-top: 3px; }
+.gar-tabla .celda-trabajo { max-width: 260px; }
+
+@media (max-width: 1100px) {
+    .gar-grid { grid-template-columns: minmax(0, 1fr); }
+    .gar-periodo { justify-items: start; }
+}
+
+/* Celular: 16 px a cada lado, 100 px abajo para la barra, tablas como tarjetas */
+@media (max-width: 767px) {
+    #vista-garantias { padding: 4px 4px 100px; overflow-x: hidden; }
+    .gar-cabecera { gap: 12px; margin-bottom: 16px; }
+    .gar-cabecera h1 { font-size: 1.6rem; }
+    .gar-cabecera p { display: none; }
+    .gar-periodo { width: 100%; }
+    .gar-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; width: 100%; padding-bottom: 2px; }
+    .gar-chips::-webkit-scrollbar { display: none; }
+    .gar-chips .veh-chip { flex: none; height: 36px; }
+    .gar-fechas { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+    .gar-fechas .btn-chico { grid-column: 1 / -1; justify-content: center; height: 42px; }
+    .gar-fechas input { height: 44px; font-size: 16px; width: 100%; box-sizing: border-box; }
+    .gar-cifras .veh-cifra { align-items: flex-start; }
+    .gar-aviso { flex-wrap: wrap; align-items: flex-start; }
+    .gar-aviso > .icono { margin-top: 2px; }
+    .gar-aviso span { flex: 1 1 calc(100% - 40px); }
+    .gar-aviso .btn-chico { width: 100%; height: 40px; justify-content: center; }
+    .gar-tarjeta { padding: 16px; border-radius: 20px; }
+    .gar-provs { grid-template-columns: minmax(0, 1fr); }
+    .gar-prov-acciones .btn-chico { height: 40px; flex: 1; justify-content: center; }
+
+    .gar-tabla, .gar-tabla tbody { display: block; }
+    .gar-tabla thead { display: none; }
+    .gar-tabla tbody { display: grid; gap: 10px; }
+    .gar-tabla tbody tr {
+        display: grid; gap: 8px; padding: 12px 14px; border-radius: 16px;
+        background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    html[data-theme="light"] .gar-tabla tbody tr { background: var(--superficie-2); border-color: var(--linea); }
+    .gar-tabla td { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 0; border: 0; max-width: none; }
+    .gar-tabla td::before { content: attr(data-titulo); flex: none; font-size: 0.72rem; color: var(--tinta-3); font-weight: 600; }
+    .gar-tabla .gar-celda { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+    .gar-tabla tbody tr:hover td { background: none; }
+}
+
+/* ==========================================================================
+   GARANTÍAS — detalle de reclamos en el celular (< 768 px)
+   Tarjeta de 4 bloques: cabecera, trabajo y costo, técnico y causa, qué se hizo.
+   En escritorio se usa la tabla y estas tarjetas no se muestran.
+   ========================================================================== */
+.gar-det-lista { display: none; }
+
+@media (max-width: 767px) {
+    /* En el detalle, la tabla cede su lugar a las tarjetas */
+    #gar-detalle .tabla-scroll { display: none; }
+    #gar-detalle { padding: 16px 0 0; background: none !important; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; }
+    #gar-detalle .gar-tarjeta-titulo { padding: 0 4px; margin-bottom: 12px; }
+    .gar-det-lista { display: grid; gap: 14px; }   /* los 100 px finales los pone #vista-garantias */
+
+    .gar-det {
+        display: grid; gap: 14px; padding: 16px; border-radius: 18px;
+        background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    }
+    html[data-theme="light"] .gar-det { background: #fff; border-color: var(--linea); }
+
+    /* 1. Cabecera: placa + cliente y orden a la izquierda, fecha discreta a la derecha */
+    .gar-det-cab { display: flex; align-items: center; gap: 10px; }
+    .gar-det-cab .placa.chica { flex: none; font-size: 0.72rem; }
+    .gar-det-quien { min-width: 0; display: grid; gap: 1px; line-height: 1.25; }
+    .gar-det-quien b { font-size: var(--t-s); font-weight: 650; color: var(--tinta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .gar-det-quien span { font-size: var(--t-xs); color: var(--tinta-3); }
+    .gar-det-fecha { margin-left: auto; flex: none; align-self: flex-start; font-size: var(--t-xs); color: var(--tinta-3); white-space: nowrap; }
+
+    /* 2. Trabajo original y costo */
+    .gar-det-trabajo {
+        display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+        padding: 12px 14px; border-radius: 14px; background: rgba(165, 139, 255, 0.10); border: 1px solid rgba(165, 139, 255, 0.18);
+    }
+    html[data-theme="light"] .gar-det-trabajo { background: rgba(108, 92, 231, 0.06); border-color: rgba(108, 92, 231, 0.16); }
+    .gar-det-trabajo span { min-width: 0; font-size: var(--t-s); font-weight: 600; color: var(--tinta); line-height: 1.35; }
+    .gar-det-trabajo b { flex: none; font-size: 1.05rem; font-weight: 800; color: var(--tinta); font-variant-numeric: tabular-nums; }
+
+    /* 3. Técnico y causa: dos columnas compactas, etiqueta arriba y valor abajo */
+    .gar-det-datos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0; }
+    .gar-det-datos div { min-width: 0; display: grid; gap: 2px; }
+    .gar-det-datos dt { font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 650; color: var(--tinta-3); }
+    .gar-det-datos dd { margin: 0; font-size: var(--t-s); color: var(--tinta); overflow-wrap: anywhere; }
+
+    /* Qué se hizo: bloque propio, alineado a la izquierda y con interlineado cómodo */
+    .gar-det-hizo { padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.07); }
+    html[data-theme="light"] .gar-det-hizo { border-top-color: var(--linea); }
+    .gar-det-hizo span { display: block; margin-bottom: 4px; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 650; color: var(--tinta-3); }
+    .gar-det-hizo p { margin: 0; font-size: var(--t-s); line-height: 1.55; color: var(--tinta-2); text-align: left; }
+}
+
+/* ==========================================================================
+   GEOR IA — columna derecha "En el taller" (escritorio, > 1100 px)
+   La columna mide lo mismo que la tarjeta de Geor; solo la lista de vehículos
+   desplaza por dentro, con 16 px arriba y abajo y bordes que se desvanecen,
+   para que nunca quede una tarjeta cortada en seco.
+   ========================================================================== */
+@media (min-width: 1101px) {
+    .taller-col {
+        height: calc(100vh - 210px); min-height: 560px;   /* igual que .geor */
+        gap: 12px;
+    }
+    .taller-col .taller-cab { flex: none; }
+    #panel-vehiculos-pendientes-container.carril-taller {
+        flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+        display: flex; flex-direction: column; gap: 16px;
+        padding: 16px 4px 16px;   /* 4 px a los lados para que no se corten bordes ni sombras */
+        margin: 0 -4px;
+        scrollbar-width: thin; scrollbar-color: rgba(165, 139, 255, 0.35) transparent;
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+                mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+    }
+    /* La tarjeta activa no se encoge: es el bloque principal */
+    .carril-taller > .tv { flex: none; }
+    .carril-taller .tv-datos { gap: 16px; }
+    .carril-taller .tv-acciones { padding-top: 14px; gap: 8px; }
+
+    /* Vehículos secundarios: columna con aire entre tarjetas */
+    .carril-taller .lista-taller { flex: none; display: flex; flex-direction: column; gap: 10px; }
+    .carril-taller .tv-fila-lista {
+        padding: 14px 16px; border-radius: 14px; gap: 14px;
+        grid-template-columns: 88px minmax(0, 1fr) auto;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    html[data-theme="light"] .carril-taller .tv-fila-lista { border-color: var(--linea); }
+    .carril-taller .tv-fila-lista .mini { height: 52px; }
+    /* Sin desplazamiento al pasar el mouse: dentro de un área con scroll se recortaría */
+    .carril-taller .tv-fila-lista:hover { transform: none; }
+
+    .taller-col .pista-taller { flex: none; margin: 8px 0 0; }
+}
+
+/* ==========================================================================
+   MODAL "FALTAN DATOS" (registro y cierre de órdenes)
+   Más ancho, sin desplazamiento horizontal, tabla que se ajusta al ancho,
+   campos en dos columnas y botones siempre visibles abajo.
+   ========================================================================== */
+.modal-caja.modal-cierre {
+    max-width: 640px; max-height: min(90dvh, 860px);
+    overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+    padding: 24px 24px 0;
+}
+.modal-cierre .modal-icono { width: 44px; height: 44px; margin-bottom: 10px; }
+.modal-cierre .modal-titulo { margin-bottom: 8px; }
+.modal-cierre .modal-mensaje { font-size: var(--t-s); }
+
+/* Encabezado: tipo de orden y vehículo */
+.modal-cierre .resumen-orden { display: grid; justify-items: center; gap: 6px; margin-bottom: 14px; }
+.resumen-tipo { font-size: var(--t-xs); font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--tinta-3); }
+.resumen-vehiculo { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; font-weight: 600; color: var(--tinta); }
+
+/* Tabla de trabajos: ocupa el ancho del modal, la descripción se parte en líneas y el precio tiene columna fija */
+.modal-caja .tabla-caja { min-width: 0; }
+.modal-cierre .tabla-resumen-cierre { table-layout: fixed; width: 100%; text-align: left; margin-bottom: 8px; font-size: var(--t-s); }
+.modal-cierre .tabla-resumen-cierre th:last-child, .modal-cierre .tabla-resumen-cierre td:last-child { width: 124px; }
+.modal-cierre .tabla-resumen-cierre td { overflow-wrap: anywhere; vertical-align: middle; padding: 10px 8px; }
+.modal-cierre .precio-editable { width: 100%; max-width: 116px; height: 38px; }
+.modal-cierre .nota-precios { margin: 0 0 10px; }
+.modal-cierre .nota-faltantes { padding: 10px 14px; border-radius: 12px; background: var(--superficie-2); border: 1px solid var(--linea); text-align: left; }
+
+/* Campos en dos columnas */
+.modal-formulario.en-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.modal-formulario.en-columnas > datalist { display: none; }
+.modal-cierre .campo-faltante input, .modal-cierre .campo-faltante select { width: 100%; box-sizing: border-box; min-width: 0; }
+
+/* Botones fijos abajo: siempre a la vista aunque el contenido sea largo */
+.modal-cierre .modal-botones {
+    position: sticky; bottom: 0; z-index: 1; margin: 18px -24px 0; padding: 14px 24px 18px;
+    background: var(--superficie-1); border-top: 1px solid var(--linea);
+}
+html[data-theme="dark"] .modal-cierre .modal-botones { background: #161a44; }
+
+@media (max-width: 560px) {
+    .modal-caja.modal-cierre { padding: 20px 16px 0; max-height: 92dvh; }
+    .modal-formulario.en-columnas { grid-template-columns: minmax(0, 1fr); }
+    .modal-cierre .tabla-resumen-cierre th:last-child, .modal-cierre .tabla-resumen-cierre td:last-child { width: 104px; }
+    .modal-cierre .modal-botones { margin: 16px -16px 0; padding: 12px 16px 16px; }
+    .modal-cierre .modal-botones button { flex: 1; }
+}
+
+/* ==========================================================================
+   RESPUESTA DEL CLIENTE A UNA COTIZACIÓN (aviso y "Cotizaciones" de la orden)
+   Vidrio oscuro con acento violeta; el verde esmeralda solo para lo aprobado.
+   ========================================================================== */
+.modal-caja.modal-cot {
+    max-width: 520px; max-height: min(90dvh, 820px); overflow-x: hidden; text-align: left;
+    padding: 22px 24px 0;
+}
+html[data-theme="dark"] .modal-caja.modal-cot {
+    background: rgba(17, 15, 38, 0.92) !important; border: 1px solid rgba(255, 255, 255, 0.09);
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(168, 85, 247, 0.06), 0 0 120px rgba(138, 43, 226, 0.18);
+}
+.modal-cot .modal-icono { display: none; }
+.modal-cot .modal-titulo { text-align: left; font-size: 1.15rem; font-weight: 750; margin: 0 0 16px; }
+.modal-cot .modal-mensaje { text-align: left; }
+
+.cot-resp { display: grid; gap: 18px; }
+.cot-resp + .cot-resp { margin-top: 22px; padding-top: 22px; border-top: 1px solid rgba(255, 255, 255, 0.09); }
+html[data-theme="light"] .cot-resp + .cot-resp { border-top-color: var(--linea); }
+
+/* Encabezado: placa, cliente, número y estado */
+.cot-resp-cab { display: flex; align-items: center; gap: 12px; }
+.cot-quien { min-width: 0; display: grid; line-height: 1.3; }
+.cot-quien b { color: var(--tinta); font-size: var(--t-m); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cot-quien span { font-size: var(--t-xs); color: var(--tinta-3); }
+.cot-chip {
+    margin-left: auto; flex: none; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+    color: #D8B4FE; background: rgba(168, 85, 247, 0.14); border: 1px solid rgba(168, 85, 247, 0.3);
+}
+.cot-chip.ok { color: #34D399; background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.35); }
+.cot-chip.no { color: #FDA4AF; background: rgba(244, 63, 94, 0.10); border-color: rgba(253, 164, 175, 0.3); }
+html[data-theme="light"] .cot-chip { color: #7E22CE; }
+html[data-theme="light"] .cot-chip.ok { color: #047857; }
+html[data-theme="light"] .cot-chip.no { color: #BE123C; }
+
+/* Resumen */
+/* Monto principal: tarjeta luminosa (lima/menta hacia lila) con texto oscuro de alto contraste */
+.cot-resumen {
+    position: relative; overflow: hidden; display: grid; gap: 4px; padding: 16px 18px; border-radius: 18px;
+    background: linear-gradient(125deg, #B6F2D3 0%, #D9F29A 30%, #F2E6AE 52%, #EDB9E4 76%, #B7A0FF 100%);
+    border: 1px solid rgba(255, 255, 255, 0.35); box-shadow: 0 16px 36px rgba(183, 160, 255, 0.18);
+}
+.cot-resumen::after {
+    content: ""; position: absolute; width: 150px; height: 150px; right: -50px; top: -70px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.22); pointer-events: none;
+}
+.cot-resumen-etq { font-size: var(--t-xs); font-weight: 650; color: rgba(20, 17, 36, 0.68); }
+.cot-resumen b { font-size: 2rem; font-weight: 800; letter-spacing: -0.025em; line-height: 1.1; color: #141124; font-variant-numeric: tabular-nums; }
+.cot-resumen-sub { font-size: var(--t-s); color: rgba(20, 17, 36, 0.72); font-variant-numeric: tabular-nums; }
+.cot-barra { position: relative; z-index: 1; height: 4px; border-radius: 999px; margin-top: 10px; background: rgba(20, 17, 36, 0.14); overflow: hidden; }
+.cot-barra span { display: block; height: 100%; border-radius: inherit; background: #141124; }
+
+/* Grupos: sin cajas, título con punto de color y filas con aire */
+.cot-grupo h4 {
+    display: flex; align-items: center; gap: 8px; margin: 0 0 4px;
+    font-size: var(--t-xs); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tinta-3);
+}
+.cot-punto { width: 8px; height: 8px; border-radius: 50%; background: var(--tinta-3); }
+.cot-grupo.si .cot-punto { background: #34D399; }
+.cot-grupo.no .cot-punto { background: #FB7185; }
+.cot-cuenta { margin-left: auto; font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.cot-grupo ul { list-style: none; margin: 0; padding: 0; }
+.cot-grupo li {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+    padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07); font-size: var(--t-s); color: var(--tinta);
+}
+html[data-theme="light"] .cot-grupo li { border-bottom-color: var(--linea); }
+.cot-grupo li:last-child { border-bottom: 0; }
+.cot-grupo li b { font-weight: 700; white-space: nowrap; }
+.cot-grupo.si li b { color: #34D399; }
+html[data-theme="light"] .cot-grupo.si li b { color: #047857; }
+.cot-grupo.no li span, .cot-grupo.no li b { color: var(--tinta-3); }
+.cot-cant { font-size: var(--t-xs); color: var(--tinta-3); }
+.cot-pista { margin: 6px 0 0; font-size: var(--t-xs); color: var(--tinta-3); }
+
+/* Comentario del cliente */
+.cot-comentario {
+    margin: 0; padding: 2px 0 2px 14px; border-left: 3px solid #A855F7;
+    color: var(--tinta); font-size: var(--t-s); line-height: 1.6;
+}
+.cot-comentario span { display: block; font-size: var(--t-xs); font-weight: 700; color: #C084FC; margin-bottom: 2px; }
+html[data-theme="light"] .cot-comentario span { color: #7E22CE; }
+
+/* Nota de estado */
+.cot-nota { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: var(--t-xs); color: var(--tinta-2); }
+.cot-nota .icono { flex: none; width: 16px; height: 16px; margin-top: 1px; fill: none; stroke: #34D399; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.cot-nota.alerta { padding: 10px 12px; border-radius: 12px; color: var(--tinta); background: rgba(247, 197, 106, 0.10); border: 1px solid rgba(247, 197, 106, 0.3); }
+.cot-nota.alerta .icono { stroke: #F7C56A; }
+.cot-resp .cot-envio { display: flex; gap: 8px; }
+.cot-resp .cot-envio .btn-chico { border-radius: 999px; height: 36px; }
+
+/* Pie con el botón integrado: fijo abajo, ancho completo y violeta */
+.modal-caja.modal-cot { padding-bottom: 0; }
+.modal-cot .modal-botones {
+    position: sticky; bottom: 0; z-index: 1; margin: 20px -24px 0; padding: 14px 24px 18px;
+    background: linear-gradient(to bottom, rgba(17, 15, 38, 0), rgba(17, 15, 38, 0.96) 30%);
+    border-top: 0;
+}
+html[data-theme="light"] .modal-cot .modal-botones { background: linear-gradient(to bottom, rgba(255, 255, 255, 0), #fff 30%); }
+.modal-cot .modal-btn-ok {
+    width: 100%; height: 48px; border-radius: 14px; border: 0;
+    background: linear-gradient(125deg, #B6F2D3 0%, #D9F29A 30%, #F2E6AE 52%, #EDB9E4 76%, #B7A0FF 100%) !important;
+    color: #141124 !important; font-weight: 750; font-size: var(--t-m); box-shadow: 0 10px 26px rgba(183, 160, 255, 0.25);
+}
+.modal-cot .modal-btn-ok:hover { filter: brightness(1.08); }
+@media (max-width: 560px) {
+    .modal-caja.modal-cot { padding: 20px 18px 0; }
+    .modal-cot .modal-botones { margin: 16px -18px 0; padding: 12px 18px 16px; }
+    .cot-resumen b { font-size: 1.75rem; }
+}

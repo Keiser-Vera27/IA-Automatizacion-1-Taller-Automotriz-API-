@@ -2,92 +2,250 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#0A0D26" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#F4F2FF" media="(prefers-color-scheme: light)">
     <title>Cotización</title>
+    <link rel="preload" href="fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
     <style>
-        /* Página pública que abre el CLIENTE del taller (sin iniciar sesión).
-           Autocontenida: no depende del CSS de la aplicación. */
-        :root {
-            color-scheme: light;
-            --fondo: #f4f3f8; --superficie: #ffffff; --borde: #e4e1ee; --texto: #16132b; --tenue: #5b5675;
-            --marca: #6a2ee8; --marca-texto: #ffffff;
-            --ok: #0b7a2e; --ok-fondo: #e3f5e9; --no: #9a2b2b; --no-fondo: #f8e6e6;
-            --urgente: #b42318; --urgente-fondo: #fde8e6; --recomendado: #8a5a00; --recomendado-fondo: #fdf1d8;
-            --opcional: #4b4868; --opcional-fondo: #ecebf3;
+        /* ==================================================================
+           Página pública que abre el CLIENTE del taller (sin iniciar sesión).
+           Autocontenida: no depende del CSS de la aplicación.
+           Tema holográfico nocturno (oscuro) con variante clara según el
+           sistema del cliente. Diseñada primero para el celular, porque el
+           link llega por WhatsApp.
+           ================================================================== */
+        @font-face {
+            font-family: "Plus Jakarta Sans";
+            src: url("fonts/plus-jakarta-sans-latin-wght-normal.woff2") format("woff2");
+            font-weight: 200 800; font-display: swap;
         }
-        @media (prefers-color-scheme: dark) {
+        :root {
+            color-scheme: dark;
+            --fondo: #0B0B1A;
+            --vidrio: rgba(255, 255, 255, 0.04); --vidrio-2: rgba(255, 255, 255, 0.06);
+            --linea: rgba(255, 255, 255, 0.09); --linea-fuerte: rgba(255, 255, 255, 0.14);
+            --tinta: #F5F3FF; --tinta-2: #C8C3E3; --tinta-3: #8F89B3;
+            --morado: #8A2BE2; --lila: #A855F7; --lila-suave: rgba(168, 85, 247, 0.14);
+            --acento: linear-gradient(135deg, #8A2BE2 0%, #A855F7 100%);
+            /* Degradado luminoso de marca (lima/menta hacia lila), suavizado: solo en lo de mayor jerarquía */
+            --holo: linear-gradient(125deg, #B6F2D3 0%, #D9F29A 30%, #F2E6AE 52%, #EDB9E4 76%, #B7A0FF 100%);
+            --sobre-holo: #141124;
+            --ok: #34D399; --ok-fondo: rgba(52, 211, 153, 0.12); --ok-borde: rgba(52, 211, 153, 0.45);
+            --no: #FDA4AF; --no-fondo: rgba(244, 63, 94, 0.10); --no-borde: rgba(253, 164, 175, 0.35);
+            --urgente: #FDA4AF; --urgente-fondo: rgba(244, 63, 94, 0.12);
+            --recomendado: #D8B4FE; --recomendado-fondo: rgba(168, 85, 247, 0.14);
+            --opcional: #C8C3E3; --opcional-fondo: rgba(255, 255, 255, 0.07);
+            --barra: rgba(14, 12, 32, 0.86);
+        }
+        @media (prefers-color-scheme: light) {
             :root {
-                color-scheme: dark;
-                --fondo: #0f0c1f; --superficie: #1a1631; --borde: #2e2850; --texto: #f2f0ff; --tenue: #aaa3cc;
-                --marca: #8b6cff; --marca-texto: #ffffff;
-                --ok: #7ee2a0; --ok-fondo: #12301f; --no: #f2a3a3; --no-fondo: #3a1919;
-                --urgente: #ff9b8f; --urgente-fondo: #3d1612; --recomendado: #f5c96b; --recomendado-fondo: #3a2c0c;
-                --opcional: #c9c5e3; --opcional-fondo: #2a2645;
+                color-scheme: light;
+                --fondo: #F5F3FF;
+                --vidrio: #FFFFFF; --vidrio-2: #F8F6FF;
+                --linea: #E7E3F5; --linea-fuerte: #D8D2EE;
+                --tinta: #1C1640; --tinta-2: #4A4470; --tinta-3: #6F6996;
+                --lila-suave: rgba(138, 43, 226, 0.08);
+                --ok: #047857; --ok-fondo: #E6F7F0; --ok-borde: #7CD3B2;
+                --no: #BE123C; --no-fondo: #FDECEF; --no-borde: #F5B3C0;
+                --urgente: #BE123C; --urgente-fondo: #FDECEF;
+                --recomendado: #7E22CE; --recomendado-fondo: #F3E8FF;
+                --opcional: #4A4470; --opcional-fondo: #EFECF8;
+                --barra: rgba(255, 255, 255, 0.92);
             }
         }
         * { box-sizing: border-box; }
-        body { margin: 0; background: var(--fondo); color: var(--texto); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-               font-size: 16px; line-height: 1.45; }
-        main { max-width: 640px; margin: 0 auto; padding: 20px 16px 150px; }
-        h1 { font-size: 1.35rem; margin: 0 0 4px; }
-        .sub { color: var(--tenue); font-size: 14px; }
-        .tarjeta { background: var(--superficie); border: 1px solid var(--borde); border-radius: 16px; padding: 16px; margin-top: 14px; }
-        .nota { border-left: 4px solid var(--marca); }
-        .item-cabecera { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-        .item-desc { font-weight: 600; }
-        .item-precio { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
-        .item-detalle { color: var(--tenue); font-size: 14px; margin-top: 2px; font-variant-numeric: tabular-nums; }
-        .prioridad { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-bottom: 6px; }
+        html { -webkit-text-size-adjust: 100%; }
+        body {
+            margin: 0; min-height: 100dvh; color: var(--tinta); background: var(--fondo);
+            font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-size: 16px; line-height: 1.5;
+        }
+        /* Resplandor ambiental violeta, sutil (solo en oscuro) */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background:
+                    radial-gradient(55% 35% at 90% -5%, rgba(168, 85, 247, 0.22), transparent 70%),
+                    radial-gradient(45% 30% at -5% 35%, rgba(138, 43, 226, 0.16), transparent 70%),
+                    var(--fondo);
+                background-attachment: fixed;
+            }
+        }
+        main { max-width: 600px; margin: 0 auto; padding: 20px 16px 130px; }
+        .vidrio {
+            background: var(--vidrio); border: 1px solid var(--linea); border-radius: 20px;
+            -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+        }
+        .num { font-variant-numeric: tabular-nums; }
+        [hidden] { display: none !important; }
+
+        /* ---------------- Cabecera: taller, placa, vehículo y número ---------------- */
+        .cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .taller { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .taller-inicial {
+            flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
+            font-weight: 800; font-size: 15px; color: var(--sobre-holo); background: var(--holo);
+        }
+        .taller-nombre { font-weight: 700; font-size: 15px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .taller-sub { font-size: 12.5px; color: var(--tinta-3); }
+        .numero { flex: none; font-size: 13px; font-weight: 650; color: var(--tinta-2); padding: 5px 11px; border-radius: 999px; background: var(--vidrio-2); border: 1px solid var(--linea); font-variant-numeric: tabular-nums; }
+
+        .vehiculo { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding: 14px 16px; }
+        .vehiculo-modelo { font-weight: 700; font-size: 16px; }
+        .vehiculo-sub { font-size: 13px; color: var(--tinta-3); }
+
+        /* Placa ecuatoriana */
+        .placa {
+            flex: none; display: inline-flex; flex-direction: column; overflow: hidden;
+            border-radius: 7px; background: #F4F4F6; border: 2px solid #1B1B1F; color: #111;
+            font-weight: 800; font-size: 0.98rem; letter-spacing: 0.02em; line-height: 1; text-align: center;
+        }
+        .placa::before {
+            content: "ECUADOR"; display: block; background: #7030EF; color: #fff;
+            font-size: 0.42em; letter-spacing: 0.28em; padding: 3px 6px 2px; font-weight: 700;
+        }
+        .placa span { padding: 4px 9px 5px; }
+
+        .saludo { font-size: 1.45rem; line-height: 1.2; font-weight: 800; letter-spacing: -0.02em; margin: 26px 0 4px; }
+        .intro { margin: 0; color: var(--tinta-2); font-size: 15px; }
+
+        /* Dos tarjetas equilibradas: total y vigencia */
+        .resumen { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+        .dato { padding: 16px; display: grid; gap: 4px; align-content: start; border-radius: 20px; }
+        .dato-etiqueta { font-size: 13px; color: var(--tinta-3); font-weight: 600; }
+        .dato-valor { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; font-variant-numeric: tabular-nums; }
+        .dato-valor.fecha { font-size: 1.15rem; padding-top: 4px; }
+        .dato-sub { font-size: 13px; color: var(--tinta-3); }
+        .dato-sub.aviso { color: var(--recomendado); font-weight: 600; }
+        /* Total cotizado: tarjeta luminosa con texto oscuro de alto contraste */
+        .dato.holo {
+            position: relative; overflow: hidden; background: var(--holo); border: 1px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 16px 36px rgba(183, 160, 255, 0.20); -webkit-backdrop-filter: none; backdrop-filter: none;
+        }
+        .dato.holo::after {
+            content: ""; position: absolute; width: 130px; height: 130px; right: -45px; top: -55px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.22); pointer-events: none;
+        }
+        .dato.holo .dato-etiqueta, .dato.holo .dato-sub { color: rgba(20, 17, 36, 0.68); }
+        .dato.holo .dato-valor { color: var(--sobre-holo); }
+
+        /* Nota del taller */
+        .nota { margin-top: 12px; padding: 16px 18px; position: relative; overflow: hidden; }
+        .nota::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0; background: var(--acento); }
+        .nota-titulo { font-size: 13px; font-weight: 700; color: var(--lila); margin-bottom: 6px; }
+        @media (prefers-color-scheme: light) { .nota-titulo { color: var(--morado); } }
+        .nota p { margin: 0; color: var(--tinta-2); line-height: 1.65; white-space: pre-line; }
+
+        /* ---------------- Trabajos ---------------- */
+        .seccion { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 30px 0 12px; }
+        .seccion h2 { margin: 0; font-size: 1.1rem; font-weight: 750; }
+        .btn-todo {
+            flex: none; height: 36px; padding: 0 14px; border-radius: 999px; cursor: pointer;
+            border: 1px solid rgba(168, 85, 247, 0.45); background: var(--lila-suave); color: var(--tinta);
+            font-family: inherit; font-weight: 650; font-size: 14px; line-height: 1;
+        }
+        .lista { display: grid; gap: 12px; }
+        .item { padding: 16px; transition: border-color 160ms, background 160ms; }
+        .item.aprobado { border-color: var(--ok-borde); }
+        .item.rechazado { border-color: var(--no-borde); }
+        .item.rechazado .item-desc, .item.rechazado .item-precio { opacity: 0.55; }
+        .item-cabecera { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
+        .item-titulo { min-width: 0; display: grid; gap: 6px; justify-items: start; }
+        .item-desc { font-weight: 650; line-height: 1.35; }
+        .item-precio { font-weight: 800; font-size: 1.05rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .item.aprobado .item-precio { color: var(--ok); }
+        .item-detalle { color: var(--tinta-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+        .prioridad { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
         .prioridad.urgente { background: var(--urgente-fondo); color: var(--urgente); }
         .prioridad.recomendado { background: var(--recomendado-fondo); color: var(--recomendado); }
         .prioridad.opcional { background: var(--opcional-fondo); color: var(--opcional); }
-        .decidir { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
-        .decidir button { padding: 11px 8px; border-radius: 12px; border: 1.5px solid var(--borde); background: transparent;
-                          color: var(--texto); font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
-        .decidir button[aria-pressed="true"].si { background: var(--ok-fondo); border-color: var(--ok); color: var(--ok); }
-        .decidir button[aria-pressed="true"].no { background: var(--no-fondo); border-color: var(--no); color: var(--no); }
-        .decidir button:focus-visible, .principal:focus-visible, .enlace:focus-visible { outline: 3px solid var(--marca); outline-offset: 2px; }
-        .enlace { background: none; border: none; color: var(--marca); font-weight: 600; font-size: 15px; cursor: pointer; padding: 6px 0; font-family: inherit; }
-        textarea { width: 100%; min-height: 70px; border-radius: 12px; border: 1px solid var(--borde); background: var(--superficie);
-                   color: var(--texto); padding: 10px 12px; font-family: inherit; font-size: 15px; }
-        label.titulo { display: block; font-weight: 600; margin: 18px 0 6px; }
-        .barra { position: fixed; left: 0; right: 0; bottom: 0; background: var(--superficie); border-top: 1px solid var(--borde);
-                 padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 20px rgba(0,0,0,.08); }
-        .barra-interior { max-width: 640px; margin: 0 auto; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-        .barra-total { font-variant-numeric: tabular-nums; }
-        .barra-total b { font-size: 1.15rem; }
-        .principal { padding: 12px 20px; border-radius: 12px; border: none; background: var(--marca); color: var(--marca-texto);
-                     font-weight: 700; font-size: 16px; cursor: pointer; font-family: inherit; }
-        .principal:disabled { opacity: .45; cursor: not-allowed; }
-        .falta { color: var(--tenue); font-size: 13px; width: 100%; }
-        .estado { text-align: center; padding: 30px 16px; }
-        .estado h2 { margin: 10px 0 6px; font-size: 1.25rem; }
-        .icono-grande { width: 56px; height: 56px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
-        .icono-grande.ok { background: var(--ok-fondo); color: var(--ok); }
+
+        /* Selector de aprobación */
+        .decidir { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+        .decidir button {
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+            height: 44px; border-radius: 12px; border: 1px solid var(--linea-fuerte); background: transparent;
+            color: var(--tinta-2); font-family: inherit; font-weight: 650; font-size: 15px; line-height: 1; cursor: pointer;
+            transition: background 150ms, color 150ms, border-color 150ms;
+        }
+        .decidir svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+        .decidir button[aria-pressed="true"].si { background: var(--ok-fondo); border-color: var(--ok-borde); color: var(--ok); }
+        .decidir button[aria-pressed="true"].no { background: var(--no-fondo); border-color: var(--no-borde); color: var(--no); }
+        button:focus-visible, textarea:focus-visible { outline: 2px solid var(--lila); outline-offset: 2px; }
+
+        label.titulo { display: block; font-weight: 650; margin: 28px 0 8px; }
+        textarea {
+            width: 100%; min-height: 84px; border-radius: 16px; border: 1px solid var(--linea-fuerte);
+            background: var(--vidrio); color: var(--tinta); padding: 12px 14px; font-family: inherit; font-size: 16px; resize: vertical;
+        }
+        textarea::placeholder { color: var(--tinta-3); }
+
+        /* ---------------- Barra inferior compacta ---------------- */
+        .barra {
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+            padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+            background: var(--barra); border-top: 1px solid var(--linea);
+            -webkit-backdrop-filter: blur(18px) saturate(140%); backdrop-filter: blur(18px) saturate(140%);
+        }
+        .barra-interior { max-width: 600px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .barra-total { min-width: 0; line-height: 1.25; }
+        .barra-total b { display: block; font-size: 1.3rem; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+        .barra-total b.con-monto { color: var(--ok); }
+        .barra-estado { display: block; font-size: 13px; color: var(--tinta-3); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .barra-estado.error { color: var(--no); }
+        .principal {
+            flex: none; height: 48px; padding: 0 22px; border-radius: 999px; border: none; cursor: pointer;
+            background: var(--holo); color: var(--sobre-holo); font-family: inherit; font-weight: 750; font-size: 16px; line-height: 1;
+            box-shadow: 0 10px 26px rgba(183, 160, 255, 0.28);
+        }
+        .principal:disabled { background: var(--vidrio-2); color: var(--tinta-3); box-shadow: none; cursor: not-allowed; border: 1px solid var(--linea); }
+
+        /* ---------------- Pantallas de estado ---------------- */
+        .estado { text-align: center; padding: 28px 18px; margin-top: 20px; }
+        .estado h2 { margin: 14px 0 6px; font-size: 1.3rem; font-weight: 800; letter-spacing: -0.01em; }
+        .estado p { margin: 0; color: var(--tinta-2); }
+        .icono-grande { width: 60px; height: 60px; border-radius: 50%; display: inline-grid; place-items: center; }
+        .icono-grande svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+        .icono-grande.ok { background: var(--ok-fondo); color: var(--ok); border: 1px solid var(--ok-borde); }
         .icono-grande.aviso { background: var(--recomendado-fondo); color: var(--recomendado); }
-        .resumen-linea { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--borde); }
+        .resumen-lista { margin-top: 12px; padding: 4px 18px; }
+        .resumen-linea { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--linea); }
         .resumen-linea:last-child { border-bottom: none; }
-        .marca-dec { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 6px; white-space: nowrap; }
+        .resumen-linea .desc { min-width: 0; display: grid; gap: 4px; }
+        .resumen-linea b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .marca-dec { justify-self: start; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
         .marca-dec.aprobado { background: var(--ok-fondo); color: var(--ok); }
         .marca-dec.rechazado { background: var(--no-fondo); color: var(--no); }
-        .pie { text-align: center; color: var(--tenue); font-size: 12px; margin-top: 28px; }
-        [hidden] { display: none !important; }
+        .resumen-linea.total { font-weight: 750; }
+        .total-aprobado { margin-top: 12px; }
+
+        .pie { text-align: center; color: var(--tinta-3); font-size: 13px; margin-top: 32px; }
+        .cargando { display: grid; place-items: center; min-height: 60dvh; color: var(--tinta-3); }
+
+        @media (min-width: 640px) { main { padding-top: 36px; } .saludo { font-size: 1.7rem; } }
+        @media (max-width: 360px) { .resumen { grid-template-columns: minmax(0, 1fr); } .principal { padding: 0 16px; } }
+        @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     </style>
 </head>
 <body>
-<main id="contenido" aria-live="polite"><p class="sub">Cargando cotización...</p></main>
+<main id="contenido" aria-live="polite"><p class="cargando">Cargando cotización...</p></main>
 <div class="barra" id="barra" hidden>
     <div class="barra-interior">
-        <div class="barra-total">Apruebas <b id="total-aprobado">$0.00</b> <span class="sub">de <span id="total-general">$0.00</span></span></div>
+        <div class="barra-total">
+            <b id="total-aprobado">$0.00</b>
+            <span class="barra-estado" id="falta" role="status"></span>
+        </div>
         <button type="button" class="principal" id="btn-enviar" disabled>Enviar respuesta</button>
-        <div class="falta" id="falta"></div>
     </div>
+    <span id="total-general" hidden></span>
 </div>
 <script>
     // ------------------------------------------------------------------
     // Cotización pública: el cliente aprueba o rechaza cada línea.
     // El token del link es la única "llave"; no hay datos personales aquí.
+    // (La lógica y las llamadas al servidor son las mismas de antes;
+    //  solo cambió cómo se ve.)
     // ------------------------------------------------------------------
     const token = new URLSearchParams(location.search).get('t') || '';
     const decisiones = {};          // id de línea -> 'aprobado' | 'rechazado'
@@ -99,31 +257,64 @@
     const fecha = iso => iso ? new Date(String(iso).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
     const cant = n => Number.isInteger(n) ? String(n) : String(n);
     const PRIORIDAD = { urgente: 'Urgente', recomendado: 'Recomendado', opcional: 'Opcional' };
-    const ICONO_OK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
-    const ICONO_AVISO = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="7" x2="12" y2="13"/><circle cx="12" cy="17" r="1"/></svg>';
+    const svg = cuerpo => `<svg viewBox="0 0 24 24" aria-hidden="true">${cuerpo}</svg>`;
+    const ICONO_OK = svg('<polyline points="20 6 9 17 4 12"/>');
+    const ICONO_NO = svg('<path d="M6 6l12 12M18 6 6 18"/>');
+    const ICONO_AVISO = svg('<line x1="12" y1="7" x2="12" y2="13"/><circle cx="12" cy="17" r="1"/>');
 
+    // Días que faltan para que venza (0 = vence hoy)
+    function diasParaVencer(iso) {
+        if (!iso) return null;
+        const hoy = new Date(); hoy.setHours(12, 0, 0, 0);
+        return Math.round((new Date(String(iso).slice(0, 10) + 'T12:00:00') - hoy) / 86400000);
+    }
+
+    // Taller y número de cotización arriba; placa y vehículo en su tarjeta
     function cabecera() {
-        return `<h1>${esc(cot.taller)}</h1>
-            <div class="sub">Cotización N° ${esc(cot.id)} · ${esc([cot.modelo, cot.vehiculo ? 'placa ' + cot.vehiculo : ''].filter(Boolean).join(' · '))}</div>`;
+        const inicial = String(cot.taller || '?').trim().charAt(0).toUpperCase();
+        const vehiculo = cot.vehiculo || cot.modelo ? `
+            <div class="vidrio vehiculo">
+                ${cot.vehiculo ? `<span class="placa"><span>${esc(cot.vehiculo)}</span></span>` : ''}
+                <div><div class="vehiculo-modelo">${esc(cot.modelo || 'Tu vehículo')}</div>
+                    <div class="vehiculo-sub">Cotización de servicio</div></div>
+            </div>` : '';
+        return `
+            <div class="cabecera">
+                <div class="taller">
+                    <span class="taller-inicial" aria-hidden="true">${esc(inicial)}</span>
+                    <div><div class="taller-nombre">${esc(cot.taller)}</div><div class="taller-sub">Taller automotriz</div></div>
+                </div>
+                <span class="numero">#${esc(cot.id)}</span>
+            </div>
+            ${vehiculo}`;
     }
 
     function pantallaEstado(tipo, titulo, texto, extra = '') {
         document.getElementById('barra').hidden = true;
         document.getElementById('contenido').innerHTML = `${cot ? cabecera() : ''}
-            <div class="tarjeta estado"><span class="icono-grande ${tipo}">${tipo === 'ok' ? ICONO_OK : ICONO_AVISO}</span>
-                <h2>${titulo}</h2><div class="sub">${texto}</div></div>${extra}<p class="pie">Cotización enviada por ${esc(cot ? cot.taller : 'el taller')}</p>`;
+            <div class="vidrio estado"><span class="icono-grande ${tipo}">${tipo === 'ok' ? ICONO_OK : ICONO_AVISO}</span>
+                <h2>${titulo}</h2><p>${texto}</p></div>${extra}
+            <p class="pie">Cotización enviada por ${esc(cot ? cot.taller : 'el taller')}</p>`;
     }
 
     function resumenRespondida() {
-        const filas = cot.items.map(i => `<div class="resumen-linea"><span>${esc(i.descripcion)}${i.cantidad !== 1 ? ` (x${cant(i.cantidad)})` : ''}
-            <span class="marca-dec ${i.decision}">${i.decision === 'aprobado' ? 'Aprobado' : 'No aprobado'}</span></span>
-            <b>${dinero(i.subtotal)}</b></div>`).join('');
-        return `<div class="tarjeta">${filas}<div class="resumen-linea"><span><b>Total aprobado</b></span><b>${dinero(cot.total_aprobado)}</b></div></div>`;
+        const filas = cot.items.map(i => `
+            <div class="resumen-linea">
+                <span class="desc"><span>${esc(i.descripcion)}${i.cantidad !== 1 ? ` (x${cant(i.cantidad)})` : ''}</span>
+                    <span class="marca-dec ${esc(i.decision)}">${i.decision === 'aprobado' ? 'Aprobado' : 'No aprobado'}</span></span>
+                <b>${dinero(i.subtotal)}</b>
+            </div>`).join('');
+        return `<div class="dato holo total-aprobado">
+                <span class="dato-etiqueta">Total aprobado</span>
+                <span class="dato-valor">${dinero(cot.total_aprobado)}</span>
+                <span class="dato-sub">de ${dinero(cot.total)}</span>
+            </div>
+            <div class="vidrio resumen-lista">${filas}</div>`;
     }
 
     function pintar() {
         if (cot.estado === 'respondida') {
-            pantallaEstado('ok', '¡Gracias! El taller recibió tu respuesta',
+            pantallaEstado('ok', 'Gracias, el taller recibió tu respuesta',
                 `Respondiste el ${fecha(cot.respondido_en)}. Si necesitas cambiar algo, comunícate con el taller.`, resumenRespondida());
             return;
         }
@@ -131,22 +322,56 @@
             pantallaEstado('aviso', 'Esta cotización venció', `Era válida hasta el ${fecha(cot.vence)}. Pide al taller una cotización actualizada.`);
             return;
         }
-        const items = cot.items.map(i => `
-            <div class="tarjeta" data-id="${esc(i.id)}">
-                <span class="prioridad ${esc(i.prioridad)}">${PRIORIDAD[i.prioridad] || ''}</span>
-                <div class="item-cabecera"><span class="item-desc">${esc(i.descripcion)}</span><span class="item-precio">${dinero(i.subtotal)}</span></div>
-                ${i.cantidad !== 1 ? `<div class="item-detalle">${cant(i.cantidad)} × ${dinero(i.precio_unitario)}</div>` : ''}
-                <div class="decidir" role="group" aria-label="Decisión para ${esc(i.descripcion)}">
-                    <button type="button" class="si" aria-pressed="${decisiones[i.id] === 'aprobado'}" onclick="decidir('${esc(i.id)}', 'aprobado')">Aprobar</button>
-                    <button type="button" class="no" aria-pressed="${decisiones[i.id] === 'rechazado'}" onclick="decidir('${esc(i.id)}', 'rechazado')">No por ahora</button>
+        const nombre = String(cot.cliente || '').trim().split(/\s+/)[0];
+        const dias = diasParaVencer(cot.vence);
+        const textoDias = dias === null ? '' : dias <= 0 ? 'Vence hoy' : dias === 1 ? 'Vence mañana' : `Quedan ${dias} días`;
+        const n = cot.items.length;
+
+        const items = cot.items.map(i => {
+            const dec = decisiones[i.id];
+            return `
+            <article class="vidrio item ${dec || ''}" data-id="${esc(i.id)}">
+                <div class="item-cabecera">
+                    <div class="item-titulo">
+                        <span class="item-desc">${esc(i.descripcion)}</span>
+                        ${i.cantidad !== 1 ? `<span class="item-detalle">${cant(i.cantidad)} × ${dinero(i.precio_unitario)}</span>` : ''}
+                        ${PRIORIDAD[i.prioridad] ? `<span class="prioridad ${esc(i.prioridad)}">${PRIORIDAD[i.prioridad]}</span>` : ''}
+                    </div>
+                    <span class="item-precio">${dinero(i.subtotal)}</span>
                 </div>
-            </div>`).join('');
+                <div class="decidir" role="group" aria-label="Decisión para ${esc(i.descripcion)}">
+                    <button type="button" class="si" aria-pressed="${dec === 'aprobado'}" onclick="decidir('${esc(i.id)}', 'aprobado')">${ICONO_OK}Aprobar</button>
+                    <button type="button" class="no" aria-pressed="${dec === 'rechazado'}" onclick="decidir('${esc(i.id)}', 'rechazado')">${ICONO_NO}No por ahora</button>
+                </div>
+            </article>`;
+        }).join('');
+
+        const fechaCorta = iso => iso ? new Date(String(iso).slice(0, 10) + 'T12:00:00').toLocaleDateString('es-EC', { day: 'numeric', month: 'short', year: 'numeric' }).replace('.', '') : '';
         document.getElementById('contenido').innerHTML = `${cabecera()}
-            <div class="sub">Válida hasta el ${fecha(cot.vence)}</div>
-            ${cot.nota ? `<div class="tarjeta nota">${esc(cot.nota)}</div>` : ''}
-            <p class="sub" style="margin-top:18px;">Elige qué trabajos autorizas. Solo se hará lo que apruebes.</p>
-            <button type="button" class="enlace" onclick="aprobarTodo()">Aprobar todo</button>
-            ${items}
+            <h1 class="saludo">${nombre ? `Hola, ${esc(nombre)}` : 'Hola'}</h1>
+            <p class="intro">Elige qué trabajos autorizas. Solo se hará lo que apruebes.</p>
+
+            <div class="resumen">
+                <div class="dato holo">
+                    <span class="dato-etiqueta">Total cotizado</span>
+                    <span class="dato-valor">${dinero(cot.total)}</span>
+                    <span class="dato-sub">${n === 1 ? '1 trabajo' : `${n} trabajos`}</span>
+                </div>
+                <div class="vidrio dato">
+                    <span class="dato-etiqueta">Válida hasta</span>
+                    <span class="dato-valor fecha">${fechaCorta(cot.vence)}</span>
+                    ${textoDias ? `<span class="dato-sub ${dias !== null && dias <= 2 ? 'aviso' : ''}">${textoDias}</span>` : ''}
+                </div>
+            </div>
+
+            ${cot.nota ? `<div class="vidrio nota"><div class="nota-titulo">Nota del taller</div><p>${esc(cot.nota)}</p></div>` : ''}
+
+            <div class="seccion">
+                <h2>Trabajos</h2>
+                ${n > 1 ? '<button type="button" class="btn-todo" onclick="aprobarTodo()">Aprobar todo</button>' : ''}
+            </div>
+            <div class="lista">${items}</div>
+
             <label class="titulo" for="comentario">Comentario para el taller (opcional)</label>
             <textarea id="comentario" maxlength="500" placeholder="Ej. Lo de la suspensión lo hago el próximo mes"></textarea>
             <p class="pie">Cotización enviada por ${esc(cot.taller)}</p>`;
@@ -158,8 +383,13 @@
     function decidir(id, valor) {
         decisiones[id] = valor;
         confirmando = false;
-        document.querySelectorAll(`[data-id="${CSS.escape(id)}"] .decidir button`).forEach(b =>
-            b.setAttribute('aria-pressed', String((b.classList.contains('si') ? 'aprobado' : 'rechazado') === valor)));
+        const tarjeta = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+        if (tarjeta) {
+            tarjeta.classList.toggle('aprobado', valor === 'aprobado');
+            tarjeta.classList.toggle('rechazado', valor === 'rechazado');
+            tarjeta.querySelectorAll('.decidir button').forEach(b =>
+                b.setAttribute('aria-pressed', String((b.classList.contains('si') ? 'aprobado' : 'rechazado') === valor)));
+        }
         actualizarBarra();
     }
 
@@ -169,14 +399,19 @@
 
     function actualizarBarra() {
         const total = cot.items.filter(i => decisiones[i.id] === 'aprobado').reduce((s, i) => s + i.subtotal, 0);
-        const faltan = cot.items.filter(i => !decisiones[i.id]).length;
-        document.getElementById('total-aprobado').textContent = dinero(total);
+        const respondidas = cot.items.filter(i => decisiones[i.id]).length;
+        const faltan = cot.items.length - respondidas;
+        const monto = document.getElementById('total-aprobado');
+        monto.textContent = dinero(total);
+        monto.classList.toggle('con-monto', total > 0);
         const btn = document.getElementById('btn-enviar');
         btn.disabled = faltan > 0;
-        btn.textContent = confirmando ? 'Confirmar y enviar' : 'Enviar respuesta';
-        document.getElementById('falta').textContent = faltan
-            ? `Te falta responder ${faltan === 1 ? '1 línea' : faltan + ' líneas'}.`
-            : (confirmando ? `Vas a aprobar ${dinero(total)}. Toca otra vez para confirmar.` : '');
+        btn.textContent = confirmando ? 'Confirmar envío' : 'Enviar respuesta';
+        const estado = document.getElementById('falta');
+        estado.classList.remove('error');
+        estado.textContent = faltan
+            ? `de ${dinero(cot.total)}, ${faltan === 1 ? 'falta 1' : `faltan ${faltan}`}`
+            : (confirmando ? 'Toca otra vez para confirmar' : `aprobado de ${dinero(cot.total)}`);
     }
 
     async function enviar() {
@@ -197,7 +432,9 @@
         } catch (e) {
             confirmando = false;
             actualizarBarra();
-            document.getElementById('falta').textContent = e.message;
+            const estado = document.getElementById('falta');
+            estado.textContent = e.message;
+            estado.classList.add('error');
         }
     }
 
@@ -209,7 +446,7 @@
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'No se encontró la cotización.');
             cot = data;
-            document.title = `Cotización ${cot.vehiculo || ''} · ${cot.taller}`;
+            document.title = `Cotización ${cot.vehiculo || ''} de ${cot.taller}`.replace(/\s+/g, ' ');
             pintar();
         } catch (e) {
             pantallaEstado('aviso', 'No pudimos abrir la cotización', esc(e.message));

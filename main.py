@@ -4110,6 +4110,59 @@ def buscar_vehiculos(request: Request, q: str = ""):
     return {"resultados": resultados}
 
 
+# Vista "Vehículos y clientes": cifras de cabecera y lista inicial (solo lectura).
+# Se calcula a partir de las órdenes del taller, igual que la búsqueda.
+MAX_VEHICULOS_RESUMEN = 300   # la lista inicial muestra los más recientes; el resto se encuentra buscando
+
+
+@app.get("/vehiculos/resumen")
+def resumen_vehiculos(request: Request):
+    """Cifras de la vista (vehículos registrados, en el taller ahora, garantías
+    activas y visitas del mes) y los vehículos con su visita más reciente."""
+    _, taller_id = obtener_cliente_seguro(request)
+    filas = _paginar(lambda: supabase.table("reparaciones").select(COLUMNAS_BUSQUEDA)
+                     .eq("taller_id", taller_id).order("id", desc=True))
+
+    hoy = datetime.now(ZONA_ECUADOR).date()
+    inicio_mes = hoy.replace(day=1)
+    visitas_mes = 0
+    por_placa: dict[str, dict] = {}
+    for f in sorted(filas, key=lambda x: str(x.get("fecha_hora") or ""), reverse=True):
+        dia = fecha_ecuador(f.get("fecha_hora"))
+        if dia and dia >= inicio_mes:
+            visitas_mes += 1
+        placa = str(f.get("vehiculo") or "").strip()
+        if not placa or placa == "S/C":
+            continue
+        r = por_placa.setdefault(placa, {"placa": placa, "modelo": "", "cliente": "", "telefono": "",
+                                         "ultima_visita": dia, "en_taller": False, "visitas": 0})
+        r["visitas"] += 1
+        for k in ("modelo", "cliente", "telefono"):
+            if not r[k] and f.get(k):
+                r[k] = f[k]
+        if f.get("estado") == "Pendiente":
+            r["en_taller"] = True
+
+    # Garantías activas: trabajos terminados cuya garantía aún no vence por fecha
+    try:
+        garantias = (supabase.table("reparaciones").select("id", count="exact")
+                     .eq("taller_id", taller_id).eq("estado", "Terminado")
+                     .gte("garantia_vence", hoy.isoformat()).limit(1).execute()).count or 0
+    except Exception as e:
+        print(f"Resumen de vehículos sin garantías (¿faltan migraciones?): {e}")
+        garantias = None
+
+    vehiculos = sorted(por_placa.values(), key=lambda r: str(r["ultima_visita"] or ""), reverse=True)
+    for r in vehiculos[:MAX_VEHICULOS_RESUMEN]:
+        r["ultima_visita"] = r["ultima_visita"].isoformat() if r["ultima_visita"] else None
+    return {
+        "cifras": {"vehiculos": len(por_placa), "en_taller": sum(1 for r in vehiculos if r["en_taller"]),
+                   "garantias_activas": garantias, "visitas_mes": visitas_mes},
+        "vehiculos": vehiculos[:MAX_VEHICULOS_RESUMEN],
+        "truncado": len(vehiculos) > MAX_VEHICULOS_RESUMEN,
+    }
+
+
 def _iso(d) -> str | None:
     return d.isoformat() if d else None
 
@@ -4453,17 +4506,22 @@ def avisos_cotizaciones(request: Request):
         return {"avisos": []}
 
     ids = [c["id"] for c in cots]
-    items = (supabase.table("cotizacion_items").select("cotizacion_id, descripcion, decision")
+    items = (supabase.table("cotizacion_items").select("cotizacion_id, descripcion, decision, cantidad, precio_unitario")
              .in_("cotizacion_id", ids).eq("taller_id", taller_id).order("orden").execute().data or [])
     avisos = []
     for c in cots:
         propios = [i for i in items if str(i["cotizacion_id"]) == str(c["id"])]
         aprobados = [i["descripcion"] for i in propios if i.get("decision") == "aprobado"]
+        # Cada línea con su precio y lo que decidió el cliente (también lo rechazado,
+        # que el taller puede volver a ofrecer más adelante)
+        lineas = [{"descripcion": i["descripcion"], "cantidad": float(i.get("cantidad") or 1),
+                   "subtotal": round(float(i.get("cantidad") or 1) * float(i.get("precio_unitario") or 0), 2),
+                   "decision": i.get("decision") or "pendiente"} for i in propios]
         avisos.append({
             "id": c["id"], "reparacion_id": c["reparacion_id"],
             "vehiculo": c.get("vehiculo") or "", "cliente": c.get("cliente") or "",
             "total": float(c.get("total") or 0), "total_aprobado": float(c.get("total_aprobado") or 0),
-            "n_items": len(propios), "n_aprobados": len(aprobados), "aprobados": aprobados,
+            "n_items": len(propios), "n_aprobados": len(aprobados), "aprobados": aprobados, "lineas": lineas,
             "comentario": c.get("comentario_cliente") or "",
             # Si la orden ya estaba cerrada, lo aprobado NO se agregó (hay que avisarlo)
             "aplicada_a_orden": bool(c.get("aplicada_a_orden")),
