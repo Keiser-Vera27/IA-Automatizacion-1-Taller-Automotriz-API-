@@ -3014,3 +3014,51 @@ html[data-theme="dark"] .gar-prov-recuperado { color: #9BF3C9; }
 
     .taller-col .pista-taller { flex: none; margin: 8px 0 0; }
 }
+
+/* ==========================================================================
+   MODAL "FALTAN DATOS" (registro y cierre de órdenes)
+   Más ancho, sin desplazamiento horizontal, tabla que se ajusta al ancho,
+   campos en dos columnas y botones siempre visibles abajo.
+   ========================================================================== */
+.modal-caja.modal-cierre {
+    max-width: 640px; max-height: min(90dvh, 860px);
+    overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+    padding: 24px 24px 0;
+}
+.modal-cierre .modal-icono { width: 44px; height: 44px; margin-bottom: 10px; }
+.modal-cierre .modal-titulo { margin-bottom: 8px; }
+.modal-cierre .modal-mensaje { font-size: var(--t-s); }
+
+/* Encabezado: tipo de orden y vehículo */
+.modal-cierre .resumen-orden { display: grid; justify-items: center; gap: 6px; margin-bottom: 14px; }
+.resumen-tipo { font-size: var(--t-xs); font-weight: 650; letter-spacing: 0.05em; text-transform: uppercase; color: var(--tinta-3); }
+.resumen-vehiculo { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; font-weight: 600; color: var(--tinta); }
+
+/* Tabla de trabajos: ocupa el ancho del modal, la descripción se parte en líneas y el precio tiene columna fija */
+.modal-caja .tabla-caja { min-width: 0; }
+.modal-cierre .tabla-resumen-cierre { table-layout: fixed; width: 100%; text-align: left; margin-bottom: 8px; font-size: var(--t-s); }
+.modal-cierre .tabla-resumen-cierre th:last-child, .modal-cierre .tabla-resumen-cierre td:last-child { width: 124px; }
+.modal-cierre .tabla-resumen-cierre td { overflow-wrap: anywhere; vertical-align: middle; padding: 10px 8px; }
+.modal-cierre .precio-editable { width: 100%; max-width: 116px; height: 38px; }
+.modal-cierre .nota-precios { margin: 0 0 10px; }
+.modal-cierre .nota-faltantes { padding: 10px 14px; border-radius: 12px; background: var(--superficie-2); border: 1px solid var(--linea); text-align: left; }
+
+/* Campos en dos columnas */
+.modal-formulario.en-columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.modal-formulario.en-columnas > datalist { display: none; }
+.modal-cierre .campo-faltante input, .modal-cierre .campo-faltante select { width: 100%; box-sizing: border-box; min-width: 0; }
+
+/* Botones fijos abajo: siempre a la vista aunque el contenido sea largo */
+.modal-cierre .modal-botones {
+    position: sticky; bottom: 0; z-index: 1; margin: 18px -24px 0; padding: 14px 24px 18px;
+    background: var(--superficie-1); border-top: 1px solid var(--linea);
+}
+html[data-theme="dark"] .modal-cierre .modal-botones { background: #161a44; }
+
+@media (max-width: 560px) {
+    .modal-caja.modal-cierre { padding: 20px 16px 0; max-height: 92dvh; }
+    .modal-formulario.en-columnas { grid-template-columns: minmax(0, 1fr); }
+    .modal-cierre .tabla-resumen-cierre th:last-child, .modal-cierre .tabla-resumen-cierre td:last-child { width: 104px; }
+    .modal-cierre .modal-botones { margin: 16px -16px 0; padding: 12px 16px 16px; }
+    .modal-cierre .modal-botones button { flex: 1; }
+}

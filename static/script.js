@@ -690,7 +690,7 @@ function mostrarModal({ tipo = 'info', titulo = '', mensaje = '', detalles = [],
     if (!overlay) { mostrarNotificacion(mensaje, tipo); return; }  // respaldo
 
     const caja = overlay.querySelector('.modal-caja');
-    if (caja) caja.classList.remove('ancho');   // la cotización usa un modal más ancho
+    if (caja) caja.classList.remove('ancho', 'modal-cierre');   // la cotización usa un modal más ancho
 
     const icono = document.getElementById('modal-icono');
     icono.className = `modal-icono ${cargando ? 'info cargando' : tipo}`;
@@ -713,7 +713,7 @@ function mostrarModal({ tipo = 'info', titulo = '', mensaje = '', detalles = [],
 
     // Modo aviso: sin formulario ni botón Cancelar, OK solo cierra
     const formulario = document.getElementById('modal-formulario');
-    if (formulario) { formulario.hidden = true; formulario.innerHTML = ''; }
+    if (formulario) { formulario.hidden = true; formulario.innerHTML = ''; formulario.classList.remove('en-columnas'); }
     const btnCancelar = document.getElementById('modal-btn-cancelar');
     if (btnCancelar) { btnCancelar.hidden = true; btnCancelar.textContent = 'Cancelar'; btnCancelar.disabled = false; }
     overlay.dataset.modo = '';
@@ -836,14 +836,15 @@ function mostrarFormularioFaltantes(data) {
     overlay.dataset.modo = 'formulario';
 
     const tipoOrden = ctx.es_cierre ? 'Cierre de trabajo' : 'Ingreso al taller';
-    const resumen = [ctx.placa && ctx.placa !== 'S/C' ? `<b>${e(ctx.placa)}</b>` : '',
-                     ctx.modelo ? e(ctx.modelo) : '', ctx.cliente ? e(ctx.cliente) : '']
-                    .filter(Boolean).join(' · ');
+    // Placa como badge y modelo/cliente como piezas separadas (sin puntos medios)
+    const placaRes = ctx.placa && ctx.placa !== 'S/C' ? `<span class="placa chica">${e(ctx.placa)}</span>` : '';
+    const piezasRes = [ctx.modelo, ctx.cliente].filter(Boolean).map(x => `<span>${e(x)}</span>`).join('');
     // Nombra exactamente lo que falta (antes era un texto genérico)
     const pendientes = faltantes.filter(f => !f.opcional).map(f => e(f.etiqueta));
     const listaFaltan = pendientes.length ? `<b>${pendientes.join(', ')}</b>` : 'los datos marcados';
     document.getElementById('modal-mensaje').innerHTML =
-        `<div class="resumen-orden">${tipoOrden}${resumen ? ': ' + resumen : ''}</div>
+        `<div class="resumen-orden"><span class="resumen-tipo">${tipoOrden}</span>
+            ${placaRes || piezasRes ? `<span class="resumen-vehiculo">${placaRes}<span class="separados">${piezasRes}</span></span>` : ''}</div>
          ${avisoGarantiaHTML(ctx.garantia)}
          ${ctx.es_cierre ? resumenTrabajosHTML(ctx, true) : ''}
          <div class="nota-faltantes">${ctx.es_cierre
@@ -855,6 +856,9 @@ function mostrarFormularioFaltantes(data) {
     formulario.innerHTML = faltantes.map(f => campoFaltanteHTML(f, tecnicos)).join('')
         + `<datalist id="lista-bancos">${BANCOS_SUGERIDOS.map(b => `<option value="${e(b)}">`).join('')}</datalist>`;
     formulario.hidden = false;
+    // Con 2 o más datos, los campos van en dos columnas (en el celular, una)
+    formulario.classList.toggle('en-columnas', faltantes.length > 1);
+    overlay.querySelector('.modal-caja').classList.add('modal-cierre');
 
     const btnCancelar = document.getElementById('modal-btn-cancelar');
     btnCancelar.hidden = false;
