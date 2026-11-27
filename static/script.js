@@ -2240,7 +2240,13 @@ function imagenVehiculo(v) {
     const candidatos = [];
     for (let n = palabras.length; n >= 1; n--) candidatos.push(palabras.slice(0, n).join('-'));
     for (let n = palabras.length; n >= 2; n--) candidatos.push(palabras.slice(1, n).join('-'));
-    const clave = candidatos.find(c => modelos[c]) || Object.keys(modelos).find(k => (modelos[k].alias || []).some(a => candidatos.includes(a)));
+    // Primero la clave exacta; si no, el alias que coincida con el candidato más específico
+    // (así "luv d-max" encuentra la Luv D-Max antes que la Luv o la D-Max)
+    let clave = candidatos.find(c => modelos[c]);
+    for (const c of candidatos) {
+        if (clave) break;
+        clave = Object.keys(modelos).find(k => (modelos[k].alias || []).includes(c));
+    }
     const color = colorVehiculo(v.color);
 
     if (clave) {
