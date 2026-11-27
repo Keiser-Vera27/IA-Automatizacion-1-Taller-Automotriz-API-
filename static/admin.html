@@ -18,7 +18,7 @@
     </script>
     <!-- Sistema de diseño compartido (tokens, temas, navegación, modal) + estilos propios del panel -->
     <link rel="stylesheet" href="style.css?v=29">
-    <link rel="stylesheet" href="admin_style.css?v=3">
+    <link rel="stylesheet" href="admin_style.css?v=5">
 </head>
 <body class="adm">
 
@@ -160,48 +160,86 @@
             <main class="contenedor">
 
                 <!-- ================================================== -->
-                <!-- SECCIÓN: RESUMEN (se rediseña en el módulo 2)       -->
+                <!-- SECCIÓN: RESUMEN                                    -->
+                <!--   Ingresos reales por mes y plan, próximos cobros,  -->
+                <!--   salud de cada taller y lo que requiere atención.  -->
                 <!-- ================================================== -->
                 <section id="sec-resumen" class="vista-app adm-seccion">
                     <header class="veh-cabecera">
                         <div>
                             <h1>Resumen</h1>
-                            <p>Cómo va la plataforma hoy.</p>
+                            <p id="res-fecha">Cómo va la plataforma hoy.</p>
                         </div>
                     </header>
 
-                    <div id="dashboard-section" hidden>
-                        <div class="metrics-grid">
-                            <div class="metric-card">
-                                <h4>Talleres</h4>
-                                <div class="metric-main-value" id="dash-total-workshops">--</div>
-                                <div class="metric-sub-stats">
-                                    <span class="pill-badge pill-activo">Activos: <b id="dash-active-workshops">-</b></span>
-                                    <span class="pill-badge pill-suspendido">Suspendidos: <b id="dash-suspended-workshops">-</b></span>
+                    <!-- Aviso si aún no se ejecutó la migración de pagos -->
+                    <div id="res-aviso-migracion" class="res-aviso" hidden></div>
+
+                    <div class="res-rejilla">
+                        <!-- Ingresos cobrados (como entró el dinero, sin repartir pagos anuales) -->
+                        <section class="res-card res-ingresos" aria-labelledby="res-ing-titulo">
+                            <div class="res-ing-cab">
+                                <div>
+                                    <span class="res-eti" id="res-ing-titulo">Ingresos cobrados</span>
+                                    <div class="res-comparacion" id="res-comparacion"></div>
+                                    <div class="res-cifra-xl"><span id="res-total">$0.00</span> <small id="res-total-texto">en los últimos 6 meses</small></div>
+                                </div>
+                                <div class="res-segmentos" role="group" aria-label="Periodo del gráfico">
+                                    <button type="button" data-meses="6" aria-pressed="true" onclick="elegirPeriodoIngresos(6)">6 meses</button>
+                                    <button type="button" data-meses="12" aria-pressed="false" onclick="elegirPeriodoIngresos(12)">12 meses</button>
+                                    <button type="button" data-meses="0" aria-pressed="false" onclick="elegirPeriodoIngresos(0)">Todo</button>
                                 </div>
                             </div>
-                            <div class="metric-card">
-                                <h4>Ingresos (MRR)</h4>
-                                <div class="metric-main-value" id="dash-mrr">$0</div>
-                                <div class="metric-sub-stats" id="dash-por-plan">
-                                    <span class="pill-badge pill-plan">Activas: <b id="dash-active-subs">-</b></span>
-                                </div>
-                                <button class="btn-chico" type="button" onclick="abrirPlanes()">Planes y módulos</button>
-                            </div>
-                            <div class="metric-card">
-                                <h4>Estado del sistema</h4>
-                                <div class="metric-main-value" id="dash-ai-today">--</div>
-                                <div class="metric-sub-stats">
-                                    <span class="pill-badge pill-suspendido">Errores: <b id="dash-errors">-</b></span>
-                                </div>
-                                <button class="btn-chico" type="button" onclick="abrirMonitorIA()">Abrir monitor de IA</button>
-                            </div>
+                            <dl class="res-mini-cifras">
+                                <div><dt>Cobrado este mes</dt><dd id="res-cobrado-mes">$0.00</dd></div>
+                                <div><dt>MRR esperado</dt><dd id="res-mrr">$0.00</dd></div>
+                                <div><dt>Por cobrar este mes</dt><dd id="res-por-cobrar">$0.00</dd></div>
+                            </dl>
+                            <div class="res-leyenda" id="res-leyenda"></div>
+                            <div class="res-barras" id="res-barras" role="img" aria-label="Ingresos por mes"></div>
+                        </section>
+
+                        <div class="res-lateral">
+                            <!-- Próximos cobros -->
+                            <section class="res-card" aria-labelledby="res-prox-titulo">
+                                <span class="res-eti" id="res-prox-titulo">Próximos cobros</span>
+                                <div class="res-proximos" id="res-proximos"></div>
+                                <button type="button" class="btn btn-primario res-btn-ancho" onclick="modalRegistrarPago()">Registrar un pago</button>
+                            </section>
+                            <!-- Estado del sistema (cola de Geor IA) -->
+                            <section class="res-card" aria-labelledby="res-sis-titulo">
+                                <span class="res-eti" id="res-sis-titulo">Estado del sistema</span>
+                                <div class="res-cifra-xl"><span id="dash-ai-today">0</span> <small>usos de IA hoy</small></div>
+                                <div class="res-fila-dato">Mensajes con error<b id="dash-errors">0</b></div>
+                                <button type="button" class="btn-chico res-btn-ancho" onclick="abrirMonitorIA()">Abrir monitor de IA</button>
+                            </section>
                         </div>
 
-                        <div id="dashboard-alertas" hidden>
-                            <h2 class="adm-subtitulo">Requieren tu atención</h2>
-                            <div id="lista-alertas" class="adm-lista-alertas"></div>
-                        </div>
+                        <!-- Talleres: cuánto ha pagado cada uno, uso y salud -->
+                        <section class="res-card res-tabla" aria-labelledby="res-tal-titulo">
+                            <div class="res-tabla-cab">
+                                <h2 id="res-tal-titulo">Talleres</h2>
+                                <button type="button" class="btn-chico principal" onclick="irARegistrarTaller()">
+                                    <svg class="icono" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Registrar taller
+                                </button>
+                            </div>
+                            <div class="res-tabla-caja">
+                                <table>
+                                    <thead><tr><th>Taller</th><th>Plan</th><th>Te ha pagado</th><th>Vence</th><th>Uso (8 semanas)</th><th>Salud</th><th><span class="solo-lector">Acciones</span></th></tr></thead>
+                                    <tbody id="res-talleres"></tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <!-- Ingreso mensual por plan + lo que requiere atención -->
+                        <section class="res-card res-planes" aria-labelledby="res-pla-titulo">
+                            <h2 id="res-pla-titulo">Ingreso por plan</h2>
+                            <div class="res-anillos" id="res-anillos"></div>
+                        </section>
+                        <section class="res-card res-atencion" aria-labelledby="res-ate-titulo">
+                            <h2 id="res-ate-titulo">Requieren tu atención</h2>
+                            <div id="lista-alertas" class="res-alertas"></div>
+                        </section>
                     </div>
                 </section>
 
@@ -289,6 +327,9 @@
         </div>
     </div>
 
-    <script src="admin_script.js?v=2"></script>
+    <!-- Menú de acciones de una fila de la tabla de talleres -->
+    <div id="res-menu" class="res-menu" role="menu" hidden></div>
+
+    <script src="admin_script.js?v=5"></script>
 </body>
 </html>

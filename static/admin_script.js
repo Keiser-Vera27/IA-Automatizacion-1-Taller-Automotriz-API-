@@ -187,7 +187,7 @@ function cambiarSeccion(id) {
     toggleMenu(false);
     window.scrollTo(0, 0);
     // Cada sección carga sus datos al abrirse
-    if (id === 'sec-resumen') cargarDashboard();
+    if (id === 'sec-resumen') cargarResumen();
     else if (id === 'sec-talleres') { cerrarVista360(); cargarTalleres(); }
     else if (id === 'sec-planes') cargarVistaPlanes();
     else if (id === 'sec-monitor') cargarColaIA();
@@ -276,60 +276,392 @@ const cerrarSesionAdmin = () => {
     if (token) await verificarAcceso(token);
 })();
 
-// --- CARGAR DASHBOARD ---
-async function cargarDashboard() {
-    const token = localStorage.getItem("admin_token");
+// ==========================================================================
+// RESUMEN
+//   Ingresos reales por mes y plan (como entró el dinero), próximos cobros,
+//   salud de cada taller y alertas. Datos: /admin/resumen + /admin/dashboard-metrics.
+// ==========================================================================
+let periodoIngresos = 6;          // 6, 12 o 0 (todo)
+let ultimoResumen = null;         // última respuesta de /admin/resumen
+const MIGRACION_PAGOS = 'sql/2026-11-27_pagos_talleres.sql';
+
+// Colores de los planes en el gráfico: el de más ingreso, lima brillante
+const COLORES_PLAN = ['#B8F35B', '#5E8F2A', '#8FCB45', '#3F6B1C', '#D7F99E'];
+let colorPorPlan = {};
+
+const dinero = v => '$' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+// "2026-11-29" -> "29 nov 2026" (sin desfase de zona horaria)
+function fechaCorta(iso) {
+    if (!iso) return 'Sin fecha';
+    const [a, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+    return a && m && d ? `${d} ${MESES_CORTOS[m - 1]} ${a}` : String(iso);
+}
+// Iniciales sin artículos ni preposiciones: "Lubricadora El Pana" -> "LP"
+const PALABRAS_VACIAS = new Set(['el', 'la', 'los', 'las', 'de', 'del', 'y', 'e']);
+const iniciales = nombre => {
+    const palabras = String(nombre || '?').split(/\s+/).filter(Boolean);
+    const utiles = palabras.filter(p => !PALABRAS_VACIAS.has(p.toLowerCase()));
+    return (utiles.length ? utiles : palabras).slice(0, 2).map(p => p[0]).join('').toUpperCase();
+};
+const hoyISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// "hace 4 min", "hace 3 días"... a partir de un timestamp UTC
+function haceCuanto(ts) {
+    if (!ts) return 'Sin actividad';
+    const t = new Date(String(ts).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(ts) ? '' : 'Z'));
+    const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (min < 60) return `Hace ${min} min`;
+    const h = Math.round(min / 60);
+    if (h < 24) return `Hace ${h} h`;
+    const d = Math.round(h / 24);
+    return `Hace ${d} día${d === 1 ? '' : 's'}`;
+}
+
+async function cargarResumen() {
+    const fecha = new Date().toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long' });
+    elModal('res-fecha').textContent = `${fecha.charAt(0).toUpperCase() + fecha.slice(1)}. Cómo va la plataforma hoy.`;
+    cargarDashboard();   // estado del sistema y alertas (en paralelo)
     try {
-        const res = await fetch("/admin/dashboard-metrics", { 
-            headers: { 'Authorization': `Bearer ${token}` } 
-        });
-        
-        if (res.ok) {
-            const data = await res.json();
-            
-            // Renderizar Talleres
-            document.getElementById("dash-total-workshops").innerText = data.workshops.total;
-            document.getElementById("dash-active-workshops").innerText = data.workshops.active;
-            document.getElementById("dash-suspended-workshops").innerText = data.workshops.suspended;
-            
-            // Renderizar Suscripciones
-            document.getElementById("dash-mrr").innerText = "$" + data.subscriptions.mrr;
-            const porPlan = data.subscriptions.por_plan || {};
-            document.getElementById("dash-por-plan").innerHTML =
-                `<span class="pill-badge pill-plan">Activas: <b id="dash-active-subs">${data.subscriptions.active}</b></span>` +
-                Object.entries(porPlan).map(([nombre, n]) => `<span class="pill-badge pill-plan">${esc(nombre)}: <b>${n}</b></span>`).join('');
-            
-            // Renderizar Sistema
-            document.getElementById("dash-ai-today").innerHTML = `${data.system.ai_today} <span style="font-size: 14px; font-weight:normal; color: var(--text-muted);">usos IA hoy</span>`;
-            document.getElementById("dash-errors").innerText = data.system.errors;
-            const navErr = document.getElementById("nav-errores");
-            navErr.textContent = data.system.errors;
-            navErr.hidden = !data.system.errors;
-            
-            // Renderizar Alertas Preventivas
-            if (data.alertas && data.alertas.length > 0) {
-                let htmlAlertas = "";
-                data.alertas.forEach(alerta => {
-                    let clase = "alerta-riesgo"; // Naranja por defecto
-                    if (alerta.tipo === "critico") clase = "alerta-critico"; // Rojo
-                    else if (alerta.tipo === "advertencia") clase = "alerta-advertencia"; // Amarillo
-                    
-                    htmlAlertas += `<div class="alerta-card ${clase}">${alerta.mensaje}</div>`;
-                });
-                document.getElementById("lista-alertas").innerHTML = htmlAlertas;
-            } else {
-                // Si no hay alertas, mostramos un mensaje verde tranquilizador
-                document.getElementById("lista-alertas").innerHTML = `<div class="alerta-card alerta-ok">Todo en orden. Todos los talleres están al día y activos.</div>`;
-            }
-            document.getElementById("dashboard-alertas").hidden = false;
-            
-            // Mostrar la sección del dashboard
-            document.getElementById("dashboard-section").hidden = false;
-        }
-    } catch (error) {
-        showToast("Error al cargar las métricas del dashboard.", "error");
+        const res = await fetch(`/admin/resumen?meses=${periodoIngresos}`, { headers: cabeceraAdmin() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+        ultimoResumen = data;
+        pintarResumen(data);
+    } catch (e) {
+        elModal('res-barras').innerHTML = `<p class="res-vacio">No se pudo cargar el resumen: ${esc(e.message)}</p>`;
     }
 }
+
+function elegirPeriodoIngresos(meses) {
+    periodoIngresos = meses;
+    document.querySelectorAll('.res-segmentos button').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.meses) === meses)));
+    cargarResumen();
+}
+
+function pintarResumen(r) {
+    // Colores fijos por plan: primero los que generan más ingreso
+    colorPorPlan = {};
+    [...r.planes.map(p => p.codigo), ...Object.keys(r.nombres_planes || {})]
+        .forEach(c => { if (!(c in colorPorPlan)) colorPorPlan[c] = COLORES_PLAN[Object.keys(colorPorPlan).length % COLORES_PLAN.length]; });
+    const nombrePlanRes = c => (r.nombres_planes || {})[c] || (c === 'sin_plan' ? 'Sin plan' : c);
+
+    // Aviso si falta la migración de pagos
+    const aviso = elModal('res-aviso-migracion');
+    aviso.hidden = !r.falta_migracion;
+    if (r.falta_migracion) aviso.textContent = `Los ingresos aparecerán cuando ejecutes en Supabase la migración ${r.falta_migracion}. Mientras tanto se muestran el MRR esperado y los próximos cobros.`;
+
+    // ---- Cifras de ingresos ----
+    const ing = r.ingresos;
+    elModal('res-total').textContent = dinero(ing.total);
+    elModal('res-total-texto').textContent = periodoIngresos ? `en los últimos ${periodoIngresos} meses` : 'desde el primer pago';
+    elModal('res-cobrado-mes').textContent = dinero(ing.cobrado_mes_actual);
+    elModal('res-mrr').textContent = dinero(ing.mrr);
+    elModal('res-por-cobrar').textContent = dinero(ing.por_cobrar_mes);
+    const comp = elModal('res-comparacion');
+    if (periodoIngresos && (ing.total || ing.total_anterior)) {
+        const dif = ing.total - ing.total_anterior;
+        comp.className = `res-comparacion ${dif < 0 ? 'baja' : ''}`;
+        comp.textContent = `${dif >= 0 ? '+' : '-'}${dinero(Math.abs(dif))} frente a los ${periodoIngresos} meses anteriores`;
+    } else {
+        comp.textContent = '';
+    }
+
+    // ---- Leyenda y barras apiladas por plan ----
+    const planesEnSerie = [...new Set(ing.meses.flatMap(m => Object.keys(m.por_plan)))]
+        .sort((a, b) => Object.keys(colorPorPlan).indexOf(a) - Object.keys(colorPorPlan).indexOf(b));
+    elModal('res-leyenda').innerHTML = planesEnSerie.map(c =>
+        `<span><i style="background:${colorPorPlan[c] || '#8D9A95'}"></i>${esc(nombrePlanRes(c))}</span>`).join('');
+
+    const barras = elModal('res-barras');
+    if (!ing.meses.some(m => m.total > 0)) {
+        barras.innerHTML = `<div class="res-vacio">
+            <b>Aún no hay pagos registrados en este periodo.</b>
+            <span>Cada vez que un taller te pague, regístralo con "Registrar un pago" y aparecerá aquí.</span></div>`;
+    } else {
+        const max = Math.max(...ing.meses.map(m => m.total));
+        const muchos = ing.meses.length > 12;
+        barras.classList.toggle('compactas', muchos);
+        barras.innerHTML = ing.meses.map((m, i) => {
+            const actual = i === ing.meses.length - 1;
+            const segmentos = planesEnSerie.filter(c => m.por_plan[c]).map(c =>
+                `<i style="height:${(m.por_plan[c] / max * 100).toFixed(2)}%;background:${colorPorPlan[c]}"
+                    title="${esc(nombrePlanRes(c))}: ${dinero(m.por_plan[c])}"></i>`).join('');
+            const etiqueta = m.etiqueta + (ing.meses.length > 12 || m.mes.slice(5) === '01' ? ` ${String(m.anio).slice(2)}` : '');
+            return `<div class="res-col ${actual ? 'actual' : ''}">
+                <span class="res-val">${m.total ? dinero(m.total) : ''}</span>
+                <div class="res-pila" aria-label="${esc(etiqueta)}: ${dinero(m.total)}">${segmentos}</div>
+                <span class="res-mes">${esc(etiqueta)}</span></div>`;
+        }).join('');
+    }
+
+    // ---- Próximos cobros ----
+    elModal('res-proximos').innerHTML = r.proximos_cobros.length ? r.proximos_cobros.slice(0, 4).map(p => {
+        let chip = '';
+        if (p.dias < 0) chip = `<span class="res-chip rojo">Vencido</span>`;
+        else if (p.dias <= 7) chip = `<span class="res-chip amarillo">${p.dias === 0 ? 'Hoy' : `${p.dias} día${p.dias === 1 ? '' : 's'}`}</span>`;
+        return `<button type="button" class="res-cobro" onclick="modalRegistrarPago('${esc(p.taller_id)}')" title="Registrar el pago de ${esc(p.nombre)}">
+            <span class="res-av">${esc(iniciales(p.nombre))}</span>
+            <span class="res-cobro-txt"><b>${esc(p.nombre)}</b><span>${fechaCorta(p.vence)}${chip}</span></span>
+            <span class="res-monto">${dinero(p.monto)}</span></button>`;
+    }).join('') : '<p class="res-vacio-chico">No hay talleres activos con fecha de vencimiento.</p>';
+
+    // ---- Tabla de talleres ----
+    const SALUD = { activo: ['Activo', 'ok'], bajando: ['Bajando', 'baja'], inactivo: ['Sin uso', 'inactivo'], suspendido: ['Suspendido', 'suspendido'] };
+    elModal('res-talleres').innerHTML = r.talleres.map(t => {
+        const [textoSalud, claseSalud] = SALUD[t.salud] || SALUD.activo;
+        return `<tr data-id="${esc(t.id)}">
+            <td data-etiqueta="Taller"><button type="button" class="res-taller" onclick="abrirFicha360('${esc(t.id)}')">
+                <span class="res-av">${esc(iniciales(t.nombre))}</span><span>${esc(t.nombre)}</span></button></td>
+            <td data-etiqueta="Plan"><span class="res-plan">${esc(t.plan)}</span> <span class="res-tenue">${esc(t.periodo)}</span></td>
+            <td data-etiqueta="Te ha pagado"><b class="res-num">${dinero(t.pagado_total)}</b>
+                <span class="res-tenue res-bloque">${t.n_pagos} pago${t.n_pagos === 1 ? '' : 's'}</span></td>
+            <td data-etiqueta="Vence">${fechaCorta(t.vence)}</td>
+            <td data-etiqueta="Uso">${minigrafico(t.uso_semanal, claseSalud)}
+                <span class="res-tenue res-bloque">${esc(haceCuanto(t.ultima_actividad))}</span></td>
+            <td data-etiqueta="Salud"><span class="res-salud ${claseSalud}"><i></i>${textoSalud}</span></td>
+            <td class="res-acc"><button type="button" class="res-btn-menu" aria-haspopup="menu" aria-label="Acciones de ${esc(t.nombre)}"
+                onclick="abrirMenuTaller(event, '${esc(t.id)}')"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg></button></td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="7" class="res-vacio-chico">Todavía no hay talleres registrados.</td></tr>';
+
+    // ---- Ingreso mensual por plan (anillos concéntricos) ----
+    pintarAnillos(r.planes, ing.mrr);
+    pintarAlertas();
+}
+
+// Mini curva de uso semanal (órdenes registradas) dentro de la tabla
+function minigrafico(valores, clase) {
+    const W = 104, H = 28, max = Math.max(...valores, 1);
+    const pts = valores.map((v, i) => `${(i * W / (valores.length - 1)).toFixed(1)},${(H - 3 - v / max * (H - 6)).toFixed(1)}`).join(' ');
+    const total = valores.reduce((a, b) => a + b, 0);
+    return `<svg class="res-spark ${clase}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img"
+        aria-label="${total} órdenes en 8 semanas"><polyline points="${pts}"/></svg>`;
+}
+
+function pintarAnillos(planes, mrr) {
+    const cont = elModal('res-anillos');
+    if (!planes.length) { cont.innerHTML = '<p class="res-vacio-chico">Sin talleres activos.</p>'; return; }
+    const radios = [80, 60, 40, 20];
+    const anillos = planes.slice(0, 4).map((p, i) => {
+        const r = radios[i], largo = 2 * Math.PI * r, parte = mrr ? p.mrr / mrr : 0;
+        return `<circle cx="95" cy="95" r="${r}" class="res-anillo-fondo"/>
+            <circle cx="95" cy="95" r="${r}" fill="none" stroke="${colorPorPlan[p.codigo]}" stroke-width="13" stroke-linecap="round"
+                stroke-dasharray="${(largo * parte).toFixed(1)} ${largo.toFixed(1)}" transform="rotate(-90 95 95)"/>`;
+    }).join('');
+    cont.innerHTML = `
+        <svg viewBox="0 0 190 190" class="res-anillos-svg" role="img" aria-label="Ingreso mensual por plan">${anillos}</svg>
+        <div class="res-anillos-leyenda">
+            <div class="res-anillos-total"><b>${dinero(mrr)}</b><span>MRR esperado al mes</span></div>
+            ${planes.map(p => `<div class="res-anillos-fila"><i style="background:${colorPorPlan[p.codigo]}"></i>
+                <span>${esc(p.nombre)}<small>${p.talleres} taller${p.talleres === 1 ? '' : 'es'}</small></span><b>${dinero(p.mrr)}</b></div>`).join('')}
+        </div>`;
+}
+
+// ---- Estado del sistema y alertas (endpoint anterior, se mantiene) ----
+let alertasSistema = [];
+async function cargarDashboard() {
+    try {
+        const res = await fetch("/admin/dashboard-metrics", { headers: cabeceraAdmin() });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        elModal("dash-ai-today").textContent = data.system.ai_today;
+        const errores = elModal("dash-errors");
+        errores.textContent = data.system.errors;
+        errores.classList.toggle('rojo', data.system.errors > 0);
+        const navErr = elModal("nav-errores");
+        navErr.textContent = data.system.errors;
+        navErr.hidden = !data.system.errors;
+        alertasSistema = data.alertas || [];
+        pintarAlertas();
+    } catch {
+        // El Resumen sigue funcionando sin estas cifras
+    }
+}
+
+// Une las alertas del sistema (pagos, cola de IA) con las de uso de cada taller
+function pintarAlertas() {
+    const cont = elModal('lista-alertas');
+    if (!cont) return;
+    const NIVEL = { critico: 'rojo', advertencia: 'amarillo', riesgo: 'azul' };
+    // Las de "sin actividad" del sistema se reemplazan por las de salud (más precisas)
+    const items = alertasSistema.filter(a => a.tipo !== 'riesgo')
+        .map(a => ({ nivel: NIVEL[a.tipo] || 'azul', html: a.mensaje }));
+    (ultimoResumen?.talleres || []).forEach(t => {
+        const u = t.uso_semanal || [];
+        if (t.salud === 'bajando') {
+            const antes = Math.round(u.slice(0, -2).reduce((a, b) => a + b, 0) / Math.max(1, u.length - 2));
+            const ahora = Math.round(u.slice(-2).reduce((a, b) => a + b, 0) / 2);
+            items.push({ nivel: 'rojo', html: `<b>${esc(t.nombre)}</b> bajó su uso: de ${antes} a ${ahora} órdenes por semana. Conviene llamarlo.` });
+        } else if (t.salud === 'inactivo') {
+            items.push({ nivel: 'amarillo', html: `<b>${esc(t.nombre)}</b> no registró órdenes en las últimas 2 semanas.` });
+        }
+    });
+    cont.innerHTML = items.length
+        ? items.map(a => `<div class="res-alerta"><span class="res-punto ${a.nivel}" aria-hidden="true">!</span><p>${a.html}</p></div>`).join('')
+        : '<div class="res-alerta"><span class="res-punto ok" aria-hidden="true"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span><p>Todo en orden. Los talleres están al día y usando el sistema.</p></div>';
+}
+
+// ---- Menú de acciones de una fila ----
+function abrirMenuTaller(evento, id) {
+    evento.stopPropagation();
+    const menu = elModal('res-menu');
+    const boton = evento.currentTarget;
+    if (!menu.hidden && menu.dataset.id === id) { cerrarMenuTaller(); return; }
+    menu.dataset.id = id;
+    menu.innerHTML = `
+        <button type="button" role="menuitem" onclick="cerrarMenuTaller(); modalRegistrarPago('${esc(id)}')">Registrar pago</button>
+        <button type="button" role="menuitem" onclick="cerrarMenuTaller(); abrirFicha360('${esc(id)}')">Ver ficha 360°</button>
+        <button type="button" role="menuitem" onclick="cerrarMenuTaller(); modalModulos('${esc(id)}')">Módulos</button>`;
+    menu.hidden = false;
+    const caja = boton.getBoundingClientRect();
+    menu.style.top = `${Math.min(caja.bottom + 6, window.innerHeight - menu.offsetHeight - 10)}px`;
+    menu.style.left = `${Math.max(10, caja.right - menu.offsetWidth)}px`;
+    menu.dataset.abierto = String(Date.now());
+    menu.querySelector('button').focus({ preventScroll: true });
+}
+function cerrarMenuTaller() { elModal('res-menu').hidden = true; }
+document.addEventListener('click', e => { if (!e.target.closest('#res-menu')) cerrarMenuTaller(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarMenuTaller(); });
+// Al desplazarse la página el menú queda fuera de lugar: se cierra
+// (salvo el desplazamiento que el propio clic pueda provocar al abrirlo)
+window.addEventListener('scroll', () => {
+    const menu = elModal('res-menu');
+    if (!menu.hidden && Date.now() - Number(menu.dataset.abierto || 0) > 250) cerrarMenuTaller();
+}, { passive: true });
+
+function irARegistrarTaller() {
+    cambiarSeccion('sec-talleres');
+    setTimeout(() => elModal('nuevo_nombre')?.focus(), 80);
+}
+
+// ==========================================================================
+// REGISTRAR PAGO
+//   Guarda el cobro y renueva al taller hasta la fecha que cubre el pago.
+//   Reemplaza al antiguo "Renovar pago", que solo cambiaba la fecha.
+// ==========================================================================
+const METODOS_PAGO = [['transferencia', 'Transferencia'], ['efectivo', 'Efectivo'], ['deposito', 'Depósito'], ['tarjeta', 'Tarjeta'], ['otro', 'Otro']];
+const MESES_PERIODO = { mensual: 1, trimestral: 3, anual: 12 };
+let talleresParaPago = [];
+
+// Misma regla que el servidor: desde el vencimiento vigente (o desde hoy) + meses del periodo
+function calcularCubreHasta(venceISO, periodo) {
+    const hoy = hoyISO();
+    const base = venceISO && venceISO > hoy ? venceISO : hoy;
+    const [a, m, d] = base.split('-').map(Number);
+    const total = m - 1 + MESES_PERIODO[periodo];
+    const anio = a + Math.floor(total / 12), mes = total % 12;
+    const ultimo = new Date(anio, mes + 1, 0).getDate();
+    return `${anio}-${String(mes + 1).padStart(2, '0')}-${String(Math.min(d, ultimo)).padStart(2, '0')}`;
+}
+
+// Datos de cada taller para el formulario (del Resumen si ya cargó; si no, del listado)
+async function obtenerTalleresParaPago() {
+    if (ultimoResumen?.talleres?.length) return ultimoResumen.talleres;
+    const res = await fetch('/admin/talleres', { headers: cabeceraAdmin() });
+    const data = await res.json();
+    return (data.talleres || []).map(t => {
+        const periodo = t.periodo || t.plan || 'mensual';
+        const plan = planesCache.find(p => p.codigo === t.plan_codigo);
+        return { id: t.id, nombre: t.nombre, plan_codigo: t.plan_codigo, plan: t.plan_nombre || '', periodo,
+                 vence: t.fecha_vencimiento, precio: plan ? Number(plan[`precio_${periodo}`]) : 0 };
+    });
+}
+
+function precioDe(taller, periodo) {
+    const plan = planesCache.find(p => p.codigo === taller.plan_codigo);
+    return plan ? Number(plan[`precio_${periodo}`] || 0) : (periodo === taller.periodo ? taller.precio : 0);
+}
+
+async function modalRegistrarPago(tallerId = null) {
+    try { talleresParaPago = await obtenerTalleresParaPago(); }
+    catch { mostrarAviso('No se pudo cargar la lista de talleres.', 'error'); return; }
+    if (!talleresParaPago.length) { mostrarAviso('Primero registra un taller.', 'info'); return; }
+    // Sin taller elegido: el que vence primero
+    const ordenados = [...talleresParaPago].sort((a, b) => String(a.vence || '9').localeCompare(String(b.vence || '9')));
+    const elegido = talleresParaPago.find(t => String(t.id) === String(tallerId)) || ordenados[0];
+
+    const html = `
+        <label class="adm-campo-ancho">Taller
+            <select id="pago-taller" onchange="actualizarFormularioPago(true)" ${tallerId ? 'disabled' : ''}>
+                ${ordenados.map(t => `<option value="${esc(t.id)}" ${t.id === elegido.id ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}
+            </select></label>
+        <p class="adm-modal-sub" id="pago-detalle"></p>
+        <div class="adm-rejilla-2">
+            <label>Monto recibido
+                <input type="number" id="pago-monto" min="0" step="0.01" inputmode="decimal">
+                <span class="adm-ayuda" id="pago-sugerido"></span></label>
+            <label>Método
+                <select id="pago-metodo">${METODOS_PAGO.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
+            <label>Fecha del pago
+                <input type="date" id="pago-fecha" value="${hoyISO()}" max="${hoyISO()}"></label>
+            <label>Periodo que paga
+                <select id="pago-periodo" onchange="actualizarFormularioPago(false)">
+                    <option value="mensual">Mensual</option><option value="trimestral">Trimestral</option><option value="anual">Anual</option>
+                </select></label>
+            <label class="adm-campo-ancho">Nota (opcional)
+                <input type="text" id="pago-nota" maxlength="300" placeholder="Ej. Banco Pichincha, comprobante 4821"></label>
+            <label class="adm-campo-ancho">Queda activo hasta
+                <input type="date" id="pago-hasta" oninput="this.dataset.editado = '1'">
+                <span class="adm-ayuda">Se calcula con el periodo desde su vencimiento actual. Puedes cambiarla.</span></label>
+        </div>`;
+    abrirModal('Registrar pago', html, guardarPago, false, 'Registrar pago');
+    actualizarFormularioPago(true);
+    setTimeout(() => elModal('pago-monto').focus(), 80);
+}
+
+// Rellena monto sugerido, periodo y fecha de cobertura según el taller elegido
+function actualizarFormularioPago(cambioTaller) {
+    const t = talleresParaPago.find(x => String(x.id) === elModal('pago-taller').value);
+    if (!t) return;
+    const selPeriodo = elModal('pago-periodo');
+    if (cambioTaller) selPeriodo.value = t.periodo || 'mensual';
+    const periodo = selPeriodo.value;
+    const precio = precioDe(t, periodo);
+    elModal('pago-detalle').textContent = `Plan ${t.plan || 'sin plan'}, pago ${t.periodo || 'mensual'}. Vence el ${fechaCorta(t.vence)}.`;
+    elModal('pago-monto').value = precio ? precio.toFixed(2) : '';
+    elModal('pago-sugerido').textContent = precio ? `Sugerido según su plan: ${dinero(precio)}` : 'Escribe el monto que recibiste';
+    const hasta = elModal('pago-hasta');
+    if (cambioTaller) delete hasta.dataset.editado;
+    if (!hasta.dataset.editado) hasta.value = calcularCubreHasta(t.vence, periodo);
+}
+
+async function guardarPago() {
+    const id = elModal('pago-taller').value;
+    const monto = parseFloat(elModal('pago-monto').value);
+    const fecha = elModal('pago-fecha').value;
+    if (!(monto >= 0) || elModal('pago-monto').value === '') { showToast('Escribe el monto que recibiste.', 'error'); return; }
+    if (!fecha || fecha > hoyISO()) { showToast('La fecha del pago no puede ser futura.', 'error'); return; }
+    const btn = elModal('modal-btn-confirmar');
+    btn.disabled = true;
+    try {
+        const res = await fetch(`/admin/talleres/${encodeURIComponent(id)}/pagos`, {
+            method: 'POST', headers: cabeceraAdmin(true),
+            body: JSON.stringify({
+                monto, fecha_pago: fecha, periodo: elModal('pago-periodo').value, metodo: elModal('pago-metodo').value,
+                nota: elModal('pago-nota').value.trim(), cubre_hasta: elModal('pago-hasta').value || null
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            showToast(typeof data.detail === 'string' ? data.detail : 'Revisa los datos del pago.', 'error');
+            return;
+        }
+        mostrarAviso(data.mensaje || 'Pago registrado.', 'success', 'Pago registrado');
+        if (!elModal('sec-resumen').hidden) cargarResumen();
+        if (!elModal('sec-talleres').hidden) cargarTalleres();
+    } catch {
+        showToast('Error de conexión al servidor.', 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// Compatibilidad: los botones "Renovar pago" existentes abren el nuevo formulario
+function modalActualizarPago(id) { modalRegistrarPago(id); }
 
 async function cargarTalleres() {
     const token = localStorage.getItem("admin_token");
@@ -413,7 +745,7 @@ async function crearTaller() {
             document.getElementById("nuevo_email").value = "";
             document.getElementById("nuevo_pass").value = "";
             cargarTalleres();
-            cargarDashboard(); // Actualizar dashboard
+            cargarDashboard(); // Actualizar contador de errores y alertas
         } else {
             const detalle = data.detail ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : data.mensaje;
             showToast("Error: " + detalle, "error");
@@ -424,31 +756,6 @@ async function crearTaller() {
 }
 
 // --- ACCIONES CON MODAL PROPIO ---
-function modalActualizarPago(id) {
-    const inputs = `<label style="font-size:13px; color:#aaa;">Nueva Fecha de Vencimiento:</label>
-                    <input type="date" id="modal_fecha" style="width:100%;">`;
-                    
-    abrirModal("Actualizar Suscripción", inputs, async () => {
-        const fecha = document.getElementById("modal_fecha").value;
-        if(!fecha) {
-            showToast("Seleccione una fecha válida", "error");
-            return;
-        }
-        
-        const token = localStorage.getItem("admin_token");
-        await fetch(`/admin/talleres/${id}`, {
-            method: "PATCH", 
-            headers: { "Content-Type": "application/json", 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ estado_pago: 'activo', fecha_vencimiento: fecha })
-        });
-        
-        cerrarModal();
-        showToast("Suscripción renovada correctamente", "success");
-        cargarTalleres();
-        cargarDashboard(); // Actualizar dashboard
-    });
-}
-
 function modalAgregarUsuario(id) {
     const inputs = `<input type="email" id="modal_user_email" placeholder="Correo del Usuario">
                     <input type="password" id="modal_user_pass" placeholder="Contraseña (mín 6 caracteres)">`;

@@ -962,6 +962,254 @@ def admin_guardar_modulos_taller(taller_id: str, datos: ModulosTallerRequest, re
     return {"status": "éxito", "cambios": len(historial), **estado_modulos_taller(taller_id)}
 
 
+# ------------------------------------------------------------------------------
+# PAGOS DE LOS TALLERES Y RESUMEN DEL PANEL ADMIN
+#   Cada cobro queda en la tabla 'pagos' (cuánto, cuándo, cómo y qué cubre).
+#   El Resumen muestra ingresos reales por mes y plan (como entró el dinero, sin
+#   repartir los pagos anuales), próximos cobros, cuánto ha pagado cada taller
+#   y la salud de cada taller según su uso de las últimas 8 semanas.
+# ------------------------------------------------------------------------------
+MIGRACION_PAGOS = "sql/2026-11-27_pagos_talleres.sql"
+METODOS_PAGO = ("efectivo", "transferencia", "deposito", "tarjeta", "otro")
+SEMANAS_USO = 8
+
+
+def falta_tabla_pagos(e: Exception) -> bool:
+    texto = str(e)
+    return "pagos" in texto and ("does not exist" in texto or "PGRST" in texto or "schema cache" in texto)
+
+
+def sumar_meses(d: date, meses: int) -> date:
+    """Misma fecha 'meses' después; si ese día no existe (31 de feb), el último del mes."""
+    total = d.month - 1 + meses
+    anio, mes = d.year + total // 12, total % 12 + 1
+    for dia in (d.day, 30, 29, 28):
+        try:
+            return date(anio, mes, dia)
+        except ValueError:
+            continue
+    return date(anio, mes, 28)
+
+
+def precio_esperado(taller: dict, planes: dict) -> tuple[float, str, str]:
+    """(precio del periodo, periodo, código de plan) que le corresponde cobrar a un taller."""
+    periodo = taller.get("periodo_facturacion") or (taller.get("plan") if taller.get("plan") in PERIODOS_FACTURACION else "mensual")
+    codigo = taller.get("plan_codigo") or "pro"
+    plan = planes.get(codigo)
+    precio = float(plan.get(f"precio_{periodo}") or 0) if plan else 0.0
+    return precio, periodo, codigo
+
+
+class PagoRequest(BaseModel):
+    monto: float = Field(ge=0, le=100000)
+    fecha_pago: date | None = None                     # vacío = hoy en Ecuador
+    periodo: Literal["mensual", "trimestral", "anual"]
+    metodo: Literal["efectivo", "transferencia", "deposito", "tarjeta", "otro"] = "transferencia"
+    nota: str = Field(default="", max_length=300)
+    cubre_hasta: date | None = None                    # vacío = se calcula con el periodo
+
+
+@app.post("/admin/talleres/{taller_id}/pagos")
+def registrar_pago_taller(taller_id: str, datos: PagoRequest, request: Request):
+    """Registra un cobro y renueva el taller: queda activo hasta 'cubre_hasta'."""
+    obtener_superadmin(request)
+    filas = supabase.table("talleres").select("*").eq("id", taller_id).execute().data
+    if not filas:
+        raise HTTPException(status_code=404, detail="Ese taller no existe")
+    taller = filas[0]
+
+    hoy = datetime.now(ZONA_ECUADOR).date()
+    fecha_pago = datos.fecha_pago or hoy
+    if fecha_pago > hoy:
+        raise HTTPException(status_code=400, detail="La fecha del pago no puede ser futura")
+
+    # Si no se indica hasta cuándo cubre: desde el vencimiento actual (si aún no
+    # venció) o desde hoy, más los meses del periodo pagado.
+    if datos.cubre_hasta:
+        cubre_hasta = datos.cubre_hasta
+    else:
+        vence = taller.get("fecha_vencimiento")
+        base = date.fromisoformat(str(vence)[:10]) if vence else hoy
+        cubre_hasta = sumar_meses(max(base, hoy), MESES_POR_PERIODO[datos.periodo])
+
+    pago = {
+        "taller_id": taller_id, "monto": round(datos.monto, 2), "fecha_pago": fecha_pago.isoformat(),
+        "plan_codigo": taller.get("plan_codigo"), "periodo": datos.periodo, "metodo": datos.metodo,
+        "nota": datos.nota.strip(), "cubre_hasta": cubre_hasta.isoformat(),
+        "admin_email": getattr(request.state, "admin_email", None),
+    }
+    try:
+        guardado = supabase.table("pagos").insert(pago).execute().data
+    except Exception as e:
+        if falta_tabla_pagos(e):
+            raise HTTPException(status_code=500, detail=f"Falta ejecutar en Supabase la migración {MIGRACION_PAGOS}.")
+        raise HTTPException(status_code=500, detail=f"No se pudo guardar el pago: {e}")
+
+    # Renovación: activo hasta la nueva fecha y con el periodo que pagó
+    cambios = {"estado_pago": "activo", "fecha_vencimiento": cubre_hasta.isoformat(), "plan": datos.periodo}
+    try:
+        supabase.table("talleres").update({**cambios, "periodo_facturacion": datos.periodo}).eq("id", taller_id).execute()
+    except Exception as e:
+        if not es_error_migracion_planes(e):
+            raise
+        supabase.table("talleres").update(cambios).eq("id", taller_id).execute()
+
+    return {"status": "éxito", "pago": guardado[0] if guardado else pago,
+            "mensaje": f"Pago de ${datos.monto:,.2f} registrado. {taller.get('nombre')} queda activo hasta el {cubre_hasta.isoformat()}."}
+
+
+@app.get("/admin/talleres/{taller_id}/pagos")
+def listar_pagos_taller(taller_id: str, request: Request):
+    """Historial de pagos de un taller (el más reciente primero)."""
+    obtener_superadmin(request)
+    try:
+        pagos = supabase.table("pagos").select("*").eq("taller_id", taller_id) \
+            .order("fecha_pago", desc=True).order("id", desc=True).execute().data or []
+    except Exception as e:
+        if falta_tabla_pagos(e):
+            return {"pagos": [], "total": 0, "falta_migracion": MIGRACION_PAGOS}
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"pagos": pagos, "total": round(sum(float(p["monto"]) for p in pagos), 2)}
+
+
+def salud_taller(semanas: list[int]) -> str:
+    """activo / bajando / inactivo según las últimas 2 semanas frente a las 6 anteriores."""
+    recientes, previas = semanas[-2:], semanas[:-2]
+    if sum(recientes) == 0:
+        return "inactivo"
+    prom_prev = sum(previas) / len(previas) if previas else 0
+    prom_rec = sum(recientes) / len(recientes)
+    if prom_prev >= 2 and prom_rec < prom_prev * 0.6:
+        return "bajando"
+    return "activo"
+
+
+@app.get("/admin/resumen")
+def resumen_admin(request: Request, meses: int = 6):
+    """Todo lo que muestra el Resumen del panel admin en una sola respuesta.
+    meses = 6 o 12 (0 = desde el primer pago)."""
+    obtener_superadmin(request)
+    hoy = datetime.now(ZONA_ECUADOR).date()
+    talleres = supabase.table("talleres").select("*").execute().data or []
+    try:
+        planes = {p["codigo"]: p for p in leer_planes()}
+    except Exception:
+        planes = {}
+    nombre_plan = lambda c: (planes.get(c) or {}).get("nombre") or (c or "Sin plan")
+
+    # ---- Pagos ----
+    pagos, falta_migracion = [], None
+    try:
+        pagos = _paginar(lambda: supabase.table("pagos").select("taller_id, monto, fecha_pago, plan_codigo").order("id"))
+    except Exception as e:
+        if not falta_tabla_pagos(e):
+            raise HTTPException(status_code=500, detail=str(e))
+        falta_migracion = MIGRACION_PAGOS
+
+    # Meses a mostrar (del más antiguo al actual)
+    if meses <= 0:
+        primero = min((date.fromisoformat(p["fecha_pago"][:10]) for p in pagos), default=hoy)
+        n_meses = max(1, (hoy.year - primero.year) * 12 + hoy.month - primero.month + 1)
+    else:
+        n_meses = min(max(meses, 1), 36)
+    inicio_mes_actual = hoy.replace(day=1)
+    lista_meses = [sumar_meses(inicio_mes_actual, -i) for i in range(n_meses - 1, -1, -1)]
+    clave = lambda d: f"{d.year}-{d.month:02d}"
+
+    por_mes = {clave(m): {"mes": clave(m), "etiqueta": MESES_CORTOS[m.month - 1], "anio": m.year,
+                          "total": 0.0, "por_plan": {}} for m in lista_meses}
+    # Periodo anterior del mismo largo (para comparar)
+    inicio_periodo = lista_meses[0]
+    inicio_anterior = sumar_meses(inicio_periodo, -n_meses)
+    total_anterior = 0.0
+    pagado_por_taller: dict[str, dict] = {}
+    for p in pagos:
+        f = date.fromisoformat(str(p["fecha_pago"])[:10])
+        monto = float(p["monto"] or 0)
+        t = pagado_por_taller.setdefault(str(p["taller_id"]), {"total": 0.0, "n": 0, "ultimo": None})
+        t["total"] += monto
+        t["n"] += 1
+        t["ultimo"] = max(t["ultimo"] or f, f)
+        k = clave(f)
+        if k in por_mes:
+            fila = por_mes[k]
+            fila["total"] += monto
+            codigo = p.get("plan_codigo") or "sin_plan"
+            fila["por_plan"][codigo] = round(fila["por_plan"].get(codigo, 0) + monto, 2)
+        elif inicio_anterior <= f < inicio_periodo:
+            total_anterior += monto
+    serie = [{**v, "total": round(v["total"], 2)} for v in por_mes.values()]
+    total_periodo = round(sum(v["total"] for v in serie), 2)
+
+    # ---- MRR esperado y próximos cobros ----
+    mrr, mrr_por_plan = 0.0, {}
+    proximos, por_cobrar_mes = [], 0.0
+    fin_mes = sumar_meses(inicio_mes_actual, 1)
+    for t in talleres:
+        if t.get("estado_pago") != "activo":
+            continue
+        precio, periodo, codigo = precio_esperado(t, planes)
+        mensual = precio / MESES_POR_PERIODO[periodo]
+        mrr += mensual
+        fila = mrr_por_plan.setdefault(codigo, {"codigo": codigo, "nombre": nombre_plan(codigo), "mrr": 0.0, "talleres": 0})
+        fila["mrr"] += mensual
+        fila["talleres"] += 1
+        vence = t.get("fecha_vencimiento")
+        if vence:
+            fv = date.fromisoformat(str(vence)[:10])
+            proximos.append({"taller_id": t["id"], "nombre": t.get("nombre"), "vence": fv.isoformat(),
+                             "dias": (fv - hoy).days, "monto": round(precio, 2), "periodo": periodo,
+                             "plan": nombre_plan(codigo)})
+            if fv < fin_mes:
+                por_cobrar_mes += precio
+    proximos.sort(key=lambda x: x["vence"])
+
+    # ---- Uso de las últimas 8 semanas por taller (órdenes registradas) ----
+    desde = hoy - timedelta(days=7 * SEMANAS_USO - 1)
+    desde_utc = limites_dia_ecuador(desde.isoformat())[0]
+    uso: dict[str, list[int]] = {str(t["id"]): [0] * SEMANAS_USO for t in talleres}
+    ultima: dict[str, str] = {}
+    for r in _paginar(lambda: supabase.table("reparaciones").select("taller_id, fecha_hora").gte("fecha_hora", desde_utc).order("id")):
+        f = fecha_ecuador(r.get("fecha_hora"))
+        tid = str(r.get("taller_id"))
+        if not f or tid not in uso:
+            continue
+        semana = (f - desde).days // 7
+        if 0 <= semana < SEMANAS_USO:
+            uso[tid][semana] += 1
+        if str(r["fecha_hora"]) > ultima.get(tid, ""):
+            ultima[tid] = str(r["fecha_hora"])
+
+    filas_talleres = []
+    for t in sorted(talleres, key=lambda x: (x.get("nombre") or "").lower()):
+        tid = str(t["id"])
+        precio, periodo, codigo = precio_esperado(t, planes)
+        pagado = pagado_por_taller.get(tid, {"total": 0.0, "n": 0, "ultimo": None})
+        filas_talleres.append({
+            "id": t["id"], "nombre": t.get("nombre"), "email": t.get("email"),
+            "estado_pago": t.get("estado_pago"), "plan_codigo": codigo, "plan": nombre_plan(codigo),
+            "periodo": periodo, "precio": round(precio, 2), "vence": str(t.get("fecha_vencimiento") or "")[:10] or None,
+            "pagado_total": round(pagado["total"], 2), "n_pagos": pagado["n"],
+            "ultimo_pago": pagado["ultimo"].isoformat() if pagado["ultimo"] else None,
+            "uso_semanal": uso[tid], "ultima_actividad": ultima.get(tid),
+            "salud": salud_taller(uso[tid]) if t.get("estado_pago") == "activo" else "suspendido",
+        })
+
+    return {
+        "hoy": hoy.isoformat(),
+        "falta_migracion": falta_migracion,
+        "ingresos": {
+            "meses": serie, "total": total_periodo, "total_anterior": round(total_anterior, 2),
+            "cobrado_mes_actual": serie[-1]["total"] if serie else 0,
+            "mrr": round(mrr, 2), "por_cobrar_mes": round(por_cobrar_mes, 2),
+        },
+        "planes": [{**v, "mrr": round(v["mrr"], 2)} for v in sorted(mrr_por_plan.values(), key=lambda x: -x["mrr"])],
+        "nombres_planes": {c: p.get("nombre") for c, p in planes.items()},
+        "proximos_cobros": proximos[:8],
+        "talleres": filas_talleres,
+    }
+
+
 @app.get("/admin/cola")
 def obtener_cola_ia(request: Request, limite: int = 50):
     obtener_superadmin(request)
