@@ -18,7 +18,7 @@
     </script>
     <!-- Sistema de diseño compartido (tokens, temas, navegación, modal) + estilos propios del panel -->
     <link rel="stylesheet" href="style.css?v=29">
-    <link rel="stylesheet" href="admin_style.css?v=7">
+    <link rel="stylesheet" href="admin_style.css?v=9">
 </head>
 <body class="adm">
 
@@ -298,15 +298,22 @@
                     <header class="veh-cabecera">
                         <div>
                             <h1>Planes y módulos</h1>
-                            <p>Qué incluye cada plan y cuánto cuesta.</p>
+                            <p>Qué incluye cada plan y cuánto cuesta. Los cambios se aplican al instante a sus talleres.</p>
                         </div>
                     </header>
-                    <div class="panel-box">
-                        <p class="texto-ayuda">Marca qué módulos incluye cada plan. Los cambios se aplican al instante a todos los talleres de ese plan
-                            (salvo las excepciones que les hayas puesto a cada uno). Chat de registro, órdenes, cuadre de caja, orden PNG y catálogo
-                            de servicios están siempre incluidos.</p>
-                        <div id="lista-planes" class="planes-grid"></div>
+
+                    <!-- Lo que todo plan trae siempre -->
+                    <div class="pla-base res-card">
+                        <span class="res-eti">Siempre incluido en todos los planes</span>
+                        <div class="pla-base-lista">
+                            <span>Chat de registro con Geor IA</span><span>Órdenes de trabajo</span><span>Cuadre de caja</span>
+                            <span>Orden en imagen PNG</span><span>Catálogo de servicios</span>
+                        </div>
                     </div>
+
+                    <div id="lista-planes" class="pla-rejilla"></div>
+                    <p class="pla-nota res-tenue">Las excepciones que le pongas a un taller (activar o quitar un módulo solo a él) siguen valiendo aunque cambies su plan.
+                        Se editan desde la ficha del taller, en "Módulos".</p>
                 </section>
 
                 <!-- ================================================== -->
@@ -334,6 +341,6 @@
     <!-- Menú de acciones de una fila de la tabla de talleres -->
     <div id="res-menu" class="res-menu" role="menu" hidden></div>
 
-    <script src="admin_script.js?v=6"></script>
+    <script src="admin_script.js?v=8"></script>
 </body>
 </html>

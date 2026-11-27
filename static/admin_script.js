@@ -1151,7 +1151,11 @@ function llenarSelectPlanes() {
     sel.value = planesCache[planesCache.length - 1].codigo;
 }
 
-// --- Ventana "Módulos" de un taller ---
+// ==========================================================================
+// MÓDULOS DE UN TALLER (modal)
+//   Cada módulo: "Según plan", "Activar" o "Quitar" (excepción solo para este
+//   taller, con fecha de fin opcional). Quitar no borra datos: solo los oculta.
+// ==========================================================================
 const TEXTO_ACCION = {
     activado: 'Activó', desactivado: 'Quitó', segun_plan: 'Volvió a lo del plan',
     cambio_plan: 'Cambió de plan', plan_editado: 'Editó el plan'
@@ -1164,32 +1168,34 @@ async function modalModulos(tallerId) {
         data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
     } catch (e) {
-        showToast(e.message, "error");
+        mostrarAviso(e.message, "error");
         return;
     }
-    catalogoModulos = data.modulos.map(m => ({ clave: m.clave, nombre: m.nombre }));
-    const planes = data.planes;
+    catalogoModulos = catalogoModulos.length ? catalogoModulos : data.modulos.map(m => ({ clave: m.clave, nombre: m.nombre, requiere: m.requiere || [] }));
+    window._planesModal = data.planes;
 
     const filas = data.modulos.map(m => {
-        let estadoPill;
-        if (m.activo) estadoPill = '<span class="pill-badge pill-activo">Activo</span>';
-        else if (m.bloqueado) estadoPill = `<span class="pill-badge pill-aviso">Falta ${esc(m.requiere_nombres.join(', '))}</span>`;
-        else estadoPill = '<span class="pill-badge pill-plan">Inactivo</span>';
-        const vencida = m.vencida ? '<span class="pill-badge pill-aviso">Excepción vencida</span>' : '';
+        const opcion = (valor, texto) => `
+            <label class="mod-opcion"><input type="radio" name="mod-${esc(m.clave)}" value="${valor}" ${m.estado === valor ? 'checked' : ''}
+                onchange="ajustarFilaModulo(this)"><span>${texto}</span></label>`;
+        let estado;
+        if (m.activo) estado = '<span class="res-salud ok"><i></i>Activo</span>';
+        else if (m.bloqueado) estado = `<span class="res-salud inactivo"><i></i>Falta ${esc(m.requiere_nombres.join(', '))}</span>`;
+        else estado = '<span class="res-salud inactivo mod-apagado"><i></i>Inactivo</span>';
         return `
-        <div class="modulo-fila" data-clave="${esc(m.clave)}">
-            <div class="modulo-info">
-                <div class="modulo-titulo"><b>${esc(m.nombre)}</b> ${estadoPill} ${vencida}</div>
-                <div class="texto-ayuda">${esc(m.descripcion)}${m.requiere_nombres.length ? ` Requiere: ${esc(m.requiere_nombres.join(', '))}.` : ''}</div>
+        <div class="mod-fila" data-clave="${esc(m.clave)}" data-en-plan="${m.en_plan ? '1' : '0'}">
+            <div class="mod-info">
+                <div class="mod-titulo"><b>${esc(m.nombre)}</b>${estado}${m.vencida ? '<span class="res-chip amarillo">Excepción vencida</span>' : ''}</div>
+                <p>${esc(m.descripcion)}${m.requiere_nombres.length ? ` Requiere: ${esc(m.requiere_nombres.join(', '))}.` : ''}</p>
             </div>
-            <div class="modulo-controles">
-                <select class="sel-estado" onchange="ajustarFilaModulo(this)">
-                    <option value="plan" ${m.estado === 'plan' ? 'selected' : ''}>${m.en_plan ? 'Según plan (incluido)' : 'Según plan (no incluido)'}</option>
-                    <option value="activado" ${m.estado === 'activado' ? 'selected' : ''}>Activar para este taller</option>
-                    <option value="desactivado" ${m.estado === 'desactivado' ? 'selected' : ''}>Quitar a este taller</option>
-                </select>
-                <input type="date" class="inp-hasta" value="${esc(m.hasta || '')}" title="Hasta (vacío = sin fecha de fin)">
-                <input type="text" class="inp-nota" maxlength="300" value="${esc(m.nota)}" placeholder="Nota (ej. prueba gratis)">
+            <div class="mod-control" role="radiogroup" aria-label="${esc(m.nombre)}">
+                ${opcion('plan', `Según plan<small class="mod-txt-plan">${m.en_plan ? 'incluido' : 'no incluido'}</small>`)}
+                ${opcion('activado', 'Activar')}
+                ${opcion('desactivado', 'Quitar')}
+            </div>
+            <div class="mod-excepcion">
+                <label>Hasta (opcional)<input type="date" class="inp-hasta" value="${esc(m.hasta || '')}" min="${hoyISO()}"></label>
+                <label>Nota (opcional)<input type="text" class="inp-nota" maxlength="300" value="${esc(m.nota)}" placeholder="Ej. Prueba gratis de 30 días"></label>
             </div>
         </div>`;
     }).join('');
@@ -1197,67 +1203,72 @@ async function modalModulos(tallerId) {
     const historial = (data.historial || []).map(h => `
         <li><span class="hist-fecha">${esc(formatearFecha(h.fecha))}</span>
             <span><b>${esc(TEXTO_ACCION[h.accion] || h.accion)}</b>${h.modulo ? ' ' + esc(nombreModulo(h.modulo)) : ''}${h.detalle ? ': ' + esc(h.detalle) : ''}
-            <span class="hist-quien">· ${esc(h.admin_email || '')}</span></span></li>`).join('');
+            ${h.admin_email ? `<span class="hist-quien">${esc(h.admin_email)}</span>` : ''}</span></li>`).join('');
 
     const html = `
-        <div class="modulos-cabecera">
+        <div class="mod-cabecera">
             <label>Plan del taller
                 <select id="sel-plan-taller" onchange="refrescarEtiquetasPlan()">
-                    ${planes.map(p => `<option value="${esc(p.codigo)}" ${p.codigo === data.taller.plan_codigo ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}
-                </select>
-            </label>
-            <p class="texto-ayuda">"Según plan" sigue al plan. "Activar" o "Quitar" es una excepción solo para este taller;
+                    ${data.planes.map(p => `<option value="${esc(p.codigo)}" ${p.codigo === data.taller.plan_codigo ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}
+                </select></label>
+            <p class="adm-ayuda">"Según plan" sigue lo que incluye el plan. "Activar" o "Quitar" es una excepción solo para este taller;
                 con fecha, vuelve sola a lo del plan cuando vence. Quitar un módulo no borra datos: solo los oculta.</p>
         </div>
-        <div class="lista-modulos">${filas}</div>
-        <h4 class="subtitulo-modal">Últimos cambios</h4>
-        <ul class="historial-modulos">${historial || '<li><span class="texto-ayuda">Sin cambios registrados.</span></li>'}</ul>`;
+        <div class="mod-lista">${filas}</div>
+        <details class="mod-historial">
+            <summary>Últimos cambios</summary>
+            <ul class="historial-modulos">${historial || '<li><span class="res-tenue">Sin cambios registrados.</span></li>'}</ul>
+        </details>`;
 
-    abrirModal(`Módulos · ${data.taller.nombre}`, html, () => guardarModulos(tallerId), true);
-    window._planesModal = planes;
-    document.querySelectorAll('#modal-body .modulo-fila .sel-estado').forEach(ajustarFilaModulo);
+    abrirModal(`Módulos de ${data.taller.nombre}`, html, () => guardarModulos(tallerId), true, 'Guardar módulos');
+    document.querySelectorAll('#modal-body .mod-fila').forEach(f => ajustarFilaModulo(f.querySelector('input[type=radio]:checked')));
 }
 
-// Fecha/nota solo tienen sentido en una excepción
-function ajustarFilaModulo(sel) {
-    const fila = sel.closest('.modulo-fila');
-    const excepcion = sel.value !== 'plan';
-    fila.querySelectorAll('.inp-hasta, .inp-nota').forEach(i => i.disabled = !excepcion);
-    fila.classList.toggle('con-excepcion', excepcion);
+// Fecha y nota solo se muestran cuando hay excepción
+function ajustarFilaModulo(radio) {
+    if (!radio) return;
+    const fila = radio.closest('.mod-fila');
+    const valor = fila.querySelector('input[type=radio]:checked').value;
+    fila.classList.toggle('con-excepcion', valor !== 'plan');
+    fila.dataset.estado = valor;
 }
 
 // Al cambiar de plan, "Según plan (incluido / no incluido)" se actualiza
 function refrescarEtiquetasPlan() {
-    const codigo = document.getElementById('sel-plan-taller').value;
+    const codigo = elModal('sel-plan-taller').value;
     const plan = (window._planesModal || []).find(p => p.codigo === codigo) || { modulos: [] };
-    document.querySelectorAll('#modal-body .modulo-fila').forEach(f => {
-        const opt = f.querySelector('.sel-estado option[value="plan"]');
-        opt.textContent = plan.modulos.includes(f.dataset.clave) ? 'Según plan (incluido)' : 'Según plan (no incluido)';
+    document.querySelectorAll('#modal-body .mod-fila').forEach(f => {
+        const incluido = plan.modulos.includes(f.dataset.clave);
+        f.dataset.enPlan = incluido ? '1' : '0';
+        f.querySelector('.mod-txt-plan').textContent = incluido ? 'incluido' : 'no incluido';
     });
 }
 
 async function guardarModulos(tallerId) {
-    const ajustes = [...document.querySelectorAll('#modal-body .modulo-fila')].map(f => ({
+    const ajustes = [...document.querySelectorAll('#modal-body .mod-fila')].map(f => ({
         modulo: f.dataset.clave,
-        estado: f.querySelector('.sel-estado').value,
+        estado: f.querySelector('input[type=radio]:checked').value,
         hasta: f.querySelector('.inp-hasta').value || null,
         nota: f.querySelector('.inp-nota').value.trim()
     }));
-    const btn = document.getElementById('modal-btn-confirmar');
+    const btn = elModal('modal-btn-confirmar');
     btn.disabled = true;
     try {
         const res = await fetch(`/admin/talleres/${encodeURIComponent(tallerId)}/modulos`, {
             method: "PUT", headers: cabeceraAdmin(true),
-            body: JSON.stringify({ plan_codigo: document.getElementById('sel-plan-taller').value, ajustes })
+            body: JSON.stringify({ plan_codigo: elModal('sel-plan-taller').value, ajustes })
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
             showToast(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`, "error");
             return;
         }
-        cerrarModal();
-        showToast(data.cambios ? `Módulos actualizados (${data.cambios} cambio${data.cambios > 1 ? 's' : ''})` : "No había cambios", "success");
-        cargarTalleres();
+        mostrarAviso(data.cambios ? `Se guardaron ${data.cambios} cambio${data.cambios > 1 ? 's' : ''}.` : 'No había cambios que guardar.',
+                     data.cambios ? 'success' : 'info', data.cambios ? 'Módulos actualizados' : 'Sin cambios');
+        if (!elModal('sec-talleres').hidden) {
+            await cargarTalleres();
+            if (String(tallerAbierto) === String(tallerId)) abrirFicha360(tallerId, { desdeLista: true, mostrar: elModal('tal-layout').classList.contains('con-detalle') });
+        }
         cargarDashboard();
     } catch {
         showToast("Error de conexión al servidor.", "error");
@@ -1268,44 +1279,117 @@ async function guardarModulos(tallerId) {
 
 function formatearFecha(valor) {
     const d = new Date(String(valor || '').replace(' ', 'T'));
-    return isNaN(d) ? String(valor || '') : d.toLocaleString('es-EC', { dateStyle: 'short', timeStyle: 'short' });
+    if (isNaN(d)) return String(valor || '');
+    return `${d.getDate()} ${MESES_CORTOS[d.getMonth()]} ${d.getFullYear()}, ${d.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
-// --- Vista "Planes y módulos" ---
+// ==========================================================================
+// PLANES Y MÓDULOS (sección)
+//   Una tarjeta por plan: nombre, precios por periodo (con su equivalente
+//   mensual y el ahorro), módulos con interruptores y guardar solo si cambió.
+// ==========================================================================
 function abrirPlanes() { cambiarSeccion('sec-planes'); }
 
-async function cargarVistaPlanes() {
-    const cont = document.getElementById("lista-planes");
-    cont.innerHTML = "<p style='color:#aaa;'>Cargando planes...</p>";
-    const ok = await cargarPlanes();
-    if (ok !== true) {
-        cont.innerHTML = `<p style='color:var(--accent-red);'>${esc(ok)}</p>`;
-        return;
+// Cuántos talleres tiene cada plan y cuánto aportan al mes (del Resumen)
+async function estadisticasPlanes() {
+    if (!ultimoResumen) {
+        try {
+            const res = await fetch('/admin/resumen?meses=6', { headers: cabeceraAdmin() });
+            if (res.ok) ultimoResumen = await res.json();
+        } catch { /* sin estadísticas: las tarjetas funcionan igual */ }
     }
-    cont.innerHTML = planesCache.map(p => `
-        <div class="plan-card" data-codigo="${esc(p.codigo)}">
-            <label class="campo-plan">Nombre del plan
-                <input type="text" class="inp-nombre" value="${esc(p.nombre)}" maxlength="40"></label>
-            <div class="precios-plan">
-                <label class="campo-plan">Mensual ($)<input type="number" min="0" step="0.01" class="inp-precio" data-periodo="mensual" value="${Number(p.precio_mensual)}"></label>
-                <label class="campo-plan">Trimestral ($)<input type="number" min="0" step="0.01" class="inp-precio" data-periodo="trimestral" value="${Number(p.precio_trimestral)}"></label>
-                <label class="campo-plan">Anual ($)<input type="number" min="0" step="0.01" class="inp-precio" data-periodo="anual" value="${Number(p.precio_anual)}"></label>
-            </div>
-            <div class="checks-modulos">
-                ${catalogoModulos.map(m => `
-                <label class="check-modulo" title="${esc(m.descripcion)}">
-                    <input type="checkbox" value="${esc(m.clave)}" ${p.modulos.includes(m.clave) ? 'checked' : ''} onchange="ajustarDependencias(this)">
-                    <span><b>${esc(m.nombre)}</b><br><span class="texto-ayuda">${esc(m.descripcion)}${m.requiere_nombres.length ? ` Requiere: ${esc(m.requiere_nombres.join(', '))}.` : ''}</span></span>
-                </label>`).join('')}
-            </div>
-            <button class="btn-primary" onclick="guardarPlan('${esc(p.codigo)}', this)">Guardar plan</button>
-        </div>`).join('');
+    return Object.fromEntries((ultimoResumen?.planes || []).map(p => [p.codigo, p]));
 }
 
+async function cargarVistaPlanes() {
+    const cont = elModal("lista-planes");
+    cont.innerHTML = '<p class="res-vacio-chico">Cargando planes...</p>';
+    const ok = await cargarPlanes();
+    if (ok !== true) { cont.innerHTML = `<div class="res-aviso">${esc(ok)}</div>`; return; }
+    const stats = await estadisticasPlanes();
+    cont.innerHTML = planesCache.map(p => {
+        const s = stats[p.codigo];
+        const precio = (periodo, etiqueta) => `
+            <label class="pla-precio"><span>${etiqueta}</span>
+                <span class="pla-input-dinero"><i>$</i><input type="number" min="0" step="0.01" class="inp-precio" data-periodo="${periodo}"
+                    value="${Number(p[`precio_${periodo}`]).toFixed(2)}" oninput="cambioEnPlan(this)"></span>
+                <small class="pla-equiv" data-equiv="${periodo}"></small></label>`;
+        return `
+        <section class="pla-card res-card" data-codigo="${esc(p.codigo)}">
+            <header class="pla-cab">
+                <label class="pla-nombre"><span class="solo-lector">Nombre del plan</span>
+                    <input type="text" class="inp-nombre" value="${esc(p.nombre)}" maxlength="40" oninput="cambioEnPlan(this)"></label>
+                <div class="pla-stats">
+                    <span class="res-plan">${s ? `${s.talleres} taller${s.talleres === 1 ? '' : 'es'}` : '0 talleres'}</span>
+                    ${s ? `<span class="res-tenue">${dinero(s.mrr)} al mes</span>` : ''}
+                </div>
+            </header>
+            <div class="pla-precios">
+                ${precio('mensual', 'Mensual')}${precio('trimestral', 'Trimestral')}${precio('anual', 'Anual')}
+            </div>
+            <div class="pla-modulos">
+                <span class="res-eti">Módulos incluidos <b class="pla-conteo"></b></span>
+                ${catalogoModulos.map(m => `
+                <label class="pla-switch" title="${esc(m.descripcion)}">
+                    <span class="pla-switch-txt"><b>${esc(m.nombre)}</b>
+                        <small>${esc(m.descripcion)}${m.requiere_nombres?.length ? ` Requiere: ${esc(m.requiere_nombres.join(', '))}.` : ''}</small></span>
+                    <input type="checkbox" role="switch" value="${esc(m.clave)}" ${p.modulos.includes(m.clave) ? 'checked' : ''}
+                        onchange="ajustarDependencias(this); cambioEnPlan(this)">
+                    <i aria-hidden="true"></i>
+                </label>`).join('')}
+            </div>
+            <footer class="pla-pie">
+                <span class="pla-estado res-tenue">Sin cambios</span>
+                <button type="button" class="btn-chico" onclick="descartarPlan(this)" disabled>Descartar</button>
+                <button type="button" class="btn btn-primario" onclick="guardarPlan('${esc(p.codigo)}', this)" disabled>Guardar plan</button>
+            </footer>
+        </section>`;
+    }).join('') || '<p class="res-vacio-chico">No hay planes configurados.</p>';
+    document.querySelectorAll('.pla-card').forEach(c => { c.dataset.original = JSON.stringify(leerPlan(c)); actualizarCardPlan(c); });
+}
+
+// Lo que dice la tarjeta ahora mismo (para comparar con lo guardado y para enviar)
+function leerPlan(card) {
+    const precio = p => Math.round(parseFloat(card.querySelector(`.inp-precio[data-periodo="${p}"]`).value || '0') * 100) / 100;
+    return {
+        nombre: card.querySelector('.inp-nombre').value.trim(),
+        precio_mensual: precio('mensual'), precio_trimestral: precio('trimestral'), precio_anual: precio('anual'),
+        modulos: [...card.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value)
+    };
+}
+
+function cambioEnPlan(el) { actualizarCardPlan(el.closest('.pla-card')); }
+
+// Equivalente mensual, ahorro, conteo de módulos y botones según haya cambios
+function actualizarCardPlan(card) {
+    const datos = leerPlan(card);
+    const meses = { trimestral: 3, anual: 12 };
+    Object.entries(meses).forEach(([periodo, n]) => {
+        const el = card.querySelector(`[data-equiv="${periodo}"]`);
+        const mensual = datos[`precio_${periodo}`] / n;
+        const ahorro = datos.precio_mensual ? Math.round((1 - mensual / datos.precio_mensual) * 100) : 0;
+        el.textContent = datos[`precio_${periodo}`] ? `${dinero(mensual)} al mes${ahorro > 0 ? `, ahorra ${ahorro}%` : ''}` : '';
+    });
+    card.querySelector('[data-equiv="mensual"]').textContent = datos.precio_mensual ? 'Precio base' : '';
+    card.querySelector('.pla-conteo').textContent = `${datos.modulos.length} de ${catalogoModulos.length}`;
+    const cambiado = JSON.stringify(datos) !== card.dataset.original;
+    card.classList.toggle('con-cambios', cambiado);
+    card.querySelector('.pla-estado').textContent = cambiado ? 'Cambios sin guardar' : 'Sin cambios';
+    card.querySelectorAll('.pla-pie button').forEach(b => b.disabled = !cambiado);
+}
+
+function descartarPlan(btn) {
+    const card = btn.closest('.pla-card');
+    const o = JSON.parse(card.dataset.original);
+    card.querySelector('.inp-nombre').value = o.nombre;
+    ['mensual', 'trimestral', 'anual'].forEach(p => card.querySelector(`.inp-precio[data-periodo="${p}"]`).value = o[`precio_${p}`].toFixed(2));
+    card.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = o.modulos.includes(c.value));
+    actualizarCardPlan(card);
+}
 
 // Marcar un módulo marca sus requisitos; desmarcar un requisito desmarca a quien lo necesita
 function ajustarDependencias(check) {
-    const card = check.closest('.plan-card');
+    const card = check.closest('.pla-card');
     const marcar = (clave, v) => { const c = card.querySelector(`input[type=checkbox][value="${clave}"]`); if (c) c.checked = v; };
     const mod = catalogoModulos.find(m => m.clave === check.value);
     if (check.checked) (mod.requiere || []).forEach(r => marcar(r, true));
@@ -1313,30 +1397,46 @@ function ajustarDependencias(check) {
 }
 
 async function guardarPlan(codigo, btn) {
-    const card = btn.closest('.plan-card');
-    const precio = p => parseFloat(card.querySelector(`.inp-precio[data-periodo="${p}"]`).value || '0');
-    const cuerpo = {
-        nombre: card.querySelector('.inp-nombre').value.trim(),
-        precio_mensual: precio('mensual'), precio_trimestral: precio('trimestral'), precio_anual: precio('anual'),
-        modulos: [...card.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value)
-    };
-    btn.disabled = true;
-    try {
-        const res = await fetch(`/admin/planes/${encodeURIComponent(codigo)}`, {
-            method: "PUT", headers: cabeceraAdmin(true), body: JSON.stringify(cuerpo)
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            const d = data.detail;
-            showToast(typeof d === 'string' ? d : (Array.isArray(d) ? 'Revisa el nombre y los precios' : `Error ${res.status}`), "error");
-            return;
+    const card = btn.closest('.pla-card');
+    const cuerpo = leerPlan(card);
+    if (cuerpo.nombre.length < 2) { mostrarAviso('El nombre del plan debe tener al menos 2 letras.', 'error'); return; }
+    const s = (await estadisticasPlanes())[codigo];
+    const guardar = async () => {
+        btn.disabled = true;
+        try {
+            const res = await fetch(`/admin/planes/${encodeURIComponent(codigo)}`, {
+                method: "PUT", headers: cabeceraAdmin(true), body: JSON.stringify(cuerpo)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                const d = data.detail;
+                mostrarAviso(typeof d === 'string' ? d : (Array.isArray(d) ? 'Revisa el nombre y los precios.' : `Error ${res.status}`), "error");
+                return;
+            }
+            // Lo guardado pasa a ser el nuevo punto de comparación
+            if (data.planes) planesCache = data.planes;
+            else planesCache = planesCache.map(p => p.codigo === codigo ? { ...p, ...cuerpo } : p);
+            card.dataset.original = JSON.stringify(cuerpo);
+            actualizarCardPlan(card);
+            llenarSelectPlanes();
+            ultimoResumen = null;   // el MRR esperado cambia con los precios
+            mostrarAviso(`El plan ${cuerpo.nombre} quedó guardado y ya se aplica a sus talleres.`, "success", "Plan guardado");
+        } catch {
+            mostrarAviso("Error de conexión al servidor.", "error");
+        } finally {
+            actualizarCardPlan(card);
         }
-        planesCache = data.planes || planesCache;
-        llenarSelectPlanes();
-        showToast(`Plan ${cuerpo.nombre} guardado. Ya se aplica a sus talleres.`, "success");
-    } catch {
-        showToast("Error de conexión al servidor.", "error");
-    } finally {
-        btn.disabled = false;
+    };
+    // Si el plan tiene talleres y se quitan módulos, se avisa antes
+    const original = JSON.parse(card.dataset.original);
+    const quitados = original.modulos.filter(m => !cuerpo.modulos.includes(m));
+    if (s?.talleres && quitados.length) {
+        confirmarAccion({
+            titulo: `¿Quitar módulos del plan ${cuerpo.nombre}?`,
+            mensaje: `${s.talleres} taller${s.talleres === 1 ? '' : 'es'} dejará${s.talleres === 1 ? '' : 'n'} de ver: ${quitados.map(nombreModulo).join(', ')}. Sus datos no se borran, solo se ocultan.`,
+            textoBoton: 'Guardar plan', alConfirmar: async () => { cerrarModal(); await guardar(); }
+        });
+    } else {
+        await guardar();
     }
 }
