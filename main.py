@@ -1211,31 +1211,55 @@ def resumen_admin(request: Request, meses: int = 6):
     }
 
 
+# Estados de la cola agrupados para el monitor del panel
+FILTROS_COLA = {
+    "errores": lambda q: q.ilike("estado", "Error%"),
+    "bloqueados": lambda q: q.ilike("estado", "Bloqueado%"),
+    "pendientes": lambda q: q.in_("estado", ["Pendiente", "Procesando"]),
+}
+# Solo se reprocesan mensajes que fallaron o se bloquearon: reprocesar uno ya
+# procesado (o que está en curso) podría registrar la misma orden dos veces.
+ESTADOS_NO_REPROCESABLES = ("Procesado", "Pendiente", "Procesando")
+
+
 @app.get("/admin/cola")
-def obtener_cola_ia(request: Request, limite: int = 50):
+def obtener_cola_ia(request: Request, limite: int = 50, filtro: str = "todos"):
+    """Últimos mensajes de la cola de Geor IA. filtro: todos | errores | bloqueados | pendientes.
+    Devuelve también cuántos hay de cada grupo en toda la cola (para los filtros del panel)."""
     obtener_superadmin(request)
+    limite = min(max(limite, 1), 200)
     try:
-        # Obtenemos los últimos mensajes, trayendo también el nombre del taller
-        res = supabase.table("cola_mensajes") \
-            .select("id, texto, estado, fecha_hora, talleres(nombre)") \
-            .order("id", desc=True) \
-            .limit(limite) \
-            .execute()
-        
-        return {"mensajes": res.data}
+        consulta = supabase.table("cola_mensajes").select("id, texto, estado, fecha_hora, taller_id, talleres(nombre)")
+        if filtro in FILTROS_COLA:
+            consulta = FILTROS_COLA[filtro](consulta)
+        res = consulta.order("id", desc=True).limit(limite).execute()
+
+        conteos = {}
+        for clave, aplicar in FILTROS_COLA.items():
+            try:
+                conteos[clave] = aplicar(supabase.table("cola_mensajes").select("id", count="exact")).limit(1).execute().count or 0
+            except Exception:
+                conteos[clave] = None   # el filtro sigue funcionando aunque falle el conteo
+        return {"mensajes": res.data, "conteos": conteos, "filtro": filtro if filtro in FILTROS_COLA else "todos"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al leer la cola: {str(e)}")
 
 @app.post("/admin/cola/{mensaje_id}/reprocesar")
 def reprocesar_mensaje(mensaje_id: str, background_tasks: BackgroundTasks, request: Request):
     obtener_superadmin(request)
+    fila = supabase.table("cola_mensajes").select("id, estado").eq("id", mensaje_id).limit(1).execute().data
+    if not fila:
+        raise HTTPException(status_code=404, detail="Ese mensaje ya no existe en la cola")
+    estado = fila[0].get("estado") or ""
+    if estado in ESTADOS_NO_REPROCESABLES:
+        raise HTTPException(status_code=409, detail=f"Este mensaje está \"{estado}\": no se reprocesa para no duplicar el registro.")
     try:
         # 1. Regresamos el estado a "Pendiente"
         supabase.table("cola_mensajes").update({"estado": "Pendiente"}).eq("id", mensaje_id).execute()
-        
+
         # 2. ¡Despertamos al trabajador silencioso inmediatamente!
         background_tasks.add_task(trabajador_silencioso)
-        
+
         return {"status": "éxito", "mensaje": "Mensaje enviado a reprocesamiento"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

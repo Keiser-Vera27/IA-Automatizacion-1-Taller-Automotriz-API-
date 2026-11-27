@@ -736,3 +736,46 @@ html[data-theme] .adm .modal-btn-ok.adm-peligro:hover { background: #B91C1C; }
     .mod-opcion > span { padding: 6px; min-height: 40px; }
     .mod-excepcion { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ==========================================================================
+   MONITOR DE IA (módulo 5)
+   ========================================================================== */
+.mon-cifras { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.mon-cifras .res-card { padding: 16px 20px; display: flex; flex-direction: column; gap: 4px; }
+.mon-cifras b { font-size: 1.75rem; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.mon-cifras b.rojo { color: var(--peligro); }
+.mon-cifras b.amarillo { color: var(--aviso); }
+.mon-panel { padding: 18px 20px; }
+.mon-barra { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.mon-lista { display: flex; flex-direction: column; }
+.mon-item { display: flex; align-items: flex-start; gap: 14px; padding: 14px 4px; }
+.mon-item + .mon-item { border-top: 1px solid var(--linea); }
+.mon-item.error .res-av { background: var(--peligro-fondo); color: var(--peligro); }
+.mon-item.bloqueado .res-av { background: var(--aviso-fondo); color: var(--aviso); }
+.mon-cuerpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.mon-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: var(--t-s); }
+.mon-meta .res-tenue { font-size: var(--t-xs); }
+.mon-estado { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; padding: 2px 10px; border-radius: 9999px; }
+.mon-estado i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.mon-estado.ok { color: var(--lima-texto); background: var(--exito-fondo); }
+.mon-estado.error { color: var(--peligro); background: var(--peligro-fondo); }
+.mon-estado.bloqueado { color: var(--aviso); background: var(--aviso-fondo); }
+.mon-estado.espera { color: var(--info); background: var(--info-fondo); }
+.mon-texto {
+    margin: 0; font-size: var(--t-s); line-height: 1.5; color: var(--tinta); overflow-wrap: anywhere; white-space: pre-line;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.mon-ayuda { margin: 0; font-size: var(--t-xs); color: var(--tinta-3); line-height: 1.45; }
+.mon-btn { flex-shrink: 0; align-self: center; }
+.mon-btn .icono { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.mon-vacio { min-height: 200px; }
+@media (max-width: 1100px) { .mon-cifras { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 767px) {
+    .mon-cifras { gap: 10px; }
+    .mon-cifras .res-card { padding: 14px 16px; }
+    .mon-cifras b { font-size: 1.4rem; }
+    .mon-panel { padding: 14px; }
+    .mon-item { flex-wrap: wrap; }
+    .mon-cuerpo { flex-basis: calc(100% - 50px); }
+    .mon-btn { margin-left: 46px; align-self: flex-start; }
+}

@@ -1012,87 +1012,126 @@ function renderizarFicha360(data, pagos) {
     </div>`;
 }
 
-// ==========================================================================
-//   LÓGICA DEL MONITOR DE IA
-// ==========================================================================
-
-// Accesos directos desde el Resumen
+// Acceso directo desde el Resumen
 function abrirMonitorIA() { cambiarSeccion('sec-monitor'); }
 
+// ==========================================================================
+// MONITOR DE IA
+//   Cola de mensajes de Geor IA con filtros. "Reprocesar" solo aparece en los
+//   que fallaron o se bloquearon (el servidor también lo impide en los demás).
+// ==========================================================================
+let filtroCola = 'todos';
+
+// Explicación en lenguaje simple de cada estado y si conviene reintentar
+function explicarEstado(estado) {
+    const e = String(estado || '');
+    if (e === 'Procesado') return { tipo: 'ok', etiqueta: 'Procesado', ayuda: '' };
+    if (e === 'Pendiente' || e === 'Procesando') return { tipo: 'espera', etiqueta: e === 'Pendiente' ? 'En espera' : 'Procesando', ayuda: 'Geor lo procesará en unos segundos.' };
+    if (e.includes('IA no disponible')) return { tipo: 'error', etiqueta: 'IA no disponible', reintentar: true,
+        ayuda: 'Geor no respondió a tiempo. Reprocesar suele funcionar.' };
+    if (e.includes('No clasificable')) return { tipo: 'error', etiqueta: 'No se entendió', reintentar: true,
+        ayuda: 'Geor no supo si era un registro. Revisa el texto: si era una pregunta, no hace falta reprocesarlo.' };
+    if (e.startsWith('Error de Formato')) return { tipo: 'error', etiqueta: 'Datos incompletos', reintentar: true,
+        ayuda: 'La IA devolvió datos incompletos. Reprocesar suele funcionar.' };
+    if (e.includes('Repuesto no encontrado')) return { tipo: 'error', etiqueta: 'Repuesto no encontrado', reintentar: true,
+        ayuda: 'Menciona un repuesto que no está en el inventario del taller. Agrégalo antes de reprocesar.' };
+    if (e.includes('Duplicado')) return { tipo: 'bloqueado', etiqueta: 'Duplicado', reintentar: true, confirmar: true,
+        ayuda: 'Ya existía un registro igual. Reprocesar podría crear una orden repetida.' };
+    if (e.includes('Ya pendiente')) return { tipo: 'bloqueado', etiqueta: 'Orden ya abierta', reintentar: true, confirmar: true,
+        ayuda: 'El vehículo ya tenía una orden abierta en ese momento.' };
+    if (e.startsWith('Error')) return { tipo: 'error', etiqueta: 'Error', reintentar: true, ayuda: e };
+    if (e.startsWith('Bloqueado')) return { tipo: 'bloqueado', etiqueta: 'Bloqueado', reintentar: true, confirmar: true, ayuda: e };
+    return { tipo: 'espera', etiqueta: e || 'Sin estado', ayuda: '' };
+}
+
+// "Hoy, 9:15", "Ayer, 21:40" o "26 ago 2026, 06:49" en la hora de este equipo
+function fechaCola(ts) {
+    if (!ts) return 'Sin fecha';
+    const d = new Date(String(ts).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(ts) ? '' : 'Z'));
+    if (isNaN(d)) return String(ts);
+    const hora = d.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' });
+    const hoy = new Date(); const ayer = new Date(); ayer.setDate(hoy.getDate() - 1);
+    if (d.toDateString() === hoy.toDateString()) return `Hoy, ${hora}`;
+    if (d.toDateString() === ayer.toDateString()) return `Ayer, ${hora}`;
+    return `${d.getDate()} ${MESES_CORTOS[d.getMonth()]} ${d.getFullYear()}, ${hora}`;
+}
+
+function filtrarCola(filtro) {
+    filtroCola = filtro;
+    document.querySelectorAll('.mon-filtros button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.filtro === filtro)));
+    cargarColaIA();
+}
+
 async function cargarColaIA() {
-    const token = localStorage.getItem("admin_token");
-    const contenedor = document.getElementById("lista-cola-ia");
-    contenedor.innerHTML = "<p style='color:#aaa;'>Cargando cola...</p>";
-    
+    const cont = elModal("lista-cola-ia");
+    cont.innerHTML = '<p class="res-vacio-chico">Cargando mensajes...</p>';
+    cargarDashboard().then(() => {
+        elModal('mon-hoy').textContent = elModal('dash-ai-today').textContent;
+        const e = elModal('dash-errors').textContent;
+        elModal('mon-errores-hoy').textContent = e;
+        elModal('mon-errores-hoy').classList.toggle('rojo', Number(e) > 0);
+    });
     try {
-        const res = await fetch("/admin/cola", {
-            headers: { 'Authorization': `Bearer ${token}` }
+        const res = await fetch(`/admin/cola?filtro=${encodeURIComponent(filtroCola)}&limite=${filtroCola === 'todos' ? 50 : 200}`, { headers: cabeceraAdmin() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+        const c = data.conteos || {};
+        [['errores', 'mon-errores'], ['bloqueados', 'mon-bloqueados']].forEach(([k, id]) => {
+            elModal(id).textContent = c[k] ?? '0';
+            elModal(id).classList.toggle(k === 'errores' ? 'rojo' : 'amarillo', (c[k] || 0) > 0);
         });
-        
-        if (!res.ok) throw new Error("Error al obtener la cola");
-        const data = await res.json();
-        
-        if (data.mensajes.length === 0) {
-            contenedor.innerHTML = "<p style='color:var(--accent-green);'>La cola está limpia. No hay mensajes recientes.</p>";
+        ['errores', 'bloqueados', 'pendientes'].forEach(k => elModal(`mon-n-${k}`).textContent = c[k] ?? '0');
+        elModal('mon-actualizado').textContent = `Actualizado ${new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}`;
+
+        const mensajes = data.mensajes || [];
+        if (!mensajes.length) {
+            const vacio = { todos: 'Todavía no hay mensajes en la cola.', errores: 'No hay mensajes con error. Todo se procesó bien.',
+                            bloqueados: 'No hay mensajes bloqueados.', pendientes: 'No hay mensajes esperando: la cola está al día.' }[filtroCola];
+            cont.innerHTML = `<div class="tal-vacio mon-vacio"><b>${vacio}</b></div>`;
             return;
         }
-
-        let html = "";
-        data.mensajes.forEach(m => {
-            // Determinar color del badge según estado
-            let badgeClass = "pill-plan"; // gris
-            let mostrarBoton = false;
-            
-            if (m.estado === "Pendiente" || m.estado === "Procesando") {
-                badgeClass = "pill-plan"; 
-            } else if (m.estado === "Procesado") {
-                badgeClass = "pill-activo"; // verde
-                mostrarBoton = true;
-            } else {
-                badgeClass = "pill-suspendido"; // rojo para errores o bloqueos
-                mostrarBoton = true; // Solo reprocesamos si hubo error/bloqueo
-            }
-            
-            const nombreTaller = m.talleres ? m.talleres.nombre : 'Taller Desconocido';
-            
-            html += `
-            <div class="cola-card">
-                <div class="cola-info">
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <span class="pill-badge ${badgeClass}">${m.estado}</span>
-                        <span class="cola-meta"><b>${nombreTaller}</b> • ${m.fecha_hora}</span>
+        cont.innerHTML = mensajes.map(m => {
+            const info = explicarEstado(m.estado);
+            const taller = m.talleres?.nombre || 'Taller desconocido';
+            return `
+            <article class="mon-item ${info.tipo}">
+                <span class="res-av">${esc(iniciales(taller))}</span>
+                <div class="mon-cuerpo">
+                    <div class="mon-meta">
+                        <b>${esc(taller)}</b>
+                        <span class="res-tenue">${esc(fechaCola(m.fecha_hora))}</span>
+                        <span class="mon-estado ${info.tipo}" title="${esc(m.estado)}"><i></i>${esc(info.etiqueta)}</span>
                     </div>
-                    <div class="cola-texto">"${m.texto}"</div>
+                    <p class="mon-texto">${esc(m.texto)}</p>
+                    ${info.ayuda && info.tipo !== 'ok' ? `<p class="mon-ayuda">${esc(info.ayuda)}</p>` : ''}
                 </div>
-                ${mostrarBoton ? `<button class="btn-action btn-pay" onclick="reprocesarMensaje('${m.id}')">Reprocesar</button>` : ''}
-            </div>`;
-        });
-        
-        contenedor.innerHTML = html;
-        
-    } catch (error) {
-        showToast("Error al cargar la cola de IA", "error");
-        contenedor.innerHTML = "<p style='color:var(--accent-red);'>Error cargando datos.</p>";
+                ${info.reintentar ? `<button type="button" class="btn-chico mon-btn" onclick="reprocesarMensaje(${Number(m.id)}, ${info.confirmar ? 'true' : 'false'})">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>Reprocesar</button>` : ''}
+            </article>`;
+        }).join('');
+    } catch (e) {
+        cont.innerHTML = `<p class="res-vacio-chico">No se pudo cargar la cola: ${esc(e.message)}</p>`;
     }
 }
 
-async function reprocesarMensaje(id) {
-    const token = localStorage.getItem("admin_token");
-    try {
-        showToast("Enviando a reprocesar...", "info");
-        
-        const res = await fetch(`/admin/cola/${id}/reprocesar`, {
-            method: "POST",
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (!res.ok) throw new Error("Error al reprocesar");
-        
-        showToast("¡Mensaje reencolado con éxito!", "success");
-        cargarColaIA(); // Refrescar la lista al instante
-    } catch (error) {
-        showToast("Error al intentar reprocesar", "error");
-    }
+async function reprocesarMensaje(id, confirmar = false) {
+    const enviar = async () => {
+        try {
+            const res = await fetch(`/admin/cola/${encodeURIComponent(id)}/reprocesar`, { method: "POST", headers: cabeceraAdmin() });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { mostrarAviso(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`, 'error'); return; }
+            mostrarAviso('El mensaje volvió a la cola. Geor lo procesará en unos segundos; actualiza para ver el resultado.', 'success', 'Enviado a reprocesar');
+            cargarColaIA();
+        } catch {
+            mostrarAviso('Error de conexión al servidor.', 'error');
+        }
+    };
+    if (!confirmar) return enviar();
+    confirmarAccion({
+        titulo: '¿Reprocesar este mensaje?',
+        mensaje: 'Se bloqueó para evitar un registro repetido. Si lo reprocesas, revisa después que no haya quedado una orden duplicada.',
+        textoBoton: 'Reprocesar', alConfirmar: enviar
+    });
 }
 
 // ==========================================================================
