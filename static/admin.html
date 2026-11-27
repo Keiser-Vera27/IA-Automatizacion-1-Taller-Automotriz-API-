@@ -2,173 +2,362 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oficial de Registros · Panel de control</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Oficial de Registros | Administración</title>
     <!-- Identidad: favicon y color del navegador -->
     <link rel="icon" href="brand/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="brand/favicon.ico" sizes="48x48">
     <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
-    <meta name="theme-color" content="#7030EF">
-    <link rel="stylesheet" href="admin_style.css">
+    <meta name="theme-color" content="#0A0D26">
+    <link rel="preload" href="fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <!-- Tema guardado ANTES de pintar (mismo ajuste que la app del taller) -->
+    <script>
+        (function () {
+            document.documentElement.setAttribute("data-theme", localStorage.getItem("as_tema") || "dark");
+        })();
+    </script>
+    <!-- Sistema de diseño compartido (tokens, temas, navegación, modal) + estilos propios del panel -->
+    <link rel="stylesheet" href="style.css?v=29">
+    <link rel="stylesheet" href="admin_style.css?v=13">
 </head>
-<body>
+<body class="adm">
 
-    <!-- NOTIFICACIONES TOAST -->
-    <div id="toast-container"></div>
-
-    <!-- MODAL DE ACCIONES -->
-    <div id="modal-overlay" class="modal-overlay">
-        <div class="modal-box">
-            <h3 id="modal-titulo" class="section-title">Acción</h3>
-            <div id="modal-body" style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px;">
-                <!-- Se llena dinámicamente -->
-            </div>
-            <div style="display: flex; justify-content: flex-end; gap: 10px;">
-                <button class="btn-ghost" onclick="cerrarModal()">Cancelar</button>
-                <button id="modal-btn-confirmar" class="btn-primary">Guardar</button>
+    <!-- ========================================================== -->
+    <!-- MODAL ÚNICO: avisos con OK y formularios con Cancelar/Guardar -->
+    <!-- ========================================================== -->
+    <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
+        <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">
+            <div id="modal-icono" class="modal-icono"></div>
+            <h3 id="modal-titulo" class="modal-titulo"></h3>
+            <div id="modal-mensaje" class="modal-mensaje"></div>
+            <!-- Campos del formulario (renovar pago, agregar usuario, módulos...) -->
+            <div id="modal-body" class="modal-formulario adm-modal-cuerpo" hidden></div>
+            <!-- Error de validación dentro del formulario (no cierra el modal) -->
+            <p id="modal-error" class="adm-modal-error" role="alert" hidden></p>
+            <div class="modal-botones">
+                <button id="modal-btn-cancelar" class="modal-btn-secundario" type="button" hidden>Cancelar</button>
+                <button id="modal-btn-confirmar" class="modal-btn-ok" type="button">OK</button>
             </div>
         </div>
     </div>
 
-    <!-- LOGIN SUPERADMIN -->
-    <div id="login-admin" style="max-width: 380px; margin: 100px auto; padding: 35px;" class="panel-box">
-        <div class="logo-title" style="justify-content: center; margin-bottom: 25px;">
-            <img class="logo-simbolo" src="brand/simbolo-baldosa.svg" alt="">
-            <span>Oficial de Registros</span>
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 15px;">
-            <input type="email" id="admin_email" placeholder="Correo Master">
-            <input type="password" id="admin_password" placeholder="Contraseña Master">
-            <button class="btn-primary" onclick="loginAdmin()" style="width: 100%; margin-top: 10px;">Entrar al Panel</button>
+    <!-- ========================================================== -->
+    <!-- INICIO DE SESIÓN DEL ADMINISTRADOR                           -->
+    <!-- ========================================================== -->
+    <div id="login-container" class="adm-login">
+        <div class="login-split">
+            <main class="login-formulario">
+                <div class="login-card">
+                    <div class="login-card-marca">
+                        <img class="logo-movil oscuro" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
+                        <img class="logo-movil claro" src="brand/horizontal.svg" alt="Oficial de Registros">
+                    </div>
+                    <span class="adm-login-etiqueta">Administración</span>
+                    <h1>Panel de control</h1>
+                    <p class="login-sub">Acceso solo para el administrador de la plataforma.</p>
+
+                    <form class="login-campos" onsubmit="event.preventDefault(); loginAdmin();" novalidate>
+                        <div class="campo-login">
+                            <label for="admin_email">Correo electrónico</label>
+                            <input type="email" id="admin_email" placeholder="admin@correo.com" autocomplete="username" inputmode="email">
+                        </div>
+                        <div class="campo-login">
+                            <label for="admin_password">Contraseña</label>
+                            <div class="campo-clave">
+                                <input type="password" id="admin_password" autocomplete="current-password" placeholder="Tu contraseña">
+                                <button type="button" class="ver-clave" id="ver-clave" onclick="alternarVerClave()"
+                                        aria-label="Mostrar contraseña" aria-pressed="false" aria-controls="admin_password">
+                                    <svg class="icono ojo-abierto" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    <svg class="icono ojo-cerrado" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.6 0 3-.4 4.3-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-login">Ingresar</button>
+                    </form>
+                    <p id="login_error" role="alert"></p>
+                </div>
+            </main>
         </div>
     </div>
 
-    <!-- PANEL PRINCIPAL -->
-    <div id="panel-admin" style="display: none;">
-        <div class="header-bar">
-            <div class="logo-title">
-                <img class="logo-simbolo" src="brand/simbolo-baldosa.svg" alt="">
-                <span>Panel GEO'S SaaS</span>
-            </div>
-            <button class="btn-ghost" onclick="cerrarSesionAdmin()">Cerrar Sesión</button>
-        </div>
+    <!-- ========================================================== -->
+    <!-- PANEL (oculto hasta iniciar sesión)                          -->
+    <!-- ========================================================== -->
+    <div id="panel-admin" hidden>
 
-        <!-- CONTENEDOR VISTA PRINCIPAL (Dashboard y Listado) -->
-        <div id="vista-principal">
-            
-            <!-- DASHBOARD -->
-            <div id="dashboard-section" class="panel-box" style="display: none;">
-                <h3 class="section-title">Resumen Operativo</h3>
-                <div class="metrics-grid">
-                    
-                    <!-- Tarjeta 1: Talleres -->
-                    <div class="metric-card">
-                        <h4>Talleres</h4>
-                        <div class="metric-main-value" id="dash-total-workshops">--</div>
-                        <div class="metric-sub-stats">
-                            <span class="pill-badge pill-activo">Activos: <b id="dash-active-workshops">-</b></span>
-                            <span class="pill-badge pill-suspendido">Suspendidos: <b id="dash-suspended-workshops">-</b></span>
+        <!-- BARRA SUPERIOR -->
+        <header class="barra-app">
+            <img class="logo-barra completo oscuro" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
+            <img class="logo-barra completo claro" src="brand/horizontal.svg" alt="Oficial de Registros">
+            <img class="logo-barra compacto" src="brand/simbolo-dark.svg" alt="Oficial de Registros">
+            <span class="adm-insignia">Administración</span>
+            <div class="taller-actual">
+                <div class="banner-bienvenida" id="adm-correo">Administrador</div>
+                <span class="inicial-taller" aria-hidden="true">A</span>
+            </div>
+        </header>
+
+        <div class="marco-app">
+
+            <!-- NAVEGACIÓN: rail fijo en escritorio, cajón en el celular -->
+            <nav id="menu-lateral" class="nav-app" aria-label="Secciones">
+                <span class="nav-titulo">Panel</span>
+                <button class="nav-enlace" data-seccion="sec-resumen" onclick="cambiarSeccion('sec-resumen')" aria-current="page">
+                    <svg class="icono" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+                    Resumen
+                </button>
+                <button class="nav-enlace" data-seccion="sec-talleres" onclick="cambiarSeccion('sec-talleres')">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-7h6v7"/></svg>
+                    Talleres
+                </button>
+                <button class="nav-enlace" data-seccion="sec-planes" onclick="cambiarSeccion('sec-planes')">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>
+                    Planes y módulos
+                </button>
+                <button class="nav-enlace" data-seccion="sec-monitor" onclick="cambiarSeccion('sec-monitor')">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+                    Monitor de IA
+                    <span class="adm-nav-contador" id="nav-errores" hidden></span>
+                </button>
+
+                <div class="nav-pie">
+                    <button class="nav-enlace theme-toggle" onclick="alternarTema()" id="boton-tema">
+                        <span class="punto-icono" id="icono-tema"></span>
+                        <span class="etiqueta" id="texto-tema">Oscuro</span>
+                    </button>
+                    <button class="nav-enlace btn-cerrar-sesion" onclick="cerrarSesionAdmin()">
+                        <svg class="icono" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>
+                        Cerrar sesión
+                    </button>
+                </div>
+            </nav>
+            <div class="nav-fondo" onclick="toggleMenu()"></div>
+
+            <!-- BARRA INFERIOR (solo celular) -->
+            <nav class="nav-inferior" aria-label="Secciones">
+                <button data-seccion="sec-resumen" onclick="cambiarSeccion('sec-resumen')" aria-current="page">
+                    <svg class="icono" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+                    Resumen
+                </button>
+                <button data-seccion="sec-talleres" onclick="cambiarSeccion('sec-talleres')">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-7h6v7"/></svg>
+                    Talleres
+                </button>
+                <button data-seccion="sec-planes" onclick="cambiarSeccion('sec-planes')">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>
+                    Planes
+                </button>
+                <button data-seccion="sec-monitor" onclick="cambiarSeccion('sec-monitor')">
+                    <svg class="icono" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+                    Monitor
+                </button>
+                <button onclick="toggleMenu()" aria-controls="menu-lateral">
+                    <svg class="icono" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>
+                    Más
+                </button>
+            </nav>
+
+            <main class="contenedor">
+
+                <!-- ================================================== -->
+                <!-- SECCIÓN: RESUMEN                                    -->
+                <!--   Ingresos reales por mes y plan, próximos cobros,  -->
+                <!--   salud de cada taller y lo que requiere atención.  -->
+                <!-- ================================================== -->
+                <section id="sec-resumen" class="vista-app adm-seccion">
+                    <header class="veh-cabecera">
+                        <div>
+                            <h1>Resumen</h1>
+                            <p id="res-fecha">Cómo va la plataforma hoy.</p>
+                        </div>
+                    </header>
+
+                    <!-- Aviso si aún no se ejecutó la migración de pagos -->
+                    <div id="res-aviso-migracion" class="res-aviso" hidden></div>
+
+                    <div class="res-rejilla">
+                        <!-- Ingresos cobrados (como entró el dinero, sin repartir pagos anuales) -->
+                        <section class="res-card res-ingresos" aria-labelledby="res-ing-titulo">
+                            <div class="res-ing-cab">
+                                <div>
+                                    <span class="res-eti" id="res-ing-titulo">Ingresos cobrados</span>
+                                    <div class="res-comparacion" id="res-comparacion"></div>
+                                    <div class="res-cifra-xl"><span id="res-total">$0.00</span> <small id="res-total-texto">en los últimos 6 meses</small></div>
+                                </div>
+                                <div class="res-segmentos" role="group" aria-label="Periodo del gráfico">
+                                    <button type="button" data-meses="6" aria-pressed="true" onclick="elegirPeriodoIngresos(6)">6 meses</button>
+                                    <button type="button" data-meses="12" aria-pressed="false" onclick="elegirPeriodoIngresos(12)">12 meses</button>
+                                    <button type="button" data-meses="0" aria-pressed="false" onclick="elegirPeriodoIngresos(0)">Todo</button>
+                                </div>
+                            </div>
+                            <dl class="res-mini-cifras">
+                                <div><dt>Cobrado este mes</dt><dd id="res-cobrado-mes">$0.00</dd></div>
+                                <div><dt>MRR esperado</dt><dd id="res-mrr">$0.00</dd></div>
+                                <div><dt>Por cobrar este mes</dt><dd id="res-por-cobrar">$0.00</dd></div>
+                            </dl>
+                            <div class="res-leyenda" id="res-leyenda"></div>
+                            <div class="res-barras" id="res-barras" role="img" aria-label="Ingresos por mes"></div>
+                        </section>
+
+                        <div class="res-lateral">
+                            <!-- Próximos cobros -->
+                            <section class="res-card" aria-labelledby="res-prox-titulo">
+                                <span class="res-eti" id="res-prox-titulo">Próximos cobros</span>
+                                <div class="res-proximos" id="res-proximos"></div>
+                                <button type="button" class="btn btn-primario res-btn-ancho" onclick="modalRegistrarPago()">Registrar un pago</button>
+                            </section>
+                            <!-- Estado del sistema (cola de Geor IA) -->
+                            <section class="res-card" aria-labelledby="res-sis-titulo">
+                                <span class="res-eti" id="res-sis-titulo">Estado del sistema</span>
+                                <div class="res-cifra-xl"><span id="dash-ai-today">0</span> <small>usos de IA hoy</small></div>
+                                <div class="res-fila-dato">Mensajes con error<b id="dash-errors">0</b></div>
+                                <button type="button" class="btn-chico res-btn-ancho" onclick="abrirMonitorIA()">Abrir monitor de IA</button>
+                            </section>
+                        </div>
+
+                        <!-- Talleres: cuánto ha pagado cada uno, uso y salud -->
+                        <section class="res-card res-tabla" aria-labelledby="res-tal-titulo">
+                            <div class="res-tabla-cab">
+                                <h2 id="res-tal-titulo">Talleres</h2>
+                                <button type="button" class="btn-chico principal" onclick="irARegistrarTaller()">
+                                    <svg class="icono" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Registrar taller
+                                </button>
+                            </div>
+                            <div class="res-tabla-caja">
+                                <table>
+                                    <thead><tr><th>Taller</th><th>Plan</th><th>Te ha pagado</th><th>Vence</th><th>Uso (8 semanas)</th><th>Salud</th><th><span class="solo-lector">Acciones</span></th></tr></thead>
+                                    <tbody id="res-talleres"></tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <!-- Ingreso mensual por plan + lo que requiere atención -->
+                        <section class="res-card res-planes" aria-labelledby="res-pla-titulo">
+                            <h2 id="res-pla-titulo">Ingreso por plan</h2>
+                            <div class="res-anillos" id="res-anillos"></div>
+                        </section>
+                        <section class="res-card res-atencion" aria-labelledby="res-ate-titulo">
+                            <h2 id="res-ate-titulo">Requieren tu atención</h2>
+                            <div id="lista-alertas" class="res-alertas"></div>
+                        </section>
+                    </div>
+                </section>
+
+                <!-- ================================================== -->
+                <!-- SECCIÓN: TALLERES                                   -->
+                <!--   Lista con búsqueda y filtros a la izquierda y la  -->
+                <!--   ficha 360° del taller elegido a la derecha.       -->
+                <!-- ================================================== -->
+                <section id="sec-talleres" class="vista-app adm-seccion" hidden>
+                    <header class="veh-cabecera">
+                        <div>
+                            <h1>Talleres</h1>
+                            <p>Clientes de la plataforma, su plan, sus pagos y su uso.</p>
+                        </div>
+                        <button type="button" class="btn btn-primario" onclick="modalNuevoTaller()">
+                            <svg class="icono" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Registrar taller
+                        </button>
+                    </header>
+
+                    <div class="tal-layout" id="tal-layout">
+                        <!-- Lista -->
+                        <section class="tal-lista res-card" id="vista-principal" aria-label="Lista de talleres">
+                            <div class="tal-buscador">
+                                <svg class="icono" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                                <input type="search" id="tal-buscar" placeholder="Buscar taller o correo" aria-label="Buscar taller por nombre o correo"
+                                       oninput="pintarListaTalleres()" autocomplete="off">
+                            </div>
+                            <div class="tal-filtros" role="group" aria-label="Filtrar talleres">
+                                <button type="button" data-filtro="todos" aria-pressed="true" onclick="filtrarTalleres('todos')">Todos <span id="tal-n-todos">0</span></button>
+                                <button type="button" data-filtro="activos" aria-pressed="false" onclick="filtrarTalleres('activos')">Activos <span id="tal-n-activos">0</span></button>
+                                <button type="button" data-filtro="por_vencer" aria-pressed="false" onclick="filtrarTalleres('por_vencer')">Por vencer <span id="tal-n-por_vencer">0</span></button>
+                                <button type="button" data-filtro="suspendidos" aria-pressed="false" onclick="filtrarTalleres('suspendidos')">Suspendidos <span id="tal-n-suspendidos">0</span></button>
+                            </div>
+                            <div id="lista-talleres" class="tal-items" role="list"></div>
+                        </section>
+
+                        <!-- Ficha 360° -->
+                        <section class="tal-detalle res-card" id="vista-360-taller" aria-label="Ficha del taller">
+                            <button class="btn-chico adm-volver tal-volver" type="button" onclick="cerrarVista360()">
+                                <svg class="icono" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Volver a la lista
+                            </button>
+                            <div id="contenido-360">
+                                <div class="tal-vacio">
+                                    <b>Elige un taller</b>
+                                    <span>Aquí verás su suscripción, sus pagos, su uso y sus módulos.</span>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </section>
+
+                <!-- ================================================== -->
+                <!-- SECCIÓN: PLANES Y MÓDULOS (módulo 4)                -->
+                <!-- ================================================== -->
+                <section id="sec-planes" class="vista-app adm-seccion" hidden>
+                    <header class="veh-cabecera">
+                        <div>
+                            <h1>Planes y módulos</h1>
+                            <p>Qué incluye cada plan y cuánto cuesta. Los cambios se aplican al instante a sus talleres.</p>
+                        </div>
+                    </header>
+
+                    <!-- Lo que todo plan trae siempre -->
+                    <div class="pla-base res-card">
+                        <span class="res-eti">Siempre incluido en todos los planes</span>
+                        <div class="pla-base-lista">
+                            <span>Chat de registro con Geor IA</span><span>Órdenes de trabajo</span><span>Cuadre de caja</span>
+                            <span>Orden en imagen PNG</span><span>Catálogo de servicios</span>
                         </div>
                     </div>
-                    
-                    <!-- Tarjeta 2: Ingresos -->
-                    <div class="metric-card">
-                        <h4>Ingresos (MRR)</h4>
-                        <div class="metric-main-value" style="color: var(--accent-green);" id="dash-mrr">$0</div>
-                        <div class="metric-sub-stats" id="dash-por-plan">
-                            <span class="pill-badge pill-plan">Activas: <b id="dash-active-subs">-</b></span>
+
+                    <div id="lista-planes" class="pla-rejilla"></div>
+                    <p class="pla-nota res-tenue">Las excepciones que le pongas a un taller (activar o quitar un módulo solo a él) siguen valiendo aunque cambies su plan.
+                        Se editan desde la ficha del taller, en "Módulos".</p>
+                </section>
+
+                <!-- ================================================== -->
+                <!-- SECCIÓN: MONITOR DE IA (módulo 5)                   -->
+                <!-- ================================================== -->
+                <section id="sec-monitor" class="vista-app adm-seccion" hidden>
+                    <header class="veh-cabecera">
+                        <div>
+                            <h1>Monitor de IA</h1>
+                            <p>Mensajes que Geor IA procesó en todos los talleres. Aquí ves los que fallaron y puedes reintentarlos.</p>
                         </div>
-                        <button class="btn-ghost" onclick="abrirPlanes()" style="width: 100%; margin-top: 15px; font-size: 12px; padding: 10px;">Planes y módulos</button>
+                        <button class="btn-chico principal" type="button" onclick="cargarColaIA()">
+                            <svg class="icono" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg>Actualizar
+                        </button>
+                    </header>
+
+                    <div class="mon-cifras">
+                        <div class="res-card"><span class="res-eti">Usos de IA hoy</span><b id="mon-hoy">0</b></div>
+                        <div class="res-card"><span class="res-eti">Errores hoy</span><b id="mon-errores-hoy">0</b></div>
+                        <div class="res-card"><span class="res-eti">Con error en total</span><b id="mon-errores">0</b></div>
+                        <div class="res-card"><span class="res-eti">Bloqueados en total</span><b id="mon-bloqueados">0</b></div>
                     </div>
-                    
-                    <!-- Tarjeta 3: Sistema y Monitor IA -->
-                    <div class="metric-card">
-                        <h4>Estado del Sistema</h4>
-                        <div class="metric-main-value" id="dash-ai-today">-- <span style="font-size: 14px; font-weight:normal; color: var(--text-muted);">usos IA hoy</span></div>
-                        <div class="metric-sub-stats">
-                            <span class="pill-badge pill-suspendido">Errores: <b id="dash-errors">-</b></span>
+
+                    <section class="res-card mon-panel" aria-label="Cola de mensajes">
+                        <div class="mon-barra">
+                            <div class="tal-filtros mon-filtros" role="group" aria-label="Filtrar mensajes">
+                                <button type="button" data-filtro="todos" aria-pressed="true" onclick="filtrarCola('todos')">Últimos 50</button>
+                                <button type="button" data-filtro="errores" aria-pressed="false" onclick="filtrarCola('errores')">Con error <span id="mon-n-errores">0</span></button>
+                                <button type="button" data-filtro="bloqueados" aria-pressed="false" onclick="filtrarCola('bloqueados')">Bloqueados <span id="mon-n-bloqueados">0</span></button>
+                                <button type="button" data-filtro="pendientes" aria-pressed="false" onclick="filtrarCola('pendientes')">En espera <span id="mon-n-pendientes">0</span></button>
+                            </div>
+                            <span class="res-tenue" id="mon-actualizado"></span>
                         </div>
-                        <button class="btn-ghost" onclick="abrirMonitorIA()" style="width: 100%; margin-top: 15px; font-size: 12px; padding: 10px;">Abrir Monitor de IA</button>
-                    </div>
+                        <div id="lista-cola-ia" class="mon-lista"></div>
+                    </section>
+                </section>
 
-                </div> <!-- AQUI SE CIERRA LA CUADRÍCULA -->
-
-                <!-- SECCIÓN DE ALERTAS PREVENTIVAS -->
-                <div id="dashboard-alertas" style="margin-top: 30px; display: none;">
-                    <h4 style="color: var(--text-muted); font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px;"> Requieren tu Atención</h4>
-                    <div id="lista-alertas" style="display: flex; flex-direction: column; gap: 10px;">
-                        <!-- Las alertas se inyectarán aquí -->
-                    </div>
-                </div>
-                
-            </div> <!-- AQUI SE CIERRA EL DASHBOARD -->
-
-            <!-- CREAR TALLER -->
-            <div class="panel-box">
-                <h3 class="section-title">Registrar Nuevo Taller Cliente</h3>
-                <div class="form-alta-taller">
-                    <input type="text" id="nuevo_nombre" placeholder="Nombre Taller">
-                    <input type="email" id="nuevo_email" placeholder="Email Jefe">
-                    <input type="password" id="nuevo_pass" placeholder="Password Jefe">
-                    <!-- Plan = qué funciones tiene; periodo = cada cuánto paga -->
-                    <select id="nuevo_plan_codigo" title="Plan (qué funciones tiene)">
-                        <option value="">Cargando planes...</option>
-                    </select>
-                    <select id="nuevo_plan" title="Periodo de pago">
-                        <option value="mensual">Pago mensual</option>
-                        <option value="trimestral">Pago trimestral</option>
-                        <option value="anual">Pago anual</option>
-                    </select>
-                    <button class="btn-primary" onclick="crearTaller()">Crear Taller</button>
-                </div>
-            </div>
-
-            <h3 class="section-title">Talleres Registrados</h3>
-            <div id="lista-talleres" class="talleres-grid">
-                <!-- Cargado por JS -->
-            </div>
-            
-        </div> <!-- AQUI SE CIERRA LA VISTA PRINCIPAL -->
-
-        <!-- CONTENEDOR VISTA 360° -->
-        <div id="vista-360-taller" style="display: none;">
-            <button class="btn-ghost" onclick="cerrarVista360()" style="margin-bottom: 25px;">← Volver al panel principal</button>
-            <div id="contenido-360">
-                <!-- Cargado dinámicamente por JS -->
-            </div>
+            </main>
         </div>
+    </div>
 
-        <!-- VISTA: PLANES Y MÓDULOS (qué incluye cada plan y sus precios) -->
-        <div id="vista-planes" style="display: none;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
-                <button class="btn-ghost" onclick="cerrarPlanes()">← Volver al panel</button>
-            </div>
-            <div class="panel-box">
-                <h3 class="section-title">Planes y módulos</h3>
-                <p class="texto-ayuda">Marca qué módulos incluye cada plan. Los cambios se aplican al instante a todos los talleres de ese plan
-                    (salvo las excepciones que les hayas puesto a cada uno). Chat de registro, órdenes, cuadre de caja, orden PNG y catálogo
-                    de servicios están siempre incluidos.</p>
-                <div id="lista-planes" class="planes-grid"></div>
-            </div>
-        </div>
+    <!-- Menú de acciones de una fila de la tabla de talleres -->
+    <div id="res-menu" class="res-menu" role="menu" hidden></div>
 
-        <!-- CONTENEDOR NUEVO: VISTA MONITOR IA -->
-        <div id="vista-monitor-ia" style="display: none;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
-                <button class="btn-ghost" onclick="cerrarMonitorIA()">← Volver al panel</button>
-                <button class="btn-primary" onclick="cargarColaIA()" style="padding: 8px 15px; font-size: 12px;">Actualizar</button>
-            </div>
-            
-            <div class="panel-box">
-                <h3 class="section-title">Monitor de Cola de Procesamiento</h3>
-                <div id="lista-cola-ia" style="display: flex; flex-direction: column; gap: 12px;">
-                    <!-- Se carga por JS -->
-                </div>
-            </div>
-        </div>
-        
-    </div> <!-- AQUI SE CIERRA EL PANEL COMPLETO -->
-
-    <script src="admin_script.js"></script>
+    <script src="admin_script.js?v=11"></script>
 </body>
-</html>
+</html>

@@ -157,3 +157,30 @@ Personalidad **corporativa con toque premium**: rápido, firme, sin rebotes.
 6. Celular: 16 px a los lados, 100 px abajo, sin desborde, tablas convertidas en tarjetas.
 7. Entrada con `aparece` y escalonado; respeta reducir movimiento.
 8. Sin "·", sin emojis, textos de la base escapados, resultados en el modal.
+
+## 9. Panel de administración (excepción deliberada)
+
+El panel de administración (`static/admin.html`) lo usa solo el dueño de la plataforma, así que **no sigue la estética holográfica** de la app del taller. Tiene su propia paleta, verde carbón con acento lima. Comparte la estructura: barra, menú lateral, barra inferior en el celular, modal y movimiento.
+
+- **Cómo está hecho:** carga `style.css` y después `admin_style.css`. Los tokens se redefinen en `body.adm` (`--fondo`, `--superficie-1/2/3`, `--linea`, `--tinta`, `--lima`, `--lima-texto`, `--sobre-lima`, `--peligro`…). La app del taller no se ve afectada.
+- **Color:**
+
+  | Uso | Oscuro | Claro |
+  |---|---|---|
+  | Fondo | `#161D1B` | `#EEF2EE` |
+  | Tarjeta | `#1F2826` | `#FFFFFF` |
+  | Campo y control | `#27322F` | `#F3F6F2` |
+  | Acento (botón principal, activo) | `#B8F35B` con texto `#16210F` | igual |
+  | Texto de acento | `#C6F57A` | `#4D7C0F` (el lima no se lee sobre blanco) |
+
+- **Reglas propias:**
+  - El botón principal es lima sólido, sin degradados.
+  - La sección activa del menú es una píldora oscura con ícono lima.
+  - Los gráficos usan tonos de lima por plan.
+  - Las acciones peligrosas (suspender) van en rojo y siempre piden confirmación, con el foco inicial en "Cancelar".
+- **Igual que la app:**
+  - Resultados en un modal centrado con OK.
+  - Sin "·" en los textos.
+  - Montos en `$1,234.50` y fechas en "29 nov 2026".
+  - Todo texto que venga de la base de datos se escapa.
+  - El panel funciona en celular, tableta y escritorio.
