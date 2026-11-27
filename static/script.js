@@ -2199,15 +2199,19 @@ async function cargarManifiestoVehiculos() {
 }
 
 // Colores en español -> color de la galería y tono del punto de color
+// palabra del color -> [color de la galería de imágenes (o null), tono del punto de color]
+// Incluye las formas en femenino ("blanca", "negra") porque así se escriben muchos registros.
 const COLORES_VEHICULO = {
-    blanco: ['blanco', '#E9E9EC'], perla: ['blanco', '#EDEAE2'], crema: ['blanco', '#E8E0CC'],
-    negro: ['negro', '#1B1B1F'],
+    blanco: ['blanco', '#E9E9EC'], blanca: ['blanco', '#E9E9EC'], perla: ['blanco', '#EDEAE2'], crema: ['blanco', '#E8E0CC'],
+    negro: ['negro', '#1B1B1F'], negra: ['negro', '#1B1B1F'],
     gris: ['gris', '#6E727A'], grafito: ['gris', '#4A4D53'], plomo: ['gris', '#6E727A'],
     plata: ['plata', '#A9ADB4'], plateado: ['plata', '#A9ADB4'], plateada: ['plata', '#A9ADB4'],
     rojo: ['rojo', '#C8323B'], roja: ['rojo', '#C8323B'], vino: ['rojo', '#7A1F2B'], guinda: ['rojo', '#7A1F2B'], granate: ['rojo', '#7A1F2B'],
     azul: ['azul', '#2C55B8'], celeste: ['azul', '#6FA8DC'], turquesa: ['azul', '#2FA4A9'],
-    verde: [null, '#2F7D4F'], amarillo: [null, '#E8C33A'], naranja: [null, '#E07B2C'], anaranjado: [null, '#E07B2C'],
-    cafe: [null, '#6B4A33'], marron: [null, '#6B4A33'], beige: [null, '#CDB99A'], dorado: [null, '#B8975A'], morado: [null, '#6A3FB5']
+    amarillo: ['amarillo', '#E8C33A'], amarilla: ['amarillo', '#E8C33A'],   // taxis
+    verde: [null, '#2F7D4F'], naranja: [null, '#E07B2C'], anaranjado: [null, '#E07B2C'], anaranjada: [null, '#E07B2C'],
+    cafe: [null, '#6B4A33'], marron: [null, '#6B4A33'], beige: [null, '#CDB99A'],
+    dorado: [null, '#B8975A'], dorada: [null, '#B8975A'], morado: [null, '#6A3FB5'], morada: [null, '#6A3FB5']
 };
 
 function normalizarTexto(t) {
