@@ -3623,3 +3623,34 @@ html[data-theme="light"] #login-container .campo-clave:focus-within .ver-clave {
     animation: giro-login 0.7s linear infinite;
 }
 @keyframes giro-login { to { transform: rotate(360deg); } }
+
+/* ============================================================
+   MODO CLARO ESCRITORIO: retoques finales de coherencia
+   ============================================================ */
+@media (min-width: 960px) {
+    /* 1. KPIs de Geor IA: tres tarjetas compactas independientes */
+    html[data-theme="light"] .cifras {
+        gap: 10px; background: transparent; border: 0; box-shadow: none; border-radius: 0;
+    }
+    html[data-theme="light"] .cifra {
+        padding: 11px 18px; border-radius: 14px;
+        background: #FFFFFF; border: 1px solid var(--borde-claro);
+        box-shadow: 0 6px 18px -8px rgba(88, 28, 135, 0.12), 0 1px 2px rgba(88, 28, 135, 0.04);
+    }
+    html[data-theme="light"] .cifra + .cifra { border-left: 1px solid var(--borde-claro); }
+    html[data-theme="light"] .cifra dd { font-variant-numeric: tabular-nums; }
+
+    /* 2. Compositor del chat: borde de 1px parejo en los cuatro lados.
+       En reposo sin sombra descendente (era la que engrosaba el lado inferior);
+       al enfocar, halo violeta sutil alrededor de todo el borde. */
+    html[data-theme="light"] .compositor {
+        border: 1px solid rgba(124, 58, 237, 0.18); box-shadow: none;
+    }
+    html[data-theme="light"] .compositor:focus-within {
+        border-color: rgba(124, 58, 237, 0.45); box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.10);
+    }
+}
+
+/* 3. Ficha de "Vehículos y clientes": respiro al final del panel con scroll */
+.veh-col-detalle { padding-bottom: 24px; }
+.veh-col-detalle #ficha-vehiculo > :last-child { margin-bottom: 0; }
