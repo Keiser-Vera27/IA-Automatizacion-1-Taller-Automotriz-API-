@@ -1,88 +1,280 @@
 /* ==========================================================================
-   LÓGICA DEL PANEL SAAS (SISTEMA DE MODALES Y TOASTS PERSONALIZADOS)
+   PANEL DE ADMINISTRACIÓN DE LA PLATAFORMA
+   Usa el mismo sistema de diseño que la app del taller (style.css):
+   barra lateral, modo claro/oscuro y un modal centrado para todo resultado.
    ========================================================================== */
 
-// --- SENSOR DE TOASTS (Reemplaza alert) ---
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    
-    const ICONOS_TOAST = {
-        success: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>',
-        error: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
-        info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="7.5" x2="12.01" y2="7.5"/></svg>'
-    };
-    const icon = ICONOS_TOAST[type] || ICONOS_TOAST.info;
-    toast.innerHTML = `<span style="display:inline-flex;vertical-align:middle;">${icon}</span> <span>${message}</span>`;
-    
-    container.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.style.animation = 'slideIn 0.3s reverse ease forwards';
-        setTimeout(() => toast.remove(), 300);
-    }, 4000);
+// ==========================================================================
+// MODAL ÚNICO
+//   - mostrarAviso(): resultado de una acción, con ícono y botón OK.
+//   - abrirModal(): formulario con Cancelar / Guardar (renovar pago, módulos...).
+//   - confirmarAccion(): pregunta antes de algo delicado (suspender un taller).
+// ==========================================================================
+const ICONOS_MODAL = {
+    success: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>',
+    warning: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="14"/><line x1="12" y1="19" x2="12.01" y2="19"/></svg>',
+    error:   '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    info:    '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="7.5" x2="12.01" y2="7.5"/></svg>'
+};
+const TITULOS_AVISO = { success: 'Listo', error: 'No se pudo completar', warning: 'Atención', info: 'Aviso' };
+
+let accionModalCallback = null;   // lo que hace el botón principal en modo formulario
+
+const elModal = id => document.getElementById(id);
+
+// Deja el modal en un estado limpio antes de cada uso
+function prepararModal({ modo, titulo, ancho = false }) {
+    const overlay = elModal('modal-aviso');
+    const caja = overlay.querySelector('.modal-caja');
+    caja.classList.toggle('adm-modal-ancho', ancho);
+    caja.classList.toggle('adm-modal-formulario', modo !== 'aviso');
+    overlay.dataset.modo = modo;
+    elModal('modal-titulo').textContent = titulo;
+    elModal('modal-mensaje').innerHTML = '';
+    elModal('modal-body').innerHTML = '';
+    elModal('modal-body').hidden = true;
+    elModal('modal-error').hidden = true;
+    elModal('modal-icono').className = 'modal-icono';
+    elModal('modal-icono').innerHTML = '';
+    const ok = elModal('modal-btn-confirmar');
+    ok.disabled = false;
+    ok.classList.remove('adm-peligro');
+    const cancelar = elModal('modal-btn-cancelar');
+    cancelar.hidden = modo === 'aviso';
+    cancelar.onclick = cerrarModal;
+    return { overlay, ok };
 }
 
-// --- MANEJO DE MODALES (Reemplaza prompt) ---
-let accionModalCallback = null;
+function mostrarModalPreparado(overlay, enfocar) {
+    overlay.classList.add('visible');
+    overlay.setAttribute('aria-hidden', 'false');
+    setTimeout(() => enfocar && enfocar.focus(), 60);
+}
 
-function abrirModal(titulo, htmlInputs, callbackConfirmar, ancho = false) {
-    document.querySelector('#modal-overlay .modal-box').classList.toggle('modal-ancho', ancho);
-    document.getElementById('modal-titulo').innerText = titulo;
-    document.getElementById('modal-body').innerHTML = htmlInputs;
-    document.getElementById('modal-overlay').classList.add('active');
+// Resultado de una acción: ícono, título, mensaje (texto plano) y OK
+function mostrarAviso(mensaje, tipo = 'info', titulo) {
+    const { overlay, ok } = prepararModal({ modo: 'aviso', titulo: titulo || TITULOS_AVISO[tipo] || 'Aviso' });
+    const icono = elModal('modal-icono');
+    icono.className = `modal-icono ${tipo}`;
+    icono.innerHTML = ICONOS_MODAL[tipo] || ICONOS_MODAL.info;
+    elModal('modal-mensaje').textContent = mensaje;
+    ok.textContent = 'OK';
+    ok.onclick = cerrarModal;
+    accionModalCallback = null;
+    mostrarModalPreparado(overlay, ok);
+}
+
+// Compatibilidad: el resto del panel sigue llamando a showToast().
+// Si hay un formulario abierto, el error se muestra dentro de él (no se pierde lo escrito).
+function showToast(message, type = 'info') {
+    const overlay = elModal('modal-aviso');
+    const enFormulario = overlay.classList.contains('visible') && overlay.dataset.modo !== 'aviso';
+    if (enFormulario && type === 'error') {
+        const error = elModal('modal-error');
+        error.textContent = message;
+        error.hidden = false;
+        return;
+    }
+    mostrarAviso(message, type);
+}
+
+// Formulario: htmlInputs ya viene escapado por quien lo arma
+function abrirModal(titulo, htmlInputs, callbackConfirmar, ancho = false, textoBoton = 'Guardar') {
+    const { overlay, ok } = prepararModal({ modo: 'formulario', titulo, ancho });
+    const cuerpo = elModal('modal-body');
+    cuerpo.innerHTML = htmlInputs;
+    cuerpo.hidden = false;
+    ok.textContent = textoBoton;
     accionModalCallback = callbackConfirmar;
+    ok.onclick = () => { if (accionModalCallback) accionModalCallback(); };
+    mostrarModalPreparado(overlay, cuerpo.querySelector('input, select') || ok);
+}
+
+// Confirmación antes de una acción delicada. El botón de peligro va en rojo.
+function confirmarAccion({ titulo, mensaje, textoBoton = 'Confirmar', peligro = false, alConfirmar }) {
+    const { overlay, ok } = prepararModal({ modo: 'confirmacion', titulo });
+    const icono = elModal('modal-icono');
+    icono.className = `modal-icono ${peligro ? 'error' : 'warning'}`;
+    icono.innerHTML = ICONOS_MODAL.warning;
+    elModal('modal-mensaje').textContent = mensaje;
+    ok.textContent = textoBoton;
+    ok.classList.toggle('adm-peligro', peligro);
+    accionModalCallback = alConfirmar;
+    ok.onclick = async () => {
+        ok.disabled = true;
+        try { await alConfirmar(); } finally { ok.disabled = false; }
+    };
+    mostrarModalPreparado(overlay, elModal('modal-btn-cancelar'));   // el foco inicial nunca en el botón peligroso
 }
 
 function cerrarModal() {
-    document.getElementById('modal-overlay').classList.remove('active');
+    const overlay = elModal('modal-aviso');
+    overlay.classList.remove('visible');
+    overlay.setAttribute('aria-hidden', 'true');
     accionModalCallback = null;
 }
 
-document.getElementById('modal-btn-confirmar').onclick = () => {
-    if (accionModalCallback) accionModalCallback();
-};
+// Teclado: Escape siempre cancela. Enter solo acepta en un aviso (en un
+// formulario o una confirmación hay que pulsar el botón a propósito).
+document.addEventListener('keydown', e => {
+    const overlay = elModal('modal-aviso');
+    if (!overlay.classList.contains('visible')) {
+        if (e.key === 'Escape') toggleMenu(false);
+        return;
+    }
+    if (e.key === 'Escape') { e.preventDefault(); cerrarModal(); }
+    else if (e.key === 'Enter' && overlay.dataset.modo === 'aviso') { e.preventDefault(); cerrarModal(); }
+});
+// Clic fuera de la caja: cierra solo los avisos
+elModal('modal-aviso').addEventListener('click', e => {
+    if (e.target.id === 'modal-aviso' && e.currentTarget.dataset.modo === 'aviso') cerrarModal();
+});
 
-// --- AUTENTICACIÓN Y CARGA ---
+// ==========================================================================
+// TEMA CLARO / OSCURO (misma preferencia que la app del taller)
+// ==========================================================================
+const ICONO_LUNA = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+const ICONO_SOL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+
+function prefiereMenosMovimiento() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function alternarTema() {
+    const cambiar = () => {
+        const nuevo = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', nuevo);
+        localStorage.setItem('as_tema', nuevo);
+        actualizarIconoTema(nuevo);
+    };
+    // Fundido suave entre temas donde el navegador lo permite
+    if (document.startViewTransition && !prefiereMenosMovimiento()) document.startViewTransition(cambiar);
+    else cambiar();
+}
+
+function actualizarIconoTema(tema) {
+    elModal('icono-tema').innerHTML = tema === 'dark' ? ICONO_LUNA : ICONO_SOL;
+    elModal('texto-tema').textContent = tema === 'dark' ? 'Oscuro' : 'Claro';
+}
+
+// ==========================================================================
+// NAVEGACIÓN ENTRE SECCIONES
+// ==========================================================================
+function toggleMenu(forzarAbierto) {
+    // En escritorio la navegación siempre está visible; en el celular es un cajón
+    const menu = elModal('menu-lateral');
+    const abrir = typeof forzarAbierto === 'boolean' ? forzarAbierto : !menu.classList.contains('abierto');
+    menu.classList.toggle('abierto', abrir);
+    document.querySelector('.nav-fondo').classList.toggle('visible', abrir);
+}
+
+// Vuelve a disparar la animación de entrada de la sección
+function reanimar(el) {
+    if (!el || prefiereMenosMovimiento()) return;
+    el.classList.remove('vista-entra');
+    void el.offsetWidth;
+    el.classList.add('vista-entra');
+}
+
+function cambiarSeccion(id) {
+    document.querySelectorAll('.adm-seccion').forEach(s => s.hidden = s.id !== id);
+    document.querySelectorAll('[data-seccion]').forEach(b => {
+        if (b.dataset.seccion === id) b.setAttribute('aria-current', 'page');
+        else b.removeAttribute('aria-current');
+    });
+    sessionStorage.setItem('adm_seccion', id);   // al recargar se vuelve a la misma sección
+    reanimar(elModal(id));
+    toggleMenu(false);
+    window.scrollTo(0, 0);
+    // Cada sección carga sus datos al abrirse
+    if (id === 'sec-resumen') cargarDashboard();
+    else if (id === 'sec-talleres') { cerrarVista360(); cargarTalleres(); }
+    else if (id === 'sec-planes') cargarVistaPlanes();
+    else if (id === 'sec-monitor') cargarColaIA();
+}
+
+// ==========================================================================
+// SESIÓN
+// ==========================================================================
+function alternarVerClave(forzarOculta = false) {
+    const input = elModal('admin_password');
+    const boton = elModal('ver-clave');
+    const mostrar = forzarOculta ? false : input.type === 'password';
+    input.type = mostrar ? 'text' : 'password';
+    boton.setAttribute('aria-pressed', String(mostrar));
+    boton.setAttribute('aria-label', mostrar ? 'Ocultar contraseña' : 'Mostrar contraseña');
+}
+
 async function loginAdmin() {
-    const em = document.getElementById("admin_email").value;
-    const pw = document.getElementById("admin_password").value;
-    
+    const em = elModal("admin_email").value.trim();
+    const pw = elModal("admin_password").value;
+    const error = elModal("login_error");
+    const boton = document.querySelector('#login-container .btn-login');
+    error.textContent = '';
+    if (!em || !pw) { error.textContent = 'Escribe tu correo y tu contraseña.'; return; }
+    if (boton.classList.contains('enviando')) return;
+
+    // Estado "Ingresando..." mientras responde el servidor
+    const ponerEnviando = activo => {
+        boton.classList.toggle('enviando', activo);
+        boton.disabled = activo;
+        boton.setAttribute('aria-busy', String(activo));
+        boton.textContent = activo ? 'Ingresando...' : 'Ingresar';
+    };
+    ponerEnviando(true);
     try {
         const res = await fetch("/login", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email: em, password: pw })
         });
         const data = await res.json();
-        
         if (data.status === "success" && data.token) {
             localStorage.setItem("admin_token", data.token);
-            await verificarAcceso(data.token);
+            localStorage.setItem("admin_email", em);
+            const ok = await verificarAcceso(data.token);
+            if (!ok) error.textContent = 'Esta cuenta no tiene permisos de administrador.';
         } else {
-            showToast("Credenciales inválidas.", "error");
+            error.textContent = 'Correo o contraseña incorrectos.';
         }
     } catch {
-        showToast("Error de conexión al servidor.", "error");
+        error.textContent = 'No se pudo conectar con el servidor. Intenta de nuevo.';
+    } finally {
+        ponerEnviando(false);
     }
 }
 
+// Comprueba que el token sea de superadmin y abre el panel. Devuelve true/false.
 async function verificarAcceso(token) {
-    const res = await fetch("/admin/talleres", { headers: { 'Authorization': `Bearer ${token}` } });
-    if (res.ok) {
-        document.getElementById("login-admin").style.display = "none";
-        document.getElementById("panel-admin").style.display = "block";
-        
-        cargarPlanes().then(llenarSelectPlanes);
-        cargarTalleres();
-        cargarDashboard(); // Carga de métricas operacionales
-        
-        showToast("Sesión iniciada correctamente", "success");
-    } else {
+    try {
+        const res = await fetch("/admin/talleres", { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error();
+    } catch {
         localStorage.removeItem("admin_token");
-        showToast("Acceso denegado: Privilegios insuficientes.", "error");
+        return false;
     }
+    elModal("login-container").hidden = true;
+    elModal("panel-admin").hidden = false;
+    elModal("adm-correo").textContent = localStorage.getItem("admin_email") || 'Administrador';
+    actualizarIconoTema(document.documentElement.getAttribute('data-theme') || 'dark');
+    alternarVerClave(true);
+    await cargarPlanes().then(llenarSelectPlanes);
+    const seccion = sessionStorage.getItem('adm_seccion') || 'sec-resumen';
+    if (seccion !== 'sec-resumen') cargarDashboard();   // contador de errores del menú
+    cambiarSeccion(seccion);
+    return true;
 }
+
+const cerrarSesionAdmin = () => {
+    localStorage.removeItem("admin_token");
+    sessionStorage.removeItem('adm_seccion');
+    location.reload();
+};
+
+// Al abrir la página: si hay una sesión guardada, entra directo
+(async () => {
+    const token = localStorage.getItem("admin_token");
+    if (token) await verificarAcceso(token);
+})();
 
 // --- CARGAR DASHBOARD ---
 async function cargarDashboard() {
@@ -110,6 +302,9 @@ async function cargarDashboard() {
             // Renderizar Sistema
             document.getElementById("dash-ai-today").innerHTML = `${data.system.ai_today} <span style="font-size: 14px; font-weight:normal; color: var(--text-muted);">usos IA hoy</span>`;
             document.getElementById("dash-errors").innerText = data.system.errors;
+            const navErr = document.getElementById("nav-errores");
+            navErr.textContent = data.system.errors;
+            navErr.hidden = !data.system.errors;
             
             // Renderizar Alertas Preventivas
             if (data.alertas && data.alertas.length > 0) {
@@ -126,10 +321,10 @@ async function cargarDashboard() {
                 // Si no hay alertas, mostramos un mensaje verde tranquilizador
                 document.getElementById("lista-alertas").innerHTML = `<div class="alerta-card alerta-ok">Todo en orden. Todos los talleres están al día y activos.</div>`;
             }
-            document.getElementById("dashboard-alertas").style.display = "block";
+            document.getElementById("dashboard-alertas").hidden = false;
             
             // Mostrar la sección del dashboard
-            document.getElementById("dashboard-section").style.display = "block";
+            document.getElementById("dashboard-section").hidden = false;
         }
     } catch (error) {
         showToast("Error al cargar las métricas del dashboard.", "error");
@@ -296,14 +491,15 @@ async function suspender(id) {
     cargarDashboard(); // Actualizar dashboard
 }
 
-const cerrarSesionAdmin = () => { localStorage.removeItem("admin_token"); location.reload(); }
 // --- LÓGICA FICHA 360° ---
 async function abrirFicha360(id) {
     const token = localStorage.getItem("admin_token");
     try {
         // Transición de vistas
-        document.getElementById("vista-principal").style.display = "none";
-        document.getElementById("vista-360-taller").style.display = "block";
+        if (elModal('sec-talleres').hidden) cambiarSeccion('sec-talleres');
+        document.getElementById("vista-principal").hidden = true;
+        document.getElementById("vista-360-taller").hidden = false;
+        window.scrollTo(0, 0);
         document.getElementById("contenido-360").innerHTML = "<p style='padding:30px; color:#aaa;'>Cargando radiografía del taller...</p>";
         
         const res = await fetch(`/admin/talleres/${id}/ficha-360`, {
@@ -321,8 +517,8 @@ async function abrirFicha360(id) {
 }
 
 function cerrarVista360() {
-    document.getElementById("vista-360-taller").style.display = "none";
-    document.getElementById("vista-principal").style.display = "block";
+    document.getElementById("vista-360-taller").hidden = true;
+    document.getElementById("vista-principal").hidden = false;
 }
 
 function renderizarFicha360(data) {
@@ -404,18 +600,8 @@ function renderizarFicha360(data) {
 //   LÓGICA DEL MONITOR DE IA
 // ==========================================================================
 
-function abrirMonitorIA() {
-    document.getElementById("vista-principal").style.display = "none";
-    document.getElementById("vista-360-taller").style.display = "none";
-    document.getElementById("vista-monitor-ia").style.display = "block";
-    cargarColaIA();
-}
-
-function cerrarMonitorIA() {
-    document.getElementById("vista-monitor-ia").style.display = "none";
-    document.getElementById("vista-principal").style.display = "block";
-    cargarDashboard(); // Actualizar el conteo de errores por si reprocesamos
-}
+// Accesos directos desde el Resumen
+function abrirMonitorIA() { cambiarSeccion('sec-monitor'); }
 
 async function cargarColaIA() {
     const token = localStorage.getItem("admin_token");
@@ -562,7 +748,7 @@ async function modalModulos(tallerId) {
         data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
     } catch (e) {
-        showToast(esc(e.message), "error");
+        showToast(e.message, "error");
         return;
     }
     catalogoModulos = data.modulos.map(m => ({ clave: m.clave, nombre: m.nombre }));
@@ -650,7 +836,7 @@ async function guardarModulos(tallerId) {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-            showToast(esc(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`), "error");
+            showToast(typeof data.detail === 'string' ? data.detail : `Error ${res.status}`, "error");
             return;
         }
         cerrarModal();
@@ -670,11 +856,9 @@ function formatearFecha(valor) {
 }
 
 // --- Vista "Planes y módulos" ---
-async function abrirPlanes() {
-    document.getElementById("vista-principal").style.display = "none";
-    document.getElementById("vista-360-taller").style.display = "none";
-    document.getElementById("vista-monitor-ia").style.display = "none";
-    document.getElementById("vista-planes").style.display = "block";
+function abrirPlanes() { cambiarSeccion('sec-planes'); }
+
+async function cargarVistaPlanes() {
     const cont = document.getElementById("lista-planes");
     cont.innerHTML = "<p style='color:#aaa;'>Cargando planes...</p>";
     const ok = await cargarPlanes();
@@ -702,12 +886,6 @@ async function abrirPlanes() {
         </div>`).join('');
 }
 
-function cerrarPlanes() {
-    document.getElementById("vista-planes").style.display = "none";
-    document.getElementById("vista-principal").style.display = "block";
-    cargarTalleres();
-    cargarDashboard();
-}
 
 // Marcar un módulo marca sus requisitos; desmarcar un requisito desmarca a quien lo necesita
 function ajustarDependencias(check) {
@@ -734,12 +912,12 @@ async function guardarPlan(codigo, btn) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
             const d = data.detail;
-            showToast(esc(typeof d === 'string' ? d : (Array.isArray(d) ? 'Revisa el nombre y los precios' : `Error ${res.status}`)), "error");
+            showToast(typeof d === 'string' ? d : (Array.isArray(d) ? 'Revisa el nombre y los precios' : `Error ${res.status}`), "error");
             return;
         }
         planesCache = data.planes || planesCache;
         llenarSelectPlanes();
-        showToast(`Plan ${esc(cuerpo.nombre)} guardado. Ya se aplica a sus talleres.`, "success");
+        showToast(`Plan ${cuerpo.nombre} guardado. Ya se aplica a sus talleres.`, "success");
     } catch {
         showToast("Error de conexión al servidor.", "error");
     } finally {
