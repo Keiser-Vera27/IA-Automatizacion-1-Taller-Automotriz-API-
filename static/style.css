@@ -2973,3 +2973,44 @@ html[data-theme="dark"] .gar-prov-recuperado { color: #9BF3C9; }
     .gar-det-hizo span { display: block; margin-bottom: 4px; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 650; color: var(--tinta-3); }
     .gar-det-hizo p { margin: 0; font-size: var(--t-s); line-height: 1.55; color: var(--tinta-2); text-align: left; }
 }
+
+/* ==========================================================================
+   GEOR IA — columna derecha "En el taller" (escritorio, > 1100 px)
+   La columna mide lo mismo que la tarjeta de Geor; solo la lista de vehículos
+   desplaza por dentro, con 16 px arriba y abajo y bordes que se desvanecen,
+   para que nunca quede una tarjeta cortada en seco.
+   ========================================================================== */
+@media (min-width: 1101px) {
+    .taller-col {
+        height: calc(100vh - 210px); min-height: 560px;   /* igual que .geor */
+        gap: 12px;
+    }
+    .taller-col .taller-cab { flex: none; }
+    #panel-vehiculos-pendientes-container.carril-taller {
+        flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+        display: flex; flex-direction: column; gap: 16px;
+        padding: 16px 4px 16px;   /* 4 px a los lados para que no se corten bordes ni sombras */
+        margin: 0 -4px;
+        scrollbar-width: thin; scrollbar-color: rgba(165, 139, 255, 0.35) transparent;
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+                mask-image: linear-gradient(to bottom, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+    }
+    /* La tarjeta activa no se encoge: es el bloque principal */
+    .carril-taller > .tv { flex: none; }
+    .carril-taller .tv-datos { gap: 16px; }
+    .carril-taller .tv-acciones { padding-top: 14px; gap: 8px; }
+
+    /* Vehículos secundarios: columna con aire entre tarjetas */
+    .carril-taller .lista-taller { flex: none; display: flex; flex-direction: column; gap: 10px; }
+    .carril-taller .tv-fila-lista {
+        padding: 14px 16px; border-radius: 14px; gap: 14px;
+        grid-template-columns: 88px minmax(0, 1fr) auto;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    html[data-theme="light"] .carril-taller .tv-fila-lista { border-color: var(--linea); }
+    .carril-taller .tv-fila-lista .mini { height: 52px; }
+    /* Sin desplazamiento al pasar el mouse: dentro de un área con scroll se recortaría */
+    .carril-taller .tv-fila-lista:hover { transform: none; }
+
+    .taller-col .pista-taller { flex: none; margin: 8px 0 0; }
+}
