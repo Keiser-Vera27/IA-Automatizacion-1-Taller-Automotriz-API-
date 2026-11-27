@@ -20,7 +20,7 @@
             document.documentElement.setAttribute("data-theme", tema);
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=25">
+    <link rel="stylesheet" href="style.css?v=26">
     <!-- Librería para renderizar Markdown (negritas, listas y tablas de Geor IA) -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Librería para Gráficos (Dashboard) -->
@@ -46,54 +46,77 @@
     <!-- PANTALLA DE LOGIN                                           -->
     <!-- ========================================================== -->
     <div id="login-container">
+        <!-- Inicio de sesión. En el celular y la tableta el formulario va primero y el
+             ejemplo de Geor IA debajo; en escritorio, ejemplo a la izquierda y formulario a la derecha. -->
         <div class="login-split">
 
-            <!-- Panel de marca: enseña lo que hace el producto (mensaje -> registro) -->
-            <section class="login-marca" aria-label="Oficial de Registros">
+            <!-- Formulario (primero en el documento: es lo más importante en el celular) -->
+            <main class="login-formulario">
+                <div class="login-card">
+                    <div class="login-card-marca">
+                        <img class="logo-movil oscuro" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
+                        <img class="logo-movil claro" src="brand/horizontal.svg" alt="Oficial de Registros">
+                    </div>
+                    <h1>Ingresa a tu taller</h1>
+                    <p class="login-sub">Usa el correo y la contraseña que te dio el administrador.</p>
+
+                    <form class="login-campos" onsubmit="event.preventDefault(); iniciarSesion();" novalidate>
+                        <div class="campo-login">
+                            <label for="email_login">Correo electrónico</label>
+                            <input type="email" id="email_login" placeholder="nombre@taller.com" autocomplete="username" inputmode="email">
+                        </div>
+
+                        <div class="campo-login">
+                            <label for="password_login">Contraseña</label>
+                            <div class="campo-clave">
+                                <input type="password" id="password_login" autocomplete="current-password" placeholder="Tu contraseña">
+                                <button type="button" class="ver-clave" id="ver-clave" onclick="alternarVerClave()"
+                                        aria-label="Mostrar contraseña" aria-pressed="false" aria-controls="password_login">
+                                    <svg class="icono ojo-abierto" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    <svg class="icono ojo-cerrado" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.6 0 3-.4 4.3-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-login">Ingresar</button>
+                    </form>
+                    <p id="login_error" role="alert"></p>
+                </div>
+            </main>
+
+            <!-- Presentación de Geor IA: enseña lo que hace el producto (mensaje -> registro) -->
+            <section class="login-marca" aria-label="Qué hace Geor IA">
                 <img class="logo-login" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
 
                 <div class="login-mensaje">
-                    <div>
+                    <div class="login-titular">
                         <h2>Escribe lo que pasó en el taller.</h2>
                         <p class="bajada">Geor IA hace el registro: reparaciones, gastos e inventario a partir de un mensaje, con la caja del día cuadrada.</p>
                     </div>
 
                     <div class="demo-registro" aria-hidden="true">
+                        <div class="demo-cab">
+                            <span class="demo-simbolo"><img src="brand/simbolo-dark.svg" alt=""></span>
+                            <b>Geor IA</b>
+                            <span class="demo-badge">Registro automático</span>
+                        </div>
                         <div class="demo-mensaje">Entró Juan Pérez con un Spark placa GBA-1234. Cambio de aceite y filtro, cobramos 35.</div>
-                        <svg class="icono demo-flecha" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+                        <div class="demo-paso"><span></span>Geor lo registra<span></span></div>
                         <div class="demo-ficha">
                             <span class="placa">GBA-1234</span>
-                            <span class="demo-vehiculo">Chevrolet Spark de Juan Pérez</span>
-                            <span class="demo-monto">$35,00</span>
-                            <span class="demo-detalle">Cambio de aceite y filtro</span>
+                            <div class="demo-datos">
+                                <span class="demo-vehiculo">Chevrolet Spark de Juan Pérez</span>
+                                <span class="demo-detalle">Cambio de aceite y filtro</span>
+                            </div>
+                            <div class="demo-cobro">
+                                <span class="demo-monto">$35.00</span>
+                                <span class="demo-estado">Registrado</span>
+                            </div>
                         </div>
                         <p class="demo-pie">Ejemplo ilustrativo.</p>
                     </div>
                 </div>
             </section>
-
-            <!-- Panel del formulario -->
-            <main class="login-formulario">
-                <div class="login-card">
-                    <img class="logo-movil oscuro" src="brand/horizontal-dark.svg" alt="Oficial de Registros">
-                    <img class="logo-movil claro" src="brand/horizontal.svg" alt="Oficial de Registros">
-                    <h1>Ingresa a tu taller</h1>
-                    <p>Usa el correo y la contraseña que te dio el administrador.</p>
-
-                    <div class="campo-login">
-                        <label for="email_login">Correo electrónico</label>
-                        <input type="email" id="email_login" placeholder="nombre@taller.com" autocomplete="username">
-                    </div>
-
-                    <div class="campo-login">
-                        <label for="password_login">Contraseña</label>
-                        <input type="password" id="password_login" autocomplete="current-password">
-                    </div>
-
-                    <button class="btn-login" onclick="iniciarSesion()">Ingresar</button>
-                    <p id="login_error" role="alert"></p>
-                </div>
-            </main>
         </div>
     </div>
 
@@ -612,7 +635,7 @@
     </div> <!-- Cierra #plantilla-orden -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="script.js?v=1021"></script>
+    <script src="script.js?v=1022"></script>
     <!-- MODAL DE AVISO (centro de pantalla, con botón OK). Reutilizable: mostrarModal({...}) -->
     <div id="modal-aviso" class="modal-overlay" aria-hidden="true">
         <div class="modal-caja" role="alertdialog" aria-modal="true" aria-labelledby="modal-titulo" aria-describedby="modal-mensaje">

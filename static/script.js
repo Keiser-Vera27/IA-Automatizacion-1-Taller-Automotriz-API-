@@ -202,6 +202,17 @@ window.onload = function() {
     });
 };
 
+// Mostrar u ocultar la contraseña en el inicio de sesión
+function alternarVerClave(forzarOculta = false) {
+    const input = document.getElementById('password_login');
+    const boton = document.getElementById('ver-clave');
+    if (!input || !boton) return;
+    const mostrar = forzarOculta ? false : input.type === 'password';
+    input.type = mostrar ? 'text' : 'password';
+    boton.setAttribute('aria-pressed', String(mostrar));
+    boton.setAttribute('aria-label', mostrar ? 'Ocultar contraseña' : 'Mostrar contraseña');
+}
+
 // Función de Login
 async function iniciarSesion() {
     const email = document.getElementById("email_login").value;
@@ -253,6 +264,7 @@ function cerrarSesion() {
     document.getElementById("app-container").style.display = "none";
     document.getElementById("login-container").style.display = "block";
     document.getElementById("password_login").value = "";
+    alternarVerClave(true);   // la contraseña vuelve a quedar oculta
 
     // Conversación, vehículos y cifras del día no deben verse en la próxima sesión
     const conversacion = document.getElementById('conversacion-geor');
