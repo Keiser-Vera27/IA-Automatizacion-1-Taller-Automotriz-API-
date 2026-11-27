@@ -3462,3 +3462,100 @@ html[data-theme="light"] #login-container .login-marca .logo-login { content: ur
     #login-container .demo-monto { font-size: 1.05rem; }
     #login-container .demo-pie { font-size: 11.5px; }
 }
+
+/* ==========================================================================
+   TEMA CLARO: profundidad y capas
+   Fondo lavanda muy suave; las superficies principales en blanco limpio con
+   borde fino de tinte violeta y sombras difusas violeta (nunca negras).
+   Solo cambia el tema claro; la estructura y el tema oscuro quedan igual.
+   ========================================================================== */
+html[data-theme="light"] {
+    --fondo: #F5F4FB;
+    --superficie-1: #FFFFFF;
+    --superficie-2: #F8F7FD;
+    --superficie-3: #F0EDFA;
+    --linea: rgba(124, 58, 237, 0.10);
+    --linea-fuerte: rgba(124, 58, 237, 0.16);
+    --linea-intensa: rgba(124, 58, 237, 0.28);
+    --tinta: #1E1B4B;
+    --tinta-2: #334155;
+    --tinta-3: #5B6478;
+    --borde-claro: rgba(124, 58, 237, 0.10);
+    --sombra-claro: 0 8px 24px -8px rgba(88, 28, 135, 0.08), 0 1px 2px rgba(88, 28, 135, 0.04);
+    --sombra-claro-alta: 0 18px 40px -14px rgba(88, 28, 135, 0.14), 0 2px 6px rgba(88, 28, 135, 0.05);
+}
+
+/* Fondo con un halo lavanda muy tenue en las esquinas */
+html[data-theme="light"] body {
+    background:
+        radial-gradient(55% 40% at 0% 0%, rgba(167, 139, 250, 0.10), transparent 70%),
+        radial-gradient(45% 40% at 100% 100%, rgba(196, 181, 253, 0.10), transparent 70%),
+        #F5F4FB;
+    background-attachment: fixed;
+}
+
+/* Barra superior blanca separada del fondo */
+html[data-theme="light"] .barra-app {
+    background: rgba(255, 255, 255, 0.92); border-bottom: 1px solid var(--borde-claro);
+    box-shadow: 0 6px 20px -12px rgba(88, 28, 135, 0.12);
+    -webkit-backdrop-filter: blur(12px) saturate(140%); backdrop-filter: blur(12px) saturate(140%);
+}
+html[data-theme="light"] .nav-app { background: transparent; border-right-color: var(--borde-claro); }
+
+/* Tarjetas principales: blanco, borde fino violeta y elevación suave */
+html[data-theme="light"] :is(.geor, .cifras, .tv, .tv-fila-lista, .panel-caja, .compositor,
+    .veh-cifra, .dash-kpi, .veh-col-lista, .veh-col-detalle, .srv-catalogo, .srv-tarjeta,
+    .gar-tarjeta, .dash-panel, .orden-historial, .resultado-vehiculo) {
+    background-color: #FFFFFF; border: 1px solid var(--borde-claro); box-shadow: var(--sombra-claro);
+}
+/* Las filas dentro de un panel no llevan sombra propia (evita capas encimadas) */
+html[data-theme="light"] :is(.veh-col-lista .resultado-vehiculo, .lista-taller .tv-fila-lista) { box-shadow: none; }
+html[data-theme="light"] .veh-col-lista .resultado-vehiculo { border-color: transparent; }
+html[data-theme="light"] .veh-col-lista .resultado-vehiculo.activo { border-color: rgba(124, 58, 237, 0.45); background: #F5F0FF; }
+html[data-theme="light"] :is(.tv, .geor):hover { box-shadow: var(--sombra-claro-alta); }
+
+/* Geor IA: el compositor se separa del fondo blanco del chat */
+html[data-theme="light"] .compositor { background: #FBFAFF; box-shadow: 0 6px 18px -10px rgba(88, 28, 135, 0.12); }
+html[data-theme="light"] .compositor:focus-within { border-color: rgba(124, 58, 237, 0.4); box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.10), 0 6px 18px -10px rgba(88, 28, 135, 0.14); }
+
+/* Cabecera de Geor IA: halo lila ambiental un poco más presente */
+html[data-theme="light"] .geor::before { background: radial-gradient(closest-side, rgba(139, 92, 246, 0.20), transparent 70%); }
+html[data-theme="light"] .geor-cabecera {
+    background: linear-gradient(180deg, rgba(245, 240, 255, 0.85), rgba(255, 255, 255, 0));
+    border-bottom-color: var(--borde-claro);
+}
+
+/* Cifras del día: números tabulares, más aire y separadores finos violeta */
+html[data-theme="light"] .cifras { border-radius: 16px; }
+html[data-theme="light"] .cifra { padding: 12px 22px; }
+html[data-theme="light"] .cifra + .cifra { border-left-color: var(--borde-claro); }
+html[data-theme="light"] .cifra dt { color: #5B6478; font-weight: 550; }
+html[data-theme="light"] .cifra dd { color: #1E1B4B; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
+
+/* Selector "En el taller / Entregados hoy" */
+html[data-theme="light"] .segmento { background: #FFFFFF; border-color: var(--borde-claro); box-shadow: var(--sombra-claro); }
+html[data-theme="light"] .segmento button[aria-pressed="true"] { background: #F0EBFF; color: #4C1D95; box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.25); }
+
+/* Estado vacío: marco discontinuo lila definido y botón con acento violeta */
+html[data-theme="light"] .vacio-taller {
+    border: 1.5px dashed rgba(124, 58, 237, 0.32); background: rgba(245, 240, 255, 0.55); box-shadow: none;
+}
+html[data-theme="light"] .vacio-taller .simbolo { background: #EDE7FE; color: #6D28D9; box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.12); }
+html[data-theme="light"] .vacio-taller b { color: #1E1B4B; }
+html[data-theme="light"] .vacio-taller p { color: #334155; }
+html[data-theme="light"] .vacio-taller .btn-chico {
+    height: 36px; padding: 0 16px; border-radius: 999px;
+    color: #5B21B6; background: #FFFFFF; border: 1px solid rgba(124, 58, 237, 0.35);
+    box-shadow: 0 4px 12px -6px rgba(88, 28, 135, 0.18);
+    transition: background-color var(--mov-rapido, 140ms) var(--curva, ease), border-color var(--mov-rapido, 140ms) var(--curva, ease),
+                color var(--mov-rapido, 140ms) var(--curva, ease), box-shadow var(--mov-estandar, 240ms) var(--curva, ease);
+}
+html[data-theme="light"] .vacio-taller .btn-chico:hover {
+    background: #F3EEFF; border-color: rgba(124, 58, 237, 0.6); color: #4C1D95;
+    box-shadow: 0 8px 18px -8px rgba(88, 28, 135, 0.28);
+}
+html[data-theme="light"] .vacio-taller .btn-chico:focus-visible { outline: 2px solid #7C3AED; outline-offset: 2px; }
+/* En claro, la lista con desplazamiento deja espacio para que las sombras no se corten */
+@media (min-width: 1101px) {
+    html[data-theme="light"] #panel-vehiculos-pendientes-container.carril-taller { padding: 16px 14px 20px; margin: 0 -14px; }
+}
