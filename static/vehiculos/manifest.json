@@ -1,5 +1,98 @@
 {
   "_ayuda": "Lista de imágenes de vehículos disponibles. Ver LEEME.md en esta carpeta.",
   "tipos": {},
-  "modelos": {}
+  "modelos": {
+    "chevrolet-aveo": {
+      "tipo": "sedan",
+      "alias": [
+        "aveo"
+      ],
+      "colores": [
+        "blanco"
+      ]
+    },
+    "chevrolet-captiva": {
+      "tipo": "suv",
+      "alias": [
+        "captiva"
+      ],
+      "colores": [
+        "blanco"
+      ]
+    },
+    "chevrolet-corsa": {
+      "tipo": "sedan",
+      "alias": [
+        "corsa"
+      ],
+      "colores": [
+        "blanco"
+      ]
+    },
+    "chevrolet-d-max": {
+      "tipo": "pickup",
+      "alias": [
+        "dmax",
+        "d-max"
+      ],
+      "colores": [
+        "blanco"
+      ]
+    },
+    "chevrolet-onix": {
+      "tipo": "sedan",
+      "alias": [
+        "onix"
+      ],
+      "colores": [
+        "blanco"
+      ]
+    },
+    "chevrolet-sail": {
+      "tipo": "sedan",
+      "alias": [
+        "sail"
+      ],
+      "colores": [
+        "blanco"
+      ]
+    },
+    "chevrolet-spark": {
+      "tipo": "hatchback",
+      "alias": [
+        "spark"
+      ],
+      "colores": [
+        "blanco"
+      ]
+    },
+    "chevrolet-tracker": {
+      "tipo": "suv",
+      "alias": [
+        "tracker"
+      ],
+      "colores": [
+        "blanco"
+      ]
+    },
+    "kia-picanto": {
+      "tipo": "hatchback",
+      "alias": [
+        "picanto"
+      ],
+      "colores": [
+        "blanco"
+      ]
+    },
+    "suzuki-grand-vitara": {
+      "tipo": "suv",
+      "alias": [
+        "vitara",
+        "grand-vitara"
+      ],
+      "colores": [
+        "blanco"
+      ]
+    }
+  }
 }

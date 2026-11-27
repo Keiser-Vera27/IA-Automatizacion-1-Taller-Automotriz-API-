@@ -91,7 +91,7 @@ plateado -> plata, vino o guinda -> rojo, celeste -> azul, plomo o grafito -> gr
 ## Procesar las imágenes
 
 ```bash
-pip install rembg onnxruntime pillow        # solo la primera vez (no es parte del servidor)
+pip install rembg onnxruntime pillow scipy  # solo la primera vez (no es parte del servidor)
 python herramientas/procesar_vehiculos.py RUTA/DE/LA/CARPETA
 ```
 

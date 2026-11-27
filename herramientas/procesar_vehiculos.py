@@ -2,7 +2,7 @@
 Procesa las imágenes de vehículos generadas con IA y las deja listas para la app.
 
 Uso:
-    pip install rembg onnxruntime pillow       (solo la primera vez; no es parte del servidor)
+    pip install rembg onnxruntime pillow scipy  (solo la primera vez; no es parte del servidor)
     python herramientas/procesar_vehiculos.py CARPETA_CON_IMAGENES
 
 Cada imagen de la carpeta debe llamarse  marca-modelo-color.png  (o .jpg/.webp), por ejemplo:
@@ -40,6 +40,8 @@ CATALOGO = {
     "chevrolet-corsa":      {"tipo": "sedan",     "alias": ["corsa"]},
     "chevrolet-sail":       {"tipo": "sedan",     "alias": ["sail"]},
     "chevrolet-captiva":    {"tipo": "suv",       "alias": ["captiva"]},
+    "chevrolet-onix":       {"tipo": "sedan",     "alias": ["onix"]},
+    "chevrolet-tracker":    {"tipo": "suv",       "alias": ["tracker"]},
     "chevrolet-d-max":      {"tipo": "pickup",    "alias": ["dmax", "d-max"]},
     "kia-soluto":           {"tipo": "sedan",     "alias": ["soluto"]},
     "kia-rio":              {"tipo": "sedan",     "alias": ["rio"]},
@@ -60,8 +62,29 @@ def slug(texto: str) -> str:
 
 def quitar_fondo(img: Image.Image, sesion) -> Image.Image:
     from rembg import remove
-    salida = remove(img, session=sesion, post_process_mask=True)
-    return salida.convert("RGBA")
+    salida = remove(img, session=sesion, post_process_mask=True).convert("RGBA")
+    return rellenar_huecos(salida, img)
+
+
+def rellenar_huecos(img: Image.Image, original: Image.Image) -> Image.Image:
+    """En autos blancos o con vidrios claros, el recorte a veces abre huecos dentro
+    de la carrocería (parabrisas, ventanas). Todo lo que queda encerrado por la
+    silueta del vehículo se vuelve opaco otra vez, conservando sus colores originales."""
+    import numpy as np
+    from scipy.ndimage import binary_closing, binary_fill_holes
+    arr = np.array(img)
+    solido = arr[..., 3] > 128
+    # Un cierre pequeño sella las aberturas finas (ej. el borde del parabrisas) antes de rellenar
+    r = max(3, round(min(arr.shape[:2]) * 0.006))
+    yy, xx = np.ogrid[-r:r + 1, -r:r + 1]
+    disco = xx * xx + yy * yy <= r * r
+    relleno = binary_fill_holes(binary_closing(solido, structure=disco, iterations=1))
+    huecos = relleno & (arr[..., 3] < 250)
+    # Se recuperan los colores de la imagen original (el recorte los deja en negro)
+    orig = np.array(original.convert("RGBA"))
+    arr[huecos, :3] = orig[huecos, :3]
+    arr[..., 3][huecos] = 255
+    return Image.fromarray(arr, "RGBA")
 
 
 def encuadrar(img: Image.Image) -> Image.Image:
